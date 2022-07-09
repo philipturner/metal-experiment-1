@@ -51,40 +51,25 @@ enum Profiler {
   }
 }
 
+// From https://github.com/philipturner/ARHeadsetUtil
 extension MTLSize: ExpressibleByIntegerLiteral, ExpressibleByArrayLiteral {
-  @inlinable @inline(__always)
-  public init(integerLiteral value: Int) {
-    self = [value, 1, 1]
+  @inline(__always)
+  init(_ value: Int) {
+    self = MTLSizeMake(value, 1, 1)
   }
   
-  @inlinable @inline(__always)
-  public init(arrayLiteral elements: Int...) {
+  @inline(__always)
+  public /*internal*/ init(integerLiteral value: Int) {
+    self = MTLSizeMake(value, 1, 1)
+  }
+  
+  @inline(__always)
+  public /*internal*/ init(arrayLiteral elements: Int...) {
     switch elements.count {
     case 1:  self = MTLSizeMake(elements[0], 1, 1)
     case 2:  self = MTLSizeMake(elements[0], elements[1], 1)
     case 3:  self = MTLSizeMake(elements[0], elements[1], elements[2])
     default: fatalError("A MTLSize must not exceed three dimensions!")
-    }
-  }
-}
-
-extension MTLOrigin: ExpressibleByArrayLiteral {
-  @inlinable @inline(__always)
-  public init(arrayLiteral elements: Int...) {
-    switch elements.count {
-    case 2:  self = MTLOriginMake(elements[0], elements[1], 0)
-    case 3:  self = MTLOriginMake(elements[0], elements[1], elements[2])
-    default: fatalError("A MTLOrigin must have two or three dimensions!")
-    }
-  }
-}
-
-extension MTLSamplePosition: ExpressibleByArrayLiteral {
-  @inlinable @inline(__always)
-  public init(arrayLiteral elements: Float...) {
-    switch elements.count {
-    case 2:  self = .init(x: elements[0], y: elements[1])
-    default: fatalError("A MTLSamplePosition must have two dimensions")
     }
   }
 }

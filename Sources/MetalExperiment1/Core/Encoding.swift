@@ -14,8 +14,10 @@ extension Context {
     }
   }
   
-  func queryActiveCommandBuffers() -> Int {
-    committedCmdbufCount - completedCmdbufCount.load(ordering: .sequentiallyConsistent)
+  func queryQueueBackPressure() -> Int {
+    let committedCount = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    let scheduledCount = numScheduledBatches.load(ordering: .sequentiallyConsistent)
+    return committedCount - scheduledCount
   }
   
   func validate() {
@@ -28,74 +30,59 @@ extension Context {
 }
 
 extension Context {
-  func commitStreamedCommand(profilingEncoding: Bool = false) {
-    var commandBuffer: MTLCommandBuffer
-    var computeEncoder: MTLComputeCommandEncoder
-    if let currentCommandBuffer = currentCommandBuffer {
-      commandBuffer = currentCommandBuffer
-      computeEncoder = currentComputeEncoder!
-    } else {
-      commandBuffer = commandQueue.makeCommandBuffer()!
-      commandBuffer.enqueue()
-      computeEncoder = commandBuffer.makeComputeCommandEncoder()!
+  func commitStreamedCommand() {
+    let operation = Operation.Unary(
+      type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements)
+    bufferedOperations.append(.unary(operation))
+    operationCount += 1
+    swap(&buffer1, &buffer2)
+    
+    let backPressure = queryQueueBackPressure()
+    if bufferedOperations.count < Context.maxCommandsPerBatch,
+       backPressure >= 1 {
+      return
     }
+    flushStream(precomputedBackPressure: backPressure)
+  }
+  
+  func flushStream(precomputedBackPressure: Int? = nil) {
+    guard bufferedOperations.count > 0 else {
+      return
+    }
+    defer {
+      bufferedOperations.removeAll(keepingCapacity: true)
+    }
+    let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
+    
     var startTime: UInt64 = 0
-    if profilingEncoding {
+    if Context.profilingEncoding {
       startTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     
-    computeEncoder.setComputePipelineState(computePipeline)
-    computeEncoder.setBuffer(buffer1, offset: 0, index: 0)
-    computeEncoder.setBuffer(buffer2, offset: 0, index: 1)
-    computeEncoder.dispatchThreads([Context.bufferNumElements], threadsPerThreadgroup: 1)
+    let commandBuffer = commandQueue.makeCommandBuffer()!
+    let encoder = commandBuffer.makeComputeCommandEncoder()!
+    for operation in bufferedOperations {
+      encodeSingleOperation(operation, into: encoder)
+    }
+    encoder.endEncoding()
     
-    let cmdbufsInFlight = queryActiveCommandBuffers()
-    var shouldFlushStream = numEncodedCommands >= Context.maxCommandsPerCmdbuf
-    shouldFlushStream = shouldFlushStream || (cmdbufsInFlight == 0)
-    currentCommandBuffer = commandBuffer
-    currentComputeEncoder = computeEncoder
-    numEncodedCommands += 1
+    numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+    let atomic = numScheduledBatches
+    commandBuffer.addScheduledHandler { _ in
+      atomic.wrappingIncrement(ordering: .sequentiallyConsistent)
+      // Send a thread-safe call to `flushStream`.
+    }
+    commandBuffer.commit()
+    lastCommandBuffer = commandBuffer
     
-    if profilingEncoding {
+    if Context.profilingEncoding {
       let endTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       let duration = Int(endTime - startTime) / 1000
       print("""
         Encoding duration: \(duration) \(Profiler.timeUnit), \
-        Cmdbufs in flight: \(cmdbufsInFlight), \
-        Encoded commands: \(numEncodedCommands), \
-        Flushed stream: \(shouldFlushStream)
+        Batches in flight: \(previousBackPressure), \
+        Encoded commands: \(bufferedOperations.count)
         """)
     }
-    
-    if shouldFlushStream {
-      flushStream()
-    }
-    
-    operationCount += 1
-    let previousBuffer1 = buffer1
-    let previousBuffer2 = buffer2
-    swap(&buffer1, &buffer2)
-    precondition(previousBuffer1 === buffer2)
-    precondition(previousBuffer2 === buffer1)
-  }
-  
-  func flushStream() {
-    guard let commandBuffer = currentCommandBuffer else {
-      return
-    }
-    let computeEncoder = currentComputeEncoder!
-    currentCommandBuffer = nil
-    currentComputeEncoder = nil
-    numEncodedCommands = 0
-    
-    computeEncoder.endEncoding()
-    committedCmdbufCount += 1
-    let atomic = completedCmdbufCount
-    commandBuffer.addCompletedHandler { _ in
-      atomic.wrappingIncrement(ordering: .sequentiallyConsistent)
-    }
-    
-    commandBuffer.commit()
-    lastCommandBuffer = commandBuffer
   }
 }

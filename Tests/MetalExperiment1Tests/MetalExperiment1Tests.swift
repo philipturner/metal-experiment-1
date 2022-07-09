@@ -17,43 +17,33 @@ final class MetalExperiment1Tests: XCTestCase {
   }
   
   func testC() throws {
-    testHeader("Streamed cmdbuf throughput")
+    testHeader("Streamed command buffer throughput")
     let ctx = Context.global
     
     Profiler.checkpoint()
-    ctx.commitStreamedCommand(profilingEncoding: true)
-    Profiler.log("First cmdbuf")
+    ctx.commitStreamedCommand()
+    Profiler.log("First command buffer")
     ctx.validate()
     
-    func profileStream(length: Int, message: String, profilingEncoding: Bool = false) {
+    func profileStream(length: Int) {
       print("--- Stream size: \(length) ---")
       Profiler.checkpoint()
       for _ in 0..<length {
-        ctx.commitStreamedCommand(profilingEncoding: profilingEncoding)
+        ctx.commitStreamedCommand()
       }
       let executionTime = Profiler.checkpoint()
       ctx.validate()
       
       let trueDuration = Profiler.checkpoint() + executionTime
       print("""
-        \(message): \(executionTime / length) \(Profiler.timeUnit), \
+        Average CPU-side latency: \(executionTime / length) \(Profiler.timeUnit), \
         Amortized sequential throughput: \(trueDuration / length) \(Profiler.timeUnit), \
         Total time: \(trueDuration) \(Profiler.timeUnit)
         """)
     }
     
-    profileStream(length: 5, message: "Next 5 cmdbufs")
-    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandsPerCmdbuf * 2, message: "Average CPU-side latency", profilingEncoding: false)
-    profileStream(length: 5, message: "Average CPU-side latency", profilingEncoding: true)
-    
-    Profiler.withLogging("Query active cmdbufs 10 times") {
-      for _ in 0..<10 {
-        _ = ctx.queryActiveCommandBuffers()
-      }
+    for _ in 0..<5 {
+      profileStream(length: Context.maxCommandsPerBatch * 8)
     }
   }
 }
