@@ -3,7 +3,7 @@ import XCTest
 
 func testHeader(_ message: String, disableBarrier: Bool = false) {
   if !disableBarrier {
-    Context.global.barrier()
+    Context.barrier()
   }
   print()
   print("=== \(message) ===")

@@ -8,6 +8,20 @@
 import Metal
 
 extension Context {
+  static func validate() {
+    Context.global.validate()
+  }
+  
+  static func commitStreamedCommand() {
+    Context.global.commitStreamedCommand()
+  }
+  
+  static func barrier() {
+    Context.global.barrier()
+  }
+}
+
+private extension Context {
   func barrier() {
     if let commandBuffer = lastCommandBuffer {
       commandBuffer.waitUntilCompleted()
@@ -20,10 +34,6 @@ extension Context {
     return committedCount - scheduledCount
   }
   
-  static func validate() {
-    Context.global.validate()
-  }
-  
   func validate() {
     flushStream()
     barrier()
@@ -33,11 +43,7 @@ extension Context {
   }
 }
 
-extension Context {
-  static func commitStreamedCommand() {
-    Context.global.commitStreamedCommand()
-  }
-  
+private extension Context {
   func commitStreamedCommand() {
     let operation = Operation.Unary(
       type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements)

@@ -16,7 +16,7 @@ class Context {
   var lastCommandBuffer: MTLCommandBuffer?
   static let maxBatchesInFlight = 10
   
-  static let numBufferElements = 10
+  static let numBufferElements = 1000
   var buffer1: MTLBuffer // Input for next operation, current state of execution.
   var buffer2: MTLBuffer // Output for next operation.
   var operationCount = 0 // Current value of elements in `buffer1`.
