@@ -17,8 +17,8 @@ class Context {
   init() {
     Profiler.checkpoint()
     self.device = MTLCreateSystemDefaultDevice()!
-    self.commandQueue = device.makeCommandQueue()!
-    Profiler.log("initialize Metal runtime")
+    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: 10)!
+    Profiler.log("Initialize Metal runtime")
     
     Profiler.checkpoint()
     let bundleURL = Bundle.module.resourceURL!
@@ -26,13 +26,13 @@ class Context {
     let unaryURL = shadersURL.appendingPathComponent("Unary.metal", isDirectory: false)
     let unaryData = FileManager.default.contents(atPath: unaryURL.path)!
     let unaryString = String(data: unaryData, encoding: .utf8)!
-    Profiler.log("load shader from disk")
+    Profiler.log("Load shader from disk")
     
     Profiler.checkpoint()
     let unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
     let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
     self.computePipeline = try! device.makeComputePipelineState(function: unaryFunction)
-    Profiler.log("create shader object")
+    Profiler.log("Create shader object")
   }
   
   func commitEmptyCommandBuffer() {
@@ -55,8 +55,8 @@ class Context {
       gpuTimeMessage = "n/a"
     }
     if showingStats {
-      print("Kernel time: \(kernelTimeMessage)")
-      print("GPU time: \(gpuTimeMessage)")
+      print("Kernel time: \(kernelTimeMessage) \(Profiler.timeUnit)")
+      print("GPU time: \(gpuTimeMessage) \(Profiler.timeUnit)")
     }
   }
 }

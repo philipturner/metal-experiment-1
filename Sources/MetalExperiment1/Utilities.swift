@@ -9,7 +9,8 @@ import Foundation
 
 enum Profiler {
   // Microseconds.
-  private static let timeUnit = "\u{b5}s"
+  static let timeUnit = "\u{b5}s"
+  
   private static var time: UInt64?
   
   @discardableResult
