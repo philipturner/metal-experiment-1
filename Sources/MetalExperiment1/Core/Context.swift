@@ -17,7 +17,7 @@ class Context {
   init() {
     Profiler.checkpoint()
     self.device = MTLCreateSystemDefaultDevice()!
-    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: 10)!
+    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: 20)!
     Profiler.log("Initialize Metal runtime")
     
     Profiler.checkpoint()

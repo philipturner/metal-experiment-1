@@ -24,7 +24,7 @@ final class MetalExperiment1Tests: XCTestCase {
     Profiler.log("First cmdbuf")
     ctx.barrier(showingStats: true)
     
-    let numCommandBuffers = 4
+    let numCommandBuffers = 20
     
     Profiler.checkpoint()
     for _ in 0..<numCommandBuffers {
@@ -33,6 +33,6 @@ final class MetalExperiment1Tests: XCTestCase {
     let executionTime = Profiler.checkpoint()
     ctx.barrier()
     
-    print("Average overhead: \(executionTime / 10) \(Profiler.timeUnit)")
+    print("Average overhead: \(executionTime / UInt64(numCommandBuffers)) \(Profiler.timeUnit)")
   }
 }
