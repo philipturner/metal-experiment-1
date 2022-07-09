@@ -14,9 +14,9 @@ class Context {
   var commandQueue: MTLCommandQueue
   var computePipeline: MTLComputePipelineState
   var lastCommandBuffer: MTLCommandBuffer?
-  static let maxCommandBuffers = 10
+  static let maxCommandBuffers = 5
   
-  static let bufferNumElements = 1000
+  static let bufferNumElements = 10
   var buffer1: MTLBuffer // Input for next operation, current state of execution.
   var buffer2: MTLBuffer // Output for next operation.
   var operationCount = 0 // Current value of elements in `buffer1`.
@@ -48,11 +48,12 @@ class Context {
   var currentCommandBuffer: MTLCommandBuffer?
   var currentComputeEncoder: MTLComputeCommandEncoder?
   var numEncodedCommands = 0
+  static var maxCommandsPerCmdbuf = 100
   
   init() {
     Profiler.checkpoint()
     self.device = MTLCreateSystemDefaultDevice()!
-    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxCommandBuffers)!
+    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxCommandBuffers / 1)!
     Profiler.log("Initialize Metal runtime")
     
     Profiler.checkpoint()

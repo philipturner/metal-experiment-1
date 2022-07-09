@@ -44,14 +44,13 @@ final class MetalExperiment1Tests: XCTestCase {
     }
     
     profileStream(length: 5, message: "Next 5 cmdbufs")
+    profileStream(length: Context.maxCommandBuffers * 2, message: "Average CPU-side latency")
     profileStream(length: Context.maxCommandBuffers, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandBuffers, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandBuffers, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandBuffers, message: "Average CPU-side latency")
     profileStream(
-      length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency",
+      length: Context.maxCommandBuffers, message: "Average CPU-side latency",
       profilingEncoding: true)
     
     Profiler.withLogging("Query active cmdbufs 10 times") {
@@ -91,14 +90,12 @@ final class MetalExperiment1Tests: XCTestCase {
     }
     
     profileStream(length: 5, message: "Next 5 cmdbufs")
-    profileStream(length: Context.maxCommandBuffers * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers * 4, message: "Average CPU-side latency")
-    profileStream(length: Context.maxCommandBuffers * 2, message: "Average CPU-side latency")
-    profileStream(
-      length: Context.maxCommandBuffers / 2, message: "Average CPU-side latency",
-      profilingEncoding: true)
+    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandsPerCmdbuf * 4, message: "Average CPU-side latency")
+    profileStream(length: Context.maxCommandsPerCmdbuf * 2, message: "Average CPU-side latency", profilingEncoding: false)
+    profileStream(length: 5, message: "Average CPU-side latency", profilingEncoding: true)
     
     Profiler.withLogging("Query active cmdbufs 10 times") {
       for _ in 0..<10 {

@@ -96,7 +96,8 @@ extension Context {
     computeEncoder.dispatchThreads([Context.bufferNumElements], threadsPerThreadgroup: 1)
     
     let cmdbufsInFlight = queryActiveCommandBuffers()
-    let shouldFlushStream = numEncodedCommands >= 10 || cmdbufsInFlight == 0
+    var shouldFlushStream = numEncodedCommands >= Context.maxCommandsPerCmdbuf
+    shouldFlushStream = shouldFlushStream || (cmdbufsInFlight == 0)
     currentCommandBuffer = commandBuffer
     currentComputeEncoder = computeEncoder
     numEncodedCommands += 1
