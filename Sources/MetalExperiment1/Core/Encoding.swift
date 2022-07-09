@@ -24,6 +24,7 @@ extension Context {
     let event = cycleEvents()
 //    commandBuffer.encodeSignalEvent(event, value: event.signaledValue + 1)
     
+    
     let atomic = cycleAtomics()
     while atomic.load(ordering: .sequentiallyConsistent) == -1 {
       print("Command queue overfilled, deadlocking.")
