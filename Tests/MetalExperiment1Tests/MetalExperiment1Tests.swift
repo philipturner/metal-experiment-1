@@ -18,32 +18,39 @@ final class MetalExperiment1Tests: XCTestCase {
   
   func testC() throws {
     testHeader("Streamed command buffer throughput")
-    let ctx = Context.global
     
-    Profiler.checkpoint()
-    ctx.commitStreamedCommand()
-    Profiler.log("First command buffer")
-    ctx.validate()
+    do {
+      Profiler.checkpoint()
+      Context.commitStreamedCommand()
+      let latency = Profiler.checkpoint()
+      
+      Context.validate()
+      let totalTime = latency + Profiler.checkpoint()
+      print("""
+        First batch latency: \(latency) \(Profiler.timeUnit), \
+        Total time: \(totalTime) \(Profiler.timeUnit)
+        """)
+    }
     
     func profileStream(length: Int) {
       print("--- Stream size: \(length) ---")
       Profiler.checkpoint()
       for _ in 0..<length {
-        ctx.commitStreamedCommand()
+        Context.commitStreamedCommand()
       }
-      let executionTime = Profiler.checkpoint()
-      ctx.validate()
+      let latency = Profiler.checkpoint()
+      Context.validate()
       
-      let trueDuration = Profiler.checkpoint() + executionTime
+      let totalTime = latency + Profiler.checkpoint()
       print("""
-        Average CPU-side latency: \(executionTime / length) \(Profiler.timeUnit), \
-        Amortized sequential throughput: \(trueDuration / length) \(Profiler.timeUnit), \
-        Total time: \(trueDuration) \(Profiler.timeUnit)
+        Average CPU-side latency: \(latency / length) \(Profiler.timeUnit), \
+        Amortized sequential throughput: \(totalTime / length) \(Profiler.timeUnit), \
+        Total time: \(totalTime) \(Profiler.timeUnit)
         """)
     }
     
     for _ in 0..<5 {
-      profileStream(length: Context.maxCommandsPerBatch * 8)
+      profileStream(length: Context.maxCommandsPerBatch * 4)
     }
   }
 }
