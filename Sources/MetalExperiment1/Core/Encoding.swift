@@ -14,7 +14,6 @@ extension Context {
     dispatchQueue.sync {
       Context.global.validate()
     }
-    
   }
   
   static func commitStreamedCommand() {
@@ -38,9 +37,9 @@ private extension Context {
   }
   
   func queryQueueBackPressure() -> Int {
-    let committedCount = numCommittedBatches.load(ordering: .sequentiallyConsistent)
-    let scheduledCount = numScheduledBatches.load(ordering: .sequentiallyConsistent)
-    return committedCount - scheduledCount
+    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
+    return numCommitted - numScheduled
   }
   
   func validate() {
@@ -90,10 +89,21 @@ private extension Context {
     encoder.endEncoding()
     
     numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
-    let atomic = numScheduledBatches
     commandBuffer.addScheduledHandler { _ in
-      atomic.wrappingIncrement(ordering: .sequentiallyConsistent)
-      // Send a thread-safe call to `flushStream`.
+      self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+    }
+    commandBuffer.addCompletedHandler { _ in
+      let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
+      let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
+        ordering: .sequentiallyConsistent)
+      
+      // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
+      // frontend never calls into the backend, leaving the GPU starved of work.
+      if numCommitted == numCompleted {
+        Context.dispatchQueue.async {
+          Context.global.flushStream()
+        }
+      }
     }
     commandBuffer.commit()
     lastCommandBuffer = commandBuffer

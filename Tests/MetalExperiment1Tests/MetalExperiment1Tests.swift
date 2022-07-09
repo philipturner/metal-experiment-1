@@ -15,6 +15,7 @@ final class MetalExperiment1Tests: XCTestCase {
     testHeader("Initialize context", disableBarrier: true)
     Profiler.checkpoint()
     _ = Context.global
+    Profiler.log("Initialization time")
   }
   
   func testB() throws {
@@ -25,8 +26,7 @@ final class MetalExperiment1Tests: XCTestCase {
       _ = Context.dispatchQueue.sync {
         Bool.random()
       }
-      let latency = Profiler.checkpoint()
-      print("Dispatch queue latency: \(latency) \(Profiler.timeUnit)")
+      Profiler.log("Dispatch queue latency")
     }
     
     Profiler.checkpoint()

@@ -25,6 +25,7 @@ class Context {
   static var maxCommandsPerBatch = 100
   var numCommittedBatches: ManagedAtomic<Int> = .init(0)
   var numScheduledBatches: ManagedAtomic<Int> = .init(0)
+  var numCompletedBatches: ManagedAtomic<Int> = .init(0)
   var bufferedOperations: [Operation] = []
   
   init() {
