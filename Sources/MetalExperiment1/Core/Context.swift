@@ -12,12 +12,13 @@ class Context {
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var computePipeline: MTLComputePipelineState
+  var lastCommandBuffer: MTLCommandBuffer?
   
   init() {
     Profiler.checkpoint()
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue()!
-    Profiler.log("device and command queue")
+    Profiler.log("initialize Metal runtime")
     
     Profiler.checkpoint()
     let bundleURL = Bundle.module.resourceURL!
@@ -32,12 +33,30 @@ class Context {
     let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
     self.computePipeline = try! device.makeComputePipelineState(function: unaryFunction)
     Profiler.log("create shader object")
-    
+  }
   
-//    print(bundlePath)
-    
-//    let library = try! device.makeDefaultLibrary(bundle: .module)
-//    let function = library.makeFunction(name: "addition")!
-//    computePipeline = try! device.makeComputePipelineState(function: function)
+  func commitEmptyCommandBuffer() {
+    let commandBuffer = commandQueue.makeCommandBuffer()!
+    commandBuffer.commit()
+    lastCommandBuffer = commandBuffer
+  }
+  
+  func barrier(showingStats: Bool = false) {
+    var kernelTimeMessage: String
+    var gpuTimeMessage: String
+    if let commandBuffer = lastCommandBuffer {
+      commandBuffer.waitUntilCompleted()
+      let kernelTime = commandBuffer.kernelEndTime - commandBuffer.kernelStartTime
+      let gpuTime = commandBuffer.gpuEndTime - commandBuffer.gpuStartTime
+      kernelTimeMessage = "\(Int(kernelTime * 1e6))"
+      gpuTimeMessage = "\(Int(gpuTime * 1e6))"
+    } else {
+      kernelTimeMessage = "n/a"
+      gpuTimeMessage = "n/a"
+    }
+    if showingStats {
+      print("Kernel time: \(kernelTimeMessage)")
+      print("GPU time: \(gpuTimeMessage)")
+    }
   }
 }

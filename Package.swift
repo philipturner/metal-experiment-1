@@ -6,9 +6,9 @@ import PackageDescription
 let package = Package(
     name: "MetalExperiment1",
     platforms: [
-      .macOS(.v10_13),
-      .iOS(.v11),
-      .tvOS(.v11)
+      .macOS(.v12),
+      .iOS(.v15),
+      .tvOS(.v15)
     ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
