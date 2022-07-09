@@ -11,5 +11,5 @@ kernel void unaryOperation(
   uint tid [[thread_position_in_grid]]
 ) {
   float value = input[tid];
-  output[tid] = value;
+  output[tid] = value + 1;
 }

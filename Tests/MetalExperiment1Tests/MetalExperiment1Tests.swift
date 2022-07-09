@@ -20,19 +20,28 @@ final class MetalExperiment1Tests: XCTestCase {
     let ctx = Context.global
     
     Profiler.checkpoint()
-    ctx.commitEmptyCommandBuffer()
+    ctx.commitComputeCommand()
     Profiler.log("First cmdbuf")
-    ctx.barrier(showingStats: true)
+    ctx.validate(withBarrier: true, showingStats: true)
     
-    let numCommandBuffers = 20
-    
-    Profiler.checkpoint()
-    for _ in 0..<numCommandBuffers {
-      ctx.commitEmptyCommandBuffer()
+    func profileStream(length: Int, message: String) {
+      print("--- Stream size: \(length) ---")
+      Profiler.checkpoint()
+      for _ in 0..<length {
+        ctx.commitComputeCommand()
+      }
+      let executionTime = Profiler.checkpoint()
+      ctx.validate(withBarrier: true, showingStats: false)
+      
+      print("\(message): \(executionTime / length) \(Profiler.timeUnit)")
     }
-    let executionTime = Profiler.checkpoint()
-    ctx.barrier()
     
-    print("Average overhead: \(executionTime / UInt64(numCommandBuffers)) \(Profiler.timeUnit)")
+    profileStream(length: 5, message: "Next 5 cmdbufs")
+    profileStream(length: Context.maxCommandBuffers, message: "Average overhead")
+    profileStream(length: Context.maxCommandBuffers / 2, message: "Average overhead")
+    profileStream(length: Context.maxCommandBuffers / 2, message: "Average overhead")
+    profileStream(length: Context.maxCommandBuffers / 2, message: "Average overhead")
+    profileStream(length: Context.maxCommandBuffers, message: "Average overhead")
+    profileStream(length: Context.maxCommandBuffers / 2, message: "Average overhead")
   }
 }
