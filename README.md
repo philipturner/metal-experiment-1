@@ -6,5 +6,5 @@ Metal Experiments:
 - 1) High sequential throughput, overcoming command buffer bottleneck, virtualizing operation dispatches
 - 2) Fast memory allocation, flushing command stream when system runs out of memory
 - 3) Unary op fusion
-- 4) Custom cache and shader archive for command-line SwiftPM builds
+- 4) Custom cache and shader archive for command-line SwiftPM builds, will reuse this concept in OpenCL backend which has no system shader cache
 - 5) Multithreaded and delayed MPSGraph creation
