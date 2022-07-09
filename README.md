@@ -4,7 +4,8 @@ Test whether I can fuse chained unary ops in an eager execution environment, usi
 
 Metal Experiments:
 - 1) High sequential throughput, overcoming command buffer bottleneck, virtualizing operation dispatches
-- 2) Fast memory allocation, flushing command stream when system runs out of memory
-- 3) Unary op fusion
-- 4) Custom cache and shader archive for command-line SwiftPM builds, will reuse this concept in OpenCL backend which has no system shader cache
-- 5) Multithreaded and delayed MPSGraph creation
+- 2) Overhead of incorporating thread safety, using cmdbuf completion handlers to automatically flush the command stream
+- 3) Fast memory allocation, flushing command stream when system runs out of memory
+- 4) Unary op fusion
+- 5) Custom cache and shader archive for command-line SwiftPM builds, will reuse this concept in OpenCL backend which has no system shader cache
+- 6) Multithreaded and delayed MPSGraph creation
