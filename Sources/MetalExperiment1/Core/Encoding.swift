@@ -8,16 +8,25 @@
 import Metal
 
 extension Context {
+  static let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.Context.dispatchQueue")
+  
   static func validate() {
-    Context.global.validate()
+    dispatchQueue.sync {
+      Context.global.validate()
+    }
+    
   }
   
   static func commitStreamedCommand() {
-    Context.global.commitStreamedCommand()
+    dispatchQueue.sync {
+      Context.global.commitStreamedCommand()
+    }
   }
   
   static func barrier() {
-    Context.global.barrier()
+    dispatchQueue.sync {
+      Context.global.barrier()
+    }
   }
 }
 

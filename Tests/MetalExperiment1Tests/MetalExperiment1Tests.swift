@@ -13,7 +13,32 @@ final class MetalExperiment1Tests: XCTestCase {
   // Force this to execute first.
   func testA() throws {
     testHeader("Initialize context", disableBarrier: true)
+    Profiler.checkpoint()
     _ = Context.global
+  }
+  
+  func testB() throws {
+    testHeader("Dispatch queue latency")
+    
+    for _ in 0..<2 {
+      Profiler.checkpoint()
+      _ = Context.dispatchQueue.sync {
+        Bool.random()
+      }
+      let latency = Profiler.checkpoint()
+      print("Dispatch queue latency: \(latency) \(Profiler.timeUnit)")
+    }
+    
+    Profiler.checkpoint()
+    let iterations = 100
+    for _ in 0..<iterations {
+      _ = Context.dispatchQueue.sync {
+        Bool.random()
+      }
+    }
+    let totalTime = Profiler.checkpoint()
+    let throughput = totalTime / iterations
+    print("Dispatch queue throughput: \(throughput) \(Profiler.timeUnit)")
   }
   
   func testC() throws {
