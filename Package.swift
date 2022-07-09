@@ -5,6 +5,11 @@ import PackageDescription
 
 let package = Package(
     name: "MetalExperiment1",
+    platforms: [
+      .macOS(.v10_13),
+      .iOS(.v11),
+      .tvOS(.v11)
+    ],
     products: [
         // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
@@ -20,7 +25,10 @@ let package = Package(
         // Targets can depend on other targets in this package, and on products in packages this package depends on.
         .target(
             name: "MetalExperiment1",
-            dependencies: []),
+            dependencies: [],
+            resources: [
+              .copy("Shaders")
+            ]),
         .testTarget(
             name: "MetalExperiment1Tests",
             dependencies: ["MetalExperiment1"]),
