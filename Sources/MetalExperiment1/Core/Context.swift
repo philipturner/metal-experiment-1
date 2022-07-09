@@ -45,6 +45,10 @@ class Context {
     return output
   }
   
+  var currentCommandBuffer: MTLCommandBuffer?
+  var currentComputeEncoder: MTLComputeCommandEncoder?
+  var numEncodedCommands = 0
+  
   init() {
     Profiler.checkpoint()
     self.device = MTLCreateSystemDefaultDevice()!
