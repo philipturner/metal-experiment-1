@@ -143,8 +143,8 @@ class HeapBlock: AllocatorBlockProtocol {
 }
 
 class BufferPool {
-  let isSmall: Bool
-  let isShared: Bool
+  var isSmall: Bool
+  var isShared: Bool
   // list of heaps ordered by their "available" (not total) memory size
   var heapBlocks: AllocatorBlockSet<HeapBlock> = .init()
   // list of only "available" buffers in the pool (i.e., buffers not in-use)
@@ -157,5 +157,46 @@ class BufferPool {
 }
 
 class HeapAllocator {
+  static var global = HeapAllocator()
+  var largePoolShared = BufferPool(isSmall: false, isShared: true)
+  var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
+  var smallPoolShared = BufferPool(isSmall: true, isShared: true)
+  var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
   
+  func pool(size: Int, usingShared: Bool) -> BufferPool {
+    if size <= kMaxSmallAlloc {
+      return usingShared ? smallPoolShared : smallPoolPrivate
+    } else {
+      return usingShared ? largePoolShared : largePoolPrivate
+    }
+  }
+  
+  func allocationSize(length: Int, usingShared: Bool) -> Int {
+    let device = Context.global.device
+    let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
+    let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
+    return BufferBlock.alignUp(size: sizeAlign.size, alignment: sizeAlign.align)
+  }
+  
+  static func formatSize(_ size: Int) -> String {
+    let kilobyte = 2 << 10
+    let megabyte = 2 << 20
+    let gigabyte = 2 << 30
+    var formatString: String
+    var formatArgument = Double(size)
+    
+    if size <= kilobyte {
+      formatString = "%.2f bytes"
+    } else if size <= megabyte {
+      formatString = "%.2f KB"
+      formatArgument /= Double(kilobyte)
+    } else if size <= gigabyte {
+      formatString = "%.2f MB"
+      formatArgument /= Double(megabyte)
+    } else {
+      formatString = "%.2f GB"
+      formatArgument /= Double(gigabyte)
+    }
+    return String(format: formatString, formatArgument)
+  }
 }
