@@ -35,7 +35,8 @@ class Context {
   //
   // Could deallocate already be called by the user, showing which tensors disappear and
   // automatically fusing unary ops?
-  var allocations: [UInt64: MTLBuffer] = [:]
+  var allocations: [UInt64: Allocation] = [:]
+  var nextAllocationID: UInt64 = 0
   
   init() {
     self.device = MTLCreateSystemDefaultDevice()!

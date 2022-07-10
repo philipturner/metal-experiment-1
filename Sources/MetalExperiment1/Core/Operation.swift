@@ -17,6 +17,7 @@ enum Operation {
     var input: MTLBuffer
     var output: MTLBuffer
     var size: Int
+    var inGraphMode: Bool
   }
   
   case unary(Unary)
