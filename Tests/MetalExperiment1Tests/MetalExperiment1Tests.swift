@@ -92,7 +92,7 @@ final class MetalExperiment1Tests: XCTestCase {
     
     Self.history = []
     
-    class ExampleClass {
+    class DummyTensorHandle {
       var id: Int
       
       init(id: Int) {
@@ -105,27 +105,35 @@ final class MetalExperiment1Tests: XCTestCase {
       }
     }
     
+    struct DummyTensor {
+      private var handle: DummyTensorHandle
+      
+      init(id: Int) {
+        self.handle = DummyTensorHandle(id: id)
+      }
+    }
+    
     // Test whether inlining changes things.
     
     @inline(never)
-    func f1(_ x: ExampleClass) -> ExampleClass {
-      return ExampleClass(id: 1)
+    func f1(_ x: DummyTensor) -> DummyTensor {
+      return DummyTensor(id: 1)
     }
     
-    func f2(_ x: ExampleClass) -> ExampleClass {
-      return ExampleClass(id: 2)
+    func f2(_ x: DummyTensor) -> DummyTensor {
+      return DummyTensor(id: 2)
     }
     
     @inline(__always)
-    func f3(_ x: ExampleClass) -> ExampleClass {
-      return ExampleClass(id: 3)
+    func f3(_ x: DummyTensor) -> DummyTensor {
+      return DummyTensor(id: 3)
     }
     
-    func f4(_ x: ExampleClass) -> ExampleClass {
-      return ExampleClass(id: 4)
+    func f4(_ x: DummyTensor) -> DummyTensor {
+      return DummyTensor(id: 4)
     }
     
-    _ = f4(f3(f2(f1(ExampleClass(id: 0)))))
+    _ = f4(f3(f2(f1(DummyTensor(id: 0)))))
     
     let expectedHistory: [ARCEvent] = [
       // Explicitly declared input to `function1`.
