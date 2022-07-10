@@ -37,7 +37,7 @@ final class MetalExperiment1Tests: XCTestCase {
       }
     }
     let totalTime = Profiler.checkpoint()
-    let throughput = totalTime / iterations
+    let throughput = Double(totalTime) / Double(iterations)
     print("Dispatch queue throughput: \(throughput) \(Profiler.timeUnit)")
   }
   
@@ -158,8 +158,78 @@ final class MetalExperiment1Tests: XCTestCase {
       // Discarded result of `f4`.
       .init(id: 4, wasAllocating: false)
     ]
-    
     XCTAssertEqual(Self.history, expectedHistory)
+  }
+  
+  func testE() throws {
+    testHeader("Memory allocation")
+    
+    do {
+      let firstID = Context.generateID(allocationSize: 4000)
+      let secondID = Context.generateID(allocationSize: 4000)
+      
+      try! Context.deallocate(id: firstID)
+      try! Context.deallocate(id: secondID)
+    }
+    
+    do {
+      Profiler.checkpoint()
+      let numIds = 100
+      for _ in 0..<numIds {
+        let id = Context.generateID(allocationSize: 4000)
+        try! Context.deallocate(id: id)
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(numIds)
+      print("Unused ID creation throughput: \(throughput) \(Profiler.timeUnit)")
+    }
+    
+    func assertErrorMessage(_ body: @autoclosure () throws -> Void, _ message: String) {
+      var threwError = false
+      do {
+        try body()
+      } catch let error as AllocationError {
+        threwError = true
+        XCTAssertEqual(error.message, message)
+      } catch {
+        XCTFail(error.localizedDescription)
+      }
+      if !threwError {
+        XCTFail("Should have thrown an error here.")
+      }
+    }
+    
+    do {
+      let id = Context.generateID(allocationSize: 4000)
+      defer { try! Context.deallocate(id: id) }
+      assertErrorMessage(
+        try Context.read(id: id) { _ in }, "Read from memory with a null underlying `MTLBuffer`.")
+    }
+    
+    do {
+      let id = Context.generateID(allocationSize: 4000)
+      try! Context.initialize(id: id) { mutableBufferPointer in
+        let ptr = mutableBufferPointer.assumingMemoryBound(to: Float.self)
+        ptr.initialize(repeating: 2.5)
+      }
+      assertErrorMessage(
+        try Context.initialize(id: id) { _ in }, "Cannot initialize something twice.")
+      
+      var wereEqual = false
+      try! Context.read(id: id) { bufferPointer in
+        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
+        let comparisonSequence = [Float](repeating: 2.5, count: 1000)
+        wereEqual = ptr.elementsEqual(comparisonSequence)
+      }
+      XCTAssert(wereEqual)
+      
+      // Try accessing the buffer after it's deallocated.
+      try! Context.deallocate(id: id)
+      assertErrorMessage(
+        try Context.initialize(id: id) { _ in }, "Tried to initialize memory that was deallocated.")
+      assertErrorMessage(
+        try Context.read(id: id) { _ in }, "Tried to read from memory that was deallocated.")
+    }
   }
 }
 
