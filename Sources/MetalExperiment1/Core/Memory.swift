@@ -26,6 +26,16 @@ extension Context {
     }
   }
   
+  static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
+    try dispatchQueue.sync {
+      let ctx = Context.global
+      guard let allocation = try ctx.fetchAllocation(id: id) else {
+        throw AllocationError("Tried to read from memory that was deallocated.")
+      }
+      try allocation.read(body)
+    }
+  }
+  
   static func deallocate(id: UInt64) throws {
     try dispatchQueue.sync {
       try Context.global.deallocate(id: id)
@@ -141,7 +151,7 @@ class Allocation {
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+  func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
     guard let bufferToCopy = mtlBuffer else {
       throw AllocationError("Read from memory with a null underlying `MTLBuffer`.")
     }
@@ -151,7 +161,7 @@ class Allocation {
     } else {
       // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
       // TODO: Append a command that will copy the memory.
-      fatalError("Haven't implemented copying memory to a discrete GPU.")
+      fatalError("Haven't implemented reading memory from a discrete GPU.")
     }
     // TODO: Special barrier, waits until the last command buffer referencing this finishes. If the
     // last command referencing this hasn't yet been encoded, place a MTLEvent in the next command
@@ -164,7 +174,7 @@ class Allocation {
     Context._unsafeBarrier()
     
     let contents = bufferToRead.contents()
-    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
+    let ptr = UnsafeRawBufferPointer(start: contents, count: size)
     body(ptr)
   }
   
