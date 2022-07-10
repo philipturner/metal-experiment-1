@@ -59,6 +59,10 @@ struct AllocatorBlockSet<T: AllocatorBlockProtocol> {
     }
     blocks.insert(block, at: lowerBound)
   }
+  
+  mutating func remove(at index: Int) {
+    blocks.remove(at: index)
+  }
 }
 
 class BufferBlock: AllocatorBlockProtocol {
@@ -102,7 +106,7 @@ class HeapBlock: AllocatorBlockProtocol {
     self.numBuffers = 0
   }
   
-  static func makeMTLHeap(size: Int, isShared: Bool) -> MTLHeap? {
+  static func makeHeap(size: Int, isShared: Bool) -> MTLHeap? {
     let desc = MTLHeapDescriptor()
     if size <= kMaxSmallAlloc {
       desc.size = kSmallHeap
@@ -115,20 +119,43 @@ class HeapBlock: AllocatorBlockProtocol {
     desc.hazardTrackingMode = .tracked
     
     let device = Context.global.device
-    // May return `nil`.
     return device.makeHeap(descriptor: desc)
   }
   
-  static func availableSize(heap: MTLHeap, alignment: Int = Int(vm_page_size)) {
-    heap.maxAvailableSize(alignment: alignment)
+  func makeBuffer(length: Int) -> MTLBuffer? {
+    let buffer = heap.makeBuffer(length: length)
+    guard let buffer = buffer else {
+      return nil
+    }
+    availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
+    numBuffers += 1
+    return buffer
   }
-//
-//  func makeMTLBuffer(length: Int) throws -> MTLBuffer {
-//    let buffer = heap!.makeBuffer(length: length)
-//
-//  }
+  
+  func releaseBuffer(_ buffer: MTLBuffer) {
+    availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
+    numBuffers -= 1
+  }
+  
+  deinit {
+    precondition(numBuffers == 0)
+  }
 }
 
 class BufferPool {
+  let isSmall: Bool
+  let isShared: Bool
+  // list of heaps ordered by their "available" (not total) memory size
+  var heapBlocks: AllocatorBlockSet<HeapBlock> = .init()
+  // list of only "available" buffers in the pool (i.e., buffers not in-use)
+  var bufferBlocks: AllocatorBlockSet<HeapBlock> = .init()
+  
+  init(isSmall: Bool, isShared: Bool) {
+    self.isSmall = isSmall
+    self.isShared = isShared
+  }
+}
+
+class HeapAllocator {
   
 }
