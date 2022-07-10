@@ -61,6 +61,25 @@ struct AllocatorBlockSet<T: AllocatorBlockProtocol> {
     }
   }
   
+  func indexOfSmallest(greaterThan requestedSize: Int) -> Int? {
+    var lowerBound = 0
+    var upperBound = blocks.count - 1
+    while lowerBound <= upperBound {
+      let middleBound = (lowerBound + upperBound) / 2
+      let element = blocks[middleBound]
+      if element.size < requestedSize {
+        lowerBound = middleBound + 1
+      } else {
+        upperBound = middleBound - 1
+      }
+    }
+    if lowerBound == blocks.count {
+      return nil
+    } else {
+      return lowerBound
+    }
+  }
+  
   mutating func remove(at index: Int) {
     blocks.remove(at: index)
   }
@@ -159,19 +178,25 @@ class BufferPool {
 
 class HeapAllocator {
   static var global = HeapAllocator()
+  
   private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
+  
+  // Unallocated cached buffers larger than 1 MB.
   private var largePoolShared = BufferPool(isSmall: false, isShared: true)
   private var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
+  
+  // Unallocated cached buffers 1 MB or smaller.
   private var smallPoolShared = BufferPool(isSmall: true, isShared: true)
   private var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
-  var totalAllocatedMemory = 0
   
-  var maxBufferLength: Int {
+  private var totalAllocatedMemory = 0
+  
+  private var maxBufferLength: Int {
     let device = Context.global.device
     return device.maxBufferLength
   }
   
-  func pool(size: Int, usingShared: Bool) -> BufferPool {
+  private func pool(size: Int, usingShared: Bool) -> BufferPool {
     if size <= kMaxSmallAlloc {
       return usingShared ? smallPoolShared : smallPoolPrivate
     } else {
@@ -179,19 +204,19 @@ class HeapAllocator {
     }
   }
   
-  func allocationSize(length: Int, usingShared: Bool) -> Int {
+  private func allocationSize(length: Int, usingShared: Bool) -> Int {
     let device = Context.global.device
     let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
     let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
     return BufferBlock.alignUp(size: sizeAlign.size, alignment: sizeAlign.align)
   }
   
-  var maxAvailableSize: Int {
+  private var maxAvailableSize: Int {
     let device = Context.global.device
     return Int(device.recommendedMaxWorkingSetSize) - device.currentAllocatedSize
   }
   
-  static func formatSize(_ size: Int) -> String {
+  private static func formatSize(_ size: Int) -> String {
     let kilobyte = 2 << 10
     let megabyte = 2 << 20
     let gigabyte = 2 << 30
@@ -211,5 +236,42 @@ class HeapAllocator {
       formatArgument /= Double(gigabyte)
     }
     return String(format: formatString, formatArgument)
+  }
+}
+
+internal extension HeapAllocator {
+  
+}
+
+/*
+ struct AllocParams
+ {
+   AllocParams(size_t Alloc_Size, size_t Requested_Size, BufferPool* Pool) :
+             search_key(Alloc_Size), pool(Pool),
+             buffer_block(nullptr), requested_size(Requested_Size) {}
+   size_t size() const { return search_key.size; }
+
+   BufferBlock search_key;
+   BufferPool* pool;
+   BufferBlock* buffer_block;
+   size_t requested_size;
+ };
+ */
+
+private extension HeapAllocator {
+  // Must insert the heap back into the pool afterwards.
+  func extractFreeHeap(from pool: BufferPool, allocationSize: Int) -> HeapBlock? {
+    if let index = pool.heapBlocks.indexOfSmallest(greaterThan: allocationSize) {
+      let heapBlock = pool.heapBlocks.blocks[index]
+      pool.heapBlocks.remove(at: index)
+      return heapBlock
+    } else {
+      let heap = HeapBlock.makeHeap(size: allocationSize, isShared: pool.isShared)
+      guard let heap = heap else {
+        return nil
+      }
+      let availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
+      return HeapBlock(size: availableSize, heap: heap, bufferPool: pool)
+    }
   }
 }
