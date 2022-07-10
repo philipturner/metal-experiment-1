@@ -17,7 +17,6 @@ enum Operation {
     var input: MTLBuffer
     var output: MTLBuffer
     var size: Int
-    var fusionGroup: Int?
   }
   
   case unary(Unary)

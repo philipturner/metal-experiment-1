@@ -28,6 +28,15 @@ class Context {
   var numCompletedBatches: ManagedAtomic<Int> = .init(0)
   var bufferedOperations: [Operation] = []
   
+  // Function to write to the raw CPU-side memory (zero overhead)
+  // Function to automatically de-allocate
+  // Does not automatically allocate
+  // Lazy allocation so that placeholders in fused ops (or graph mode) can happen
+  //
+  // Could deallocate already be called by the user, showing which tensors disappear and
+  // automatically fusing unary ops?
+  var allocations: [UInt64: MTLBuffer] = [:]
+  
   init() {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!

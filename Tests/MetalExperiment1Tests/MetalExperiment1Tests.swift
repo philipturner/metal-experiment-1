@@ -78,4 +78,81 @@ final class MetalExperiment1Tests: XCTestCase {
       profileStream(length: Context.maxCommandsPerBatch * 4)
     }
   }
+  
+  private struct ARCEvent: Equatable {
+    var id: Int
+    var wasAllocating: Bool
+  }
+  private static var history: [ARCEvent] = []
+  
+  // Enables automatic fusion of unary ops, with no extra work from the frontend. Deallocated
+  // (invalid) tensors become placeholders for operator fusion.
+  func testD() throws {
+    testHeader("Automatic ARC deallocation")
+    
+    Self.history = []
+    
+    class ExampleClass {
+      var id: Int
+      
+      init(id: Int) {
+        self.id = id
+        MetalExperiment1Tests.history.append(ARCEvent(id: id, wasAllocating: true))
+      }
+      
+      deinit {
+        MetalExperiment1Tests.history.append(ARCEvent(id: id, wasAllocating: false))
+      }
+    }
+    
+    // Test whether inlining changes things.
+    
+    @inline(never)
+    func f1(_ x: ExampleClass) -> ExampleClass {
+      return ExampleClass(id: 1)
+    }
+    
+    func f2(_ x: ExampleClass) -> ExampleClass {
+      return ExampleClass(id: 2)
+    }
+    
+    @inline(__always)
+    func f3(_ x: ExampleClass) -> ExampleClass {
+      return ExampleClass(id: 3)
+    }
+    
+    func f4(_ x: ExampleClass) -> ExampleClass {
+      return ExampleClass(id: 4)
+    }
+    
+    _ = f4(f3(f2(f1(ExampleClass(id: 0)))))
+    
+    let expectedHistory: [ARCEvent] = [
+      // Explicitly declared input to `function1`.
+      .init(id: 0, wasAllocating: true),
+      
+      // Call into `f1`.
+      .init(id: 1, wasAllocating: true),
+      .init(id: 0, wasAllocating: false),
+      
+      // Call into `f2`.
+      .init(id: 2, wasAllocating: true),
+      .init(id: 1, wasAllocating: false),
+      
+      // Call into `f3`.
+      .init(id: 3, wasAllocating: true),
+      .init(id: 2, wasAllocating: false),
+      
+      // Call into `f3`.
+      .init(id: 4, wasAllocating: true),
+      .init(id: 3, wasAllocating: false),
+      
+      // Discarded result of `f4`.
+      .init(id: 4, wasAllocating: false)
+    ]
+    
+    XCTAssertEqual(Self.history, expectedHistory)
+  }
 }
+
+
