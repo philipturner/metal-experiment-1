@@ -15,9 +15,20 @@ extension Context {
     }
   }
   
-  static func deallocate(id: UInt64) {
-    dispatchQueue.sync {
-      Context.global.deallocate(id: id)
+  static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+    try dispatchQueue.sync {
+      let ctx = Context.global
+      guard let allocation = try ctx.fetchAllocation(id: id) else {
+        throw AllocationError("Tried to initialize memory that was deallocated.")
+      }
+      try allocation.materialize()
+      try allocation.initialize(body)
+    }
+  }
+  
+  static func deallocate(id: UInt64) throws {
+    try dispatchQueue.sync {
+      try Context.global.deallocate(id: id)
     }
   }
 }
@@ -33,9 +44,9 @@ private extension Context {
   // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
   // crashes because that's probably erroneous behavior on the frontend. Never retain the allocation
   // because that messes with ARC for deallocation. Instead, retain just the ID.
-  func fetchAllocation(id: UInt64) -> Allocation? {
+  func fetchAllocation(id: UInt64) throws -> Allocation? {
     guard id < nextAllocationID else {
-      fatalError("No memory has ever been allocated with ID #\(id).")
+      throw AllocationError("No memory has ever been allocated with ID #\(id).")
     }
     // Dictionary subscript returns an optional.
     return allocations[id]
@@ -43,16 +54,31 @@ private extension Context {
   
   // Makes the ID invald and releases the Swift object. Its erasure prevents memory leaks in a
   // program running forever.
-  func deallocate(id: UInt64) {
-    // Catch reference-counting bugs.
-    precondition(allocations[id] != nil, "Cannot deallocate something twice.")
+  func deallocate(id: UInt64) throws {
+    // Catch memory management bugs.
+    guard allocations[id] != nil else {
+      throw AllocationError("Cannot deallocate something twice.")
+    }
     allocations[id] = nil
+  }
+}
+
+// Throw an error instead of crashing so that unit tests can check what happens when you do
+// something invalid.
+struct AllocationError: Error {
+  var message: String
+  init(_ message: String) {
+    self.message = message
   }
 }
 
 class Allocation {
   var size: Int
   var isShared: Bool
+  
+  // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
+  // memory.
+  var initialized = false
   var mtlBuffer: MTLBuffer?
   // TODO: Shape
   // TODO: Data Type
@@ -71,23 +97,36 @@ class Allocation {
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
   // stream. Then, it tries once more after all possible Metal memory is deallocated. If that
   // doesn't work, it crashes.
-  func materialize() {
+  func materialize() throws {
+    if mtlBuffer != nil {
+      // Already materialized.
+      return
+    }
+    
     // Use PyTorch's optimized allocator later. For now, just make and debug an allocator that
     // works.
     guard let mtlBuffer = Context.global.device.makeBuffer(length: size) else {
-      // TODO: Flush the command stream.
-      fatalError("System ran out of memory.")
+      // TODO: Flush the command stream, try again.
+      throw AllocationError("System ran out of memory.")
     }
     self.mtlBuffer = mtlBuffer
-    self.isShared = true
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
   // undefined. On a discrete GPU, this calls `malloc` on CPU memory and enqueues a command to copy
   // it to device memory.
-  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
+  //
+  // Does not automatically materialize because doing so should be made explicit.
+  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
     guard let mtlBuffer = mtlBuffer else {
-      fatalError("Initialized memory with a null underlying `MTLBuffer`.")
+      throw AllocationError("Initialized memory with a null underlying `MTLBuffer`.")
+    }
+    // Catch memory management bugs.
+    if initialized {
+      throw AllocationError("Cannot initialize something twice.")
+    }
+    defer {
+      initialized = true
     }
     if isShared {
       let contents = mtlBuffer.contents()
@@ -102,9 +141,9 @@ class Allocation {
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
+  func read(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
     guard let bufferToCopy = mtlBuffer else {
-      fatalError("Read from memory with a null underlying `MTLBuffer`.")
+      throw AllocationError("Read from memory with a null underlying `MTLBuffer`.")
     }
     var bufferToRead: MTLBuffer
     if isShared {
