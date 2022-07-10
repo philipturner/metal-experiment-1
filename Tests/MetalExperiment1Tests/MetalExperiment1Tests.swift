@@ -230,6 +230,15 @@ final class MetalExperiment1Tests: XCTestCase {
       assertErrorMessage(
         try Context.read(id: id) { _ in }, "Tried to read from memory that was deallocated.")
     }
+    
+    func trunc_page(_ x: vm_size_t) -> vm_size_t {
+      ((x) & (~(vm_page_size - 1)))
+    }
+    func round_page(_ x: vm_size_t) -> vm_size_t {
+      trunc_page((x) + (vm_page_size - 1))
+    }
+    
+    XCTAssertEqual(round_page(1024 * 1024), 1024 * 1024)
   }
 }
 

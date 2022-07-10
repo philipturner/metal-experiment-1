@@ -86,6 +86,11 @@ class Allocation {
   var size: Int
   var isShared: Bool
   
+  // TODO: Special storage mode for scalars or small chunks of constant memory. If `size` is under
+  // 4 KB and memory is never mutated, it can be initialized on the CPU and passed into
+  // `MTLComputeCommandEncoder.setBytes`. When in graph mode, there are similar mechanisms like
+  // `MPSGraph.constant`.
+  
   // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
   // memory.
   var initialized = false
