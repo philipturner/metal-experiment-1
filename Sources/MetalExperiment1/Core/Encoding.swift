@@ -27,10 +27,15 @@ extension Context {
       Context.global.barrier()
     }
   }
+  
+  static func _unsafeBarrier() {
+    Context.global.barrier()
+  }
 }
 
 private extension Context {
   func barrier() {
+    flushStream()
     if let commandBuffer = lastCommandBuffer {
       commandBuffer.waitUntilCompleted()
     }
@@ -43,7 +48,6 @@ private extension Context {
   }
   
   func validate() {
-    flushStream()
     barrier()
     let lastOutputBuffer = buffer1
     let ptr = lastOutputBuffer.contents().assumingMemoryBound(to: Float.self)
