@@ -239,6 +239,55 @@ final class MetalExperiment1Tests: XCTestCase {
     }
     
     XCTAssertEqual(round_page(1024 * 1024), 1024 * 1024)
+    
+    do {
+      // Test that an `AllocatorBlockSet` is always ordered.
+      class CustomBlockWrapped {}
+      
+      class CustomBlock: AllocatorBlockProtocol {
+        var size: Int
+        var wrapped: CustomBlockWrapped?
+        
+        init(size: Int, wrapped: CustomBlockWrapped?) {
+          self.size = size
+          self.wrapped = wrapped
+        }
+        
+        // Won't let me conform it the `Equatable` for some reason.
+        func equals(_ other: CustomBlock) -> Bool {
+          let lhs = self
+          let rhs = other
+          if lhs.size != rhs.size {
+            return false
+          }
+          if lhs.wrapped == nil && rhs.wrapped == nil {
+            return true
+          }
+          guard let wrapped1 = lhs.wrapped,
+                let wrapped2 = rhs.wrapped else {
+            return false
+          }
+          return wrapped1 === wrapped2
+        }
+      }
+      
+      let object1 = CustomBlockWrapped()
+      let object2 = CustomBlockWrapped()
+      
+      var customSet = AllocatorBlockSet<CustomBlock>()
+      customSet.insert(.init(size: 6, wrapped: nil))
+      customSet.insert(.init(size: 4, wrapped: nil))
+      customSet.insert(.init(size: 6, wrapped: object1))
+      customSet.insert(.init(size: 6, wrapped: nil))
+      customSet.insert(.init(size: 8, wrapped: object2))
+      
+      let blocks = customSet.blocks
+      XCTAssert(blocks[0].equals(.init(size: 4, wrapped: nil)))
+      XCTAssert(blocks[1].equals(.init(size: 6, wrapped: nil)))
+      XCTAssert(blocks[2].equals(.init(size: 6, wrapped: nil)))
+      XCTAssert(blocks[3].equals(.init(size: 6, wrapped: object1)))
+      XCTAssert(blocks[4].equals(.init(size: 8, wrapped: object2)))
+    }
   }
 }
 

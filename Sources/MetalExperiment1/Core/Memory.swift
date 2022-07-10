@@ -90,6 +90,13 @@ class Allocation {
   // 4 KB and memory is never mutated, it can be initialized on the CPU and passed into
   // `MTLComputeCommandEncoder.setBytes`. When in graph mode, there are similar mechanisms like
   // `MPSGraph.constant`.
+  //
+  // Will call the closure in `initialize(_:)` over the CPU-backed memory instead of the GPU-backed
+  // memory. You may have to copy that CPU-backed memory to the `MTLBuffer`, but it's a very small
+  // overhead. Take the overhead of a CPU function call + 2 * (4096 / (main memory bandwidth)).
+  //
+  // Wait to implement this until other things are debugged, because it adds too much complexity to
+  // this prototype backend right now.
   
   // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
   // memory.
