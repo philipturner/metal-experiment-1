@@ -73,3 +73,12 @@ extension MTLSize: ExpressibleByIntegerLiteral, ExpressibleByArrayLiteral {
     }
   }
 }
+
+@inline(__always)
+func withUnsafeAddress<T: AnyObject>(
+  of object: T,
+  _ body: (UnsafeMutableRawPointer) throws -> Void
+) rethrows {
+  let ptr = Unmanaged<T>.passUnretained(object).toOpaque()
+  try body(ptr)
+}

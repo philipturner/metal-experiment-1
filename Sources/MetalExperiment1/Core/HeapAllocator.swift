@@ -34,30 +34,31 @@ struct AllocatorBlockSet<T: AllocatorBlockProtocol> {
   
   mutating func insert(_ block: T) {
     let inputSize = block.size
-    let inputAddress = Self.extractAddress(of: block)
-    
-    var lowerBound = 0
-    var upperBound = blocks.count - 1
-    while lowerBound <= upperBound {
-      let middleBound = (lowerBound + upperBound) / 2
-      let element = blocks[middleBound]
-      let elementSize = element.size
-      
-      var less = false
-      if elementSize < inputSize {
-        less = true
-      } else if elementSize == inputSize {
-        let elementAddress = Self.extractAddress(of: element)
-        less = elementAddress < inputAddress
+    withUnsafeAddress(of: block.wrapped) { inputAddress in
+      var lowerBound = 0
+      var upperBound = blocks.count - 1
+      while lowerBound <= upperBound {
+        let middleBound = (lowerBound + upperBound) / 2
+        let element = blocks[middleBound]
+        let elementSize = element.size
+        
+        var less = false
+        if elementSize < inputSize {
+          less = true
+        } else if elementSize == inputSize {
+          withUnsafeAddress(of: element.wrapped) { elementAddress in
+            less = elementAddress < inputAddress
+          }
+        }
+        
+        if less {
+          lowerBound = middleBound + 1
+        } else {
+          upperBound = middleBound - 1
+        }
       }
-      
-      if less {
-        lowerBound = middleBound + 1
-      } else {
-        upperBound = middleBound - 1
-      }
+      blocks.insert(block, at: lowerBound)
     }
-    blocks.insert(block, at: lowerBound)
   }
   
   mutating func remove(at index: Int) {
@@ -158,10 +159,17 @@ class BufferPool {
 
 class HeapAllocator {
   static var global = HeapAllocator()
-  var largePoolShared = BufferPool(isSmall: false, isShared: true)
-  var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
-  var smallPoolShared = BufferPool(isSmall: true, isShared: true)
-  var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
+  private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
+  private var largePoolShared = BufferPool(isSmall: false, isShared: true)
+  private var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
+  private var smallPoolShared = BufferPool(isSmall: true, isShared: true)
+  private var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
+  var totalAllocatedMemory = 0
+  
+  var maxBufferLength: Int {
+    let device = Context.global.device
+    return device.maxBufferLength
+  }
   
   func pool(size: Int, usingShared: Bool) -> BufferPool {
     if size <= kMaxSmallAlloc {
@@ -176,6 +184,11 @@ class HeapAllocator {
     let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
     let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
     return BufferBlock.alignUp(size: sizeAlign.size, alignment: sizeAlign.align)
+  }
+  
+  var maxAvailableSize: Int {
+    let device = Context.global.device
+    return Int(device.recommendedMaxWorkingSetSize) - device.currentAllocatedSize
   }
   
   static func formatSize(_ size: Int) -> String {
