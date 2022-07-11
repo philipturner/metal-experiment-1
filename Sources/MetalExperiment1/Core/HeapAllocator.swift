@@ -24,7 +24,7 @@ protocol AllocatorBlockProtocol {
 }
 
 struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
-  private var blocks: [Element] = []
+  private(set) var blocks: [Element] = []
   
   @inline(__always)
   private static func extractAddress(of element: Element) -> UInt {
@@ -84,6 +84,7 @@ struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
     }
   }
   
+  @discardableResult
   mutating func remove(at index: Int) -> Element {
     return blocks.remove(at: index)
   }
@@ -158,7 +159,7 @@ class HeapBlock: AllocatorBlockProtocol {
     return buffer
   }
   
-  func releaseBuffer(_ buffer: MTLBuffer) {
+  func decrementNumBuffers() {
     availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
     numBuffers -= 1
   }
@@ -256,9 +257,9 @@ internal extension HeapAllocator {
     let allocationSize = self.allocationSize(length: size, usingShared: usingShared)
     let pool = self.pool(size: allocationSize, usingShared: usingShared)
     
-    var bufferBlock = extractFreeBuffer(from: pool, size: allocationSize, requestedSize: size)
+    var bufferBlock = removeBuffer(from: pool, size: allocationSize, requestedSize: size)
     if bufferBlock == nil {
-      bufferBlock = allocateBuffer(from: pool, size: allocationSize, requestedSize: size)
+      bufferBlock = makeBuffer(from: pool, size: allocationSize, requestedSize: size)
     }
     if bufferBlock == nil {
       
@@ -271,8 +272,7 @@ internal extension HeapAllocator {
 fileprivate var debugInfoHeapCounter = 0
 
 private extension HeapAllocator {
-  // Must insert the heap back into the pool afterwards.
-  func extractFreeHeap(from pool: BufferPool, size: Int) -> HeapBlock? {
+  func removeHeap(from pool: BufferPool, size: Int) -> HeapBlock? {
     if let index = pool.heapBlocks.firstIndex(minimumSize: size) {
       let heapBlock = pool.heapBlocks.remove(at: index)
       
@@ -298,8 +298,8 @@ private extension HeapAllocator {
     }
   }
   
-  func allocateBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
-    guard let heapBlock = extractFreeHeap(from: pool, size: requestedSize) else {
+  func makeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+    guard let heapBlock = removeHeap(from: pool, size: requestedSize) else {
       return nil
     }
     let buffer = heapBlock.makeBuffer(length: size)!
@@ -324,8 +324,7 @@ private extension HeapAllocator {
     return bufferBlock
   }
   
-  // Must insert the buffer back into the pool at some point.
-  func extractFreeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+  func removeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
     guard let index = pool.bufferBlocks.firstIndex(minimumSize: size) else {
       return nil
     }
@@ -349,6 +348,51 @@ private extension HeapAllocator {
     totalAllocatedMemory -= bufferBlock.size
     let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
     allocatedBuffers.removeValue(forKey: bufferAddress)
-//    pool.bufferBlocks.
+    
+    let bufferBlockIndex = pool.bufferBlocks.index(of: bufferBlock)!
+    pool.bufferBlocks.remove(at: bufferBlockIndex)
+    let heapBlockIndex = pool.heapBlocks.index(of: heapBlock)!
+    pool.heapBlocks.remove(at: heapBlockIndex)
+    heapBlock.decrementNumBuffers()
+    
+    if HeapAllocator.debugInfoEnabled {
+      print("""
+        Released buffer #\(bufferBlock.bufferID) of size \(bufferBlock.size) (heap size: \
+        \(Self.formatSize(heapBlock.availableSize)), total allocated: \
+        \(Self.formatSize(totalAllocatedMemory)))
+        """)
+    }
+    if heapBlock.numBuffers == 0 {
+      heapBlock.availableSize = 0
+      // `heapBlock` drops to a reference count of zero and deallocates.
+      if HeapAllocator.debugInfoEnabled {
+        print("""
+          Released heap of size \(Self.formatSize(heapBlock.totalSize)) (free memory: \
+          \(Self.formatSize(maxAvailableSize)))
+          """)
+      }
+    } else {
+      pool.heapBlocks.insert(heapBlock)
+    }
+  }
+  
+  func releaseBuffers(from pool: BufferPool) {
+    let bufferBlocks = pool.bufferBlocks
+    for index in bufferBlocks.blocks.indices.reversed() {
+      // Removes `bufferBlocks.blocks[index]`, which is always the last element.
+      let bufferBlock = bufferBlocks.blocks[index]
+      releaseBufferBlock(bufferBlock)
+    }
+  }
+  
+  func releaseAvailableCachedBuffers(
+    from pool: BufferPool,
+    size: Int,
+    releasedRequestedSize: inout Bool
+  ) {
+    if pool.bufferBlocks.blocks.count == 0 {
+      releasedRequestedSize = false
+      return
+    }
   }
 }
