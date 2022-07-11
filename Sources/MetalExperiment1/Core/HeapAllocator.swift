@@ -35,6 +35,12 @@ struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
   mutating func insert(_ element: Element) {
     let inputAddress = withUnsafeAddress(of: element.wrapped) { $0 }
     if let index = firstIndex(minimumSize: element.size, minimumAddress: inputAddress) {
+      let candidate = blocks[index]
+      if candidate.size == element.size,
+         candidate.wrapped === element.wrapped {
+        // Catch memory management bugs.
+        preconditionFailure("Cannot insert a buffer into pool twice.")
+      }
       blocks.insert(element, at: index)
     } else {
       blocks.append(element)
@@ -96,15 +102,13 @@ class BufferBlock: AllocatorBlockProtocol {
   var wrapped: MTLBuffer { buffer }
   
   var size: Int
-  var requestedSize: Int
   var inUse: Bool
   var bufferID: Int
   
-  init(size: Int, requestedSize: Int, buffer: MTLBuffer, heapBlock: HeapBlock, bufferID: Int) {
+  init(size: Int, buffer: MTLBuffer, heapBlock: HeapBlock, bufferID: Int) {
     self.heapBlock = heapBlock
     self.buffer = buffer
     self.size = size
-    self.requestedSize = requestedSize
     self.inUse = false
     self.bufferID = bufferID
   }
@@ -112,6 +116,16 @@ class BufferBlock: AllocatorBlockProtocol {
   static func alignUp(size: Int, alignment: Int) -> Int {
     precondition(alignment.nonzeroBitCount == 1)
     return (size + alignment - 1) & ~(alignment - 1)
+  }
+  
+  deinit {
+    if HeapAllocator.debugInfoEnabled {
+      let isShared = buffer.storageMode == .shared
+      print("""
+        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size
+        \(HeapAllocator.formatSize(size))
+        """)
+    }
   }
 }
 
@@ -166,6 +180,14 @@ class HeapBlock: AllocatorBlockProtocol {
   
   deinit {
     precondition(numBuffers == 0)
+    if HeapAllocator.debugInfoEnabled {
+      let isShared = heap.storageMode == .shared
+      print("""
+        Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
+        heap of size \(totalSize) (free memory: \
+        \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
+        """)
+    }
   }
 }
 
@@ -189,7 +211,13 @@ class HeapAllocator {
   static var global = HeapAllocator()
   
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
-  static var debugInfoEnabled = getenv("TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR") != nil
+  static var debugInfoEnabled: Bool = {
+    if let value = getenv("TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR") {
+      let string = String(cString: value)
+      return Int(string) != 0
+    }
+    return false
+  }()
   
   private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
   
@@ -203,11 +231,6 @@ class HeapAllocator {
   
   private var totalAllocatedMemory = 0
   
-  private var maxBufferLength: Int {
-    let device = Context.global.device
-    return device.maxBufferLength
-  }
-  
   private func pool(size: Int, usingShared: Bool) -> BufferPool {
     if size <= kMaxSmallAlloc {
       return usingShared ? smallPoolShared : smallPoolPrivate
@@ -216,19 +239,24 @@ class HeapAllocator {
     }
   }
   
-  private func allocationSize(length: Int, usingShared: Bool) -> Int {
+  static var maxBufferLength: Int {
+    let device = Context.global.device
+    return device.maxBufferLength
+  }
+  
+  static func allocationSize(length: Int, usingShared: Bool) -> Int {
     let device = Context.global.device
     let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
     let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
     return BufferBlock.alignUp(size: sizeAlign.size, alignment: sizeAlign.align)
   }
   
-  private var maxAvailableSize: Int {
+  static var maxAvailableSize: Int {
     let device = Context.global.device
     return Int(device.recommendedMaxWorkingSetSize) - device.currentAllocatedSize
   }
   
-  private static func formatSize(_ size: Int) -> String {
+  static func formatSize(_ size: Int) -> String {
     let kilobyte = 2 << 10
     let megabyte = 2 << 20
     let gigabyte = 2 << 30
@@ -251,19 +279,34 @@ class HeapAllocator {
   }
 }
 
-internal extension HeapAllocator {
-  func malloc(size: Int, usingShared: Bool) {
-    precondition(size < maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
-    let allocationSize = self.allocationSize(length: size, usingShared: usingShared)
-    let pool = self.pool(size: allocationSize, usingShared: usingShared)
+extension HeapAllocator {
+  func malloc(size: Int, usingShared: Bool) -> MTLBuffer? {
+    precondition(size < Self.maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
+    let allocationSize = Self.allocationSize(length: size, usingShared: usingShared)
+    let pool = pool(size: allocationSize, usingShared: usingShared)
     
-    var bufferBlock = removeBuffer(from: pool, size: allocationSize, requestedSize: size)
+    var bufferBlock = removeBufferBlock(from: pool, size: allocationSize, requestedSize: size)
     if bufferBlock == nil {
-      bufferBlock = makeBuffer(from: pool, size: allocationSize, requestedSize: size)
+      bufferBlock = makeBufferBlock(from: pool, size: allocationSize, requestedSize: size)
     }
     if bufferBlock == nil {
-      
+      releaseCachedBufferBlocks()
+      bufferBlock = makeBufferBlock(from: pool, size: allocationSize, requestedSize: size)
     }
+    guard let bufferBlock = bufferBlock else {
+      return nil
+    }
+    bufferBlock.inUse = true
+    return bufferBlock.buffer
+  }
+  
+  func free(_ buffer: MTLBuffer) {
+    let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
+    guard let bufferBlock = allocatedBuffers[bufferAddress] else {
+      // Catch memory management bugs.
+      preconditionFailure("Cannot free a buffer twice.")
+    }
+    freeBufferBlock(bufferBlock)
   }
 }
 
@@ -272,7 +315,7 @@ internal extension HeapAllocator {
 fileprivate var debugInfoHeapCounter = 0
 
 private extension HeapAllocator {
-  func removeHeap(from pool: BufferPool, size: Int) -> HeapBlock? {
+  func removeHeapBlock(from pool: BufferPool, size: Int) -> HeapBlock? {
     if let index = pool.heapBlocks.firstIndex(minimumSize: size) {
       let heapBlock = pool.heapBlocks.remove(at: index)
       
@@ -291,22 +334,21 @@ private extension HeapAllocator {
         print("""
           Allocated \(pool.isSmall ? "small" : "large") \(pool.isShared ? "shared" : "private") \
           heap of size \(Self.formatSize(heapSize)) (#heaps: \(debugInfoHeapCounter), free memory: \
-          \(Self.formatSize(maxAvailableSize)))
+          \(Self.formatSize(Self.maxAvailableSize)))
           """)
       }
       return heapBlock
     }
   }
   
-  func makeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
-    guard let heapBlock = removeHeap(from: pool, size: requestedSize) else {
+  func makeBufferBlock(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+    guard let heapBlock = removeHeapBlock(from: pool, size: requestedSize) else {
       return nil
     }
     let buffer = heapBlock.makeBuffer(length: size)!
     pool.heapBlocks.insert(heapBlock)
     let bufferBlock = BufferBlock(
-      size: size, requestedSize: requestedSize, buffer: buffer, heapBlock: heapBlock,
-      bufferID: allocatedBuffers.count + 1)
+      size: size, buffer: buffer, heapBlock: heapBlock, bufferID: allocatedBuffers.count + 1)
     let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
     allocatedBuffers[bufferAddress] = bufferBlock
     totalAllocatedMemory += size
@@ -324,7 +366,14 @@ private extension HeapAllocator {
     return bufferBlock
   }
   
-  func removeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+  func freeBufferBlock(_ bufferBlock: BufferBlock) {
+    precondition(bufferBlock.inUse)
+    bufferBlock.inUse = false
+    let pool = bufferBlock.heapBlock.bufferPool
+    pool.bufferBlocks.insert(bufferBlock)
+  }
+  
+  func removeBufferBlock(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
     guard let index = pool.bufferBlocks.firstIndex(minimumSize: size) else {
       return nil
     }
@@ -368,7 +417,7 @@ private extension HeapAllocator {
       if HeapAllocator.debugInfoEnabled {
         print("""
           Released heap of size \(Self.formatSize(heapBlock.totalSize)) (free memory: \
-          \(Self.formatSize(maxAvailableSize)))
+          \(Self.formatSize(Self.maxAvailableSize)))
           """)
       }
     } else {
@@ -376,7 +425,7 @@ private extension HeapAllocator {
     }
   }
   
-  func releaseBuffers(from pool: BufferPool) {
+  func releaseBufferBlocks(from pool: BufferPool) {
     let bufferBlocks = pool.bufferBlocks
     for index in bufferBlocks.blocks.indices.reversed() {
       // Removes `bufferBlocks.blocks[index]`, which is always the last element.
@@ -385,14 +434,10 @@ private extension HeapAllocator {
     }
   }
   
-  func releaseAvailableCachedBuffers(
-    from pool: BufferPool,
-    size: Int,
-    releasedRequestedSize: inout Bool
-  ) {
-    if pool.bufferBlocks.blocks.count == 0 {
-      releasedRequestedSize = false
-      return
-    }
+  func releaseCachedBufferBlocks() {
+    releaseBufferBlocks(from: largePoolPrivate)
+    releaseBufferBlocks(from: largePoolShared)
+    releaseBufferBlocks(from: smallPoolPrivate)
+    releaseBufferBlocks(from: smallPoolShared)
   }
 }
