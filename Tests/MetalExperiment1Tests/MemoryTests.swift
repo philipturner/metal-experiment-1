@@ -102,12 +102,11 @@ final class MemoryTests: XCTestCase {
       customSet.insert(.init(size: 6))
       customSet.insert(.init(size: 8))
       
-      let blocks = customSet.blocks
-      XCTAssertEqual(blocks[0].size, 4)
-      XCTAssertEqual(blocks[1].size, 6)
-      XCTAssertEqual(blocks[2].size, 6)
-      XCTAssertEqual(blocks[3].size, 6)
-      XCTAssertEqual(blocks[4].size, 8)
+      XCTAssertEqual(customSet.remove(at: 0).size, 4)
+      XCTAssertEqual(customSet.remove(at: 0).size, 6)
+      XCTAssertEqual(customSet.remove(at: 0).size, 6)
+      XCTAssertEqual(customSet.remove(at: 0).size, 6)
+      XCTAssertEqual(customSet.remove(at: 0).size, 8)
     }
     
     print("Debug info enabled: \(HeapAllocator.debugInfoEnabled)")

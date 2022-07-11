@@ -23,51 +23,55 @@ protocol AllocatorBlockProtocol {
   var size: Int { get }
 }
 
-struct AllocatorBlockSet<T: AllocatorBlockProtocol> {
-  private(set) var blocks: [T] = []
+struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
+  private var blocks: [Element] = []
   
   @inline(__always)
-  private static func extractAddress(of block: T) -> UInt {
-    let unmanaged = Unmanaged<T.Wrapped>.passUnretained(block.wrapped)
+  private static func extractAddress(of element: Element) -> UInt {
+    let unmanaged = Unmanaged<Element.Wrapped>.passUnretained(element.wrapped)
     return UInt(bitPattern: unmanaged.toOpaque())
   }
   
-  mutating func insert(_ block: T) {
-    let inputSize = block.size
-    withUnsafeAddress(of: block.wrapped) { inputAddress in
-      var lowerBound = 0
-      var upperBound = blocks.count - 1
-      while lowerBound <= upperBound {
-        let middleBound = (lowerBound + upperBound) / 2
-        let element = blocks[middleBound]
-        let elementSize = element.size
-        
-        var less = false
-        if elementSize < inputSize {
-          less = true
-        } else if elementSize == inputSize {
-          withUnsafeAddress(of: element.wrapped) { elementAddress in
-            less = elementAddress < inputAddress
-          }
-        }
-        
-        if less {
-          lowerBound = middleBound + 1
-        } else {
-          upperBound = middleBound - 1
-        }
-      }
-      blocks.insert(block, at: lowerBound)
+  mutating func insert(_ element: Element) {
+    let inputAddress = withUnsafeAddress(of: element.wrapped) { $0 }
+    if let index = firstIndex(minimumSize: element.size, minimumAddress: inputAddress) {
+      blocks.insert(element, at: index)
+    } else {
+      blocks.append(element)
     }
   }
   
-  func indexOfSmallest(greaterThan requestedSize: Int) -> Int? {
+  func index(of element: Element) -> Int? {
+    let inputAddress = withUnsafeAddress(of: element.wrapped) { $0 }
+    guard let index = firstIndex(minimumSize: element.size, minimumAddress: inputAddress) else {
+      return nil
+    }
+    let candidate = blocks[index]
+    if candidate.size == element.size,
+       candidate.wrapped === element.wrapped {
+      return index
+    } else {
+      return nil
+    }
+  }
+  
+  func firstIndex(minimumSize: Int, minimumAddress: UnsafeMutableRawPointer? = nil) -> Int? {
     var lowerBound = 0
     var upperBound = blocks.count - 1
     while lowerBound <= upperBound {
       let middleBound = (lowerBound + upperBound) / 2
       let element = blocks[middleBound]
-      if element.size < requestedSize {
+      
+      var aimedTooLow = element.size < minimumSize
+      if element.size == minimumSize {
+        let elementAddress = withUnsafeAddress(of: element.wrapped) { $0 }
+        if elementAddress == minimumAddress {
+          return middleBound
+        } else {
+          aimedTooLow = elementAddress < minimumAddress.unsafelyUnwrapped
+        }
+      }
+      if aimedTooLow {
         lowerBound = middleBound + 1
       } else {
         upperBound = middleBound - 1
@@ -80,8 +84,8 @@ struct AllocatorBlockSet<T: AllocatorBlockProtocol> {
     }
   }
   
-  mutating func remove(at index: Int) {
-    blocks.remove(at: index)
+  mutating func remove(at index: Int) -> Element {
+    return blocks.remove(at: index)
   }
 }
 
@@ -167,10 +171,10 @@ class HeapBlock: AllocatorBlockProtocol {
 class BufferPool {
   var isSmall: Bool
   var isShared: Bool
-  // list of heaps ordered by their "available" (not total) memory size
+  // List of heaps ordered by their "available" (not total) memory size.
   var heapBlocks: AllocatorBlockSet<HeapBlock> = .init()
-  // list of only "available" buffers in the pool (i.e., buffers not in-use)
-  var bufferBlocks: AllocatorBlockSet<HeapBlock> = .init()
+  // List of only "available" buffers in the pool (i.e., buffers not in-use).
+  var bufferBlocks: AllocatorBlockSet<BufferBlock> = .init()
   
   init(isSmall: Bool, isShared: Bool) {
     self.isSmall = isSmall
@@ -247,7 +251,19 @@ class HeapAllocator {
 }
 
 internal extension HeapAllocator {
-  
+  func malloc(size: Int, usingShared: Bool) {
+    precondition(size < maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
+    let allocationSize = self.allocationSize(length: size, usingShared: usingShared)
+    let pool = self.pool(size: allocationSize, usingShared: usingShared)
+    
+    var bufferBlock = extractFreeBuffer(from: pool, size: allocationSize, requestedSize: size)
+    if bufferBlock == nil {
+      bufferBlock = allocateBuffer(from: pool, size: allocationSize, requestedSize: size)
+    }
+    if bufferBlock == nil {
+      
+    }
+  }
 }
 
 // MARK: - Private methods of HeapAllocator
@@ -257,9 +273,8 @@ fileprivate var debugInfoHeapCounter = 0
 private extension HeapAllocator {
   // Must insert the heap back into the pool afterwards.
   func extractFreeHeap(from pool: BufferPool, size: Int) -> HeapBlock? {
-    if let index = pool.heapBlocks.indexOfSmallest(greaterThan: size) {
-      let heapBlock = pool.heapBlocks.blocks[index]
-      pool.heapBlocks.remove(at: index)
+    if let index = pool.heapBlocks.firstIndex(minimumSize: size) {
+      let heapBlock = pool.heapBlocks.remove(at: index)
       
       // Returned heap's size may not equal the requested size.
       return heapBlock
@@ -292,7 +307,7 @@ private extension HeapAllocator {
     let bufferBlock = BufferBlock(
       size: size, requestedSize: requestedSize, buffer: buffer, heapBlock: heapBlock,
       bufferID: allocatedBuffers.count + 1)
-    let bufferAddress = withUnsafeAddress(of: buffer) { return $0 }
+    let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
     allocatedBuffers[bufferAddress] = bufferBlock
     totalAllocatedMemory += size
     
@@ -311,6 +326,29 @@ private extension HeapAllocator {
   
   // Must insert the buffer back into the pool at some point.
   func extractFreeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
-    fatalError()
+    guard let index = pool.bufferBlocks.firstIndex(minimumSize: size) else {
+      return nil
+    }
+    let bufferBlock = pool.bufferBlocks.remove(at: index)
+    
+    if HeapAllocator.debugInfoEnabled {
+      // Does PyTorch show just the buffer's memory address, or the entire ugly description from
+      // passing it into `Swift.print`?
+      let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
+      print("""
+        Reusing \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
+        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size: \(requestedSize))
+        """)
+    }
+    return bufferBlock
+  }
+  
+  func releaseBufferBlock(_ bufferBlock: BufferBlock) {
+    let heapBlock = bufferBlock.heapBlock
+    let pool = heapBlock.bufferPool
+    totalAllocatedMemory -= bufferBlock.size
+    let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
+    allocatedBuffers.removeValue(forKey: bufferAddress)
+//    pool.bufferBlocks.
   }
 }
