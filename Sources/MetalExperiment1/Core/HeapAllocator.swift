@@ -154,7 +154,7 @@ class HeapBlock: AllocatorBlockProtocol {
     } else if size < kMinLargeAlloc {
       desc.size = kLargeHeap
     } else {
-      desc.size = kRoundLarge + ((size + kRoundLarge - 1) / kRoundLarge)
+      desc.size = kRoundLarge * ((size + kRoundLarge - 1) / kRoundLarge)
     }
     desc.storageMode = isShared ? .shared : .private
     desc.hazardTrackingMode = .tracked
@@ -257,9 +257,9 @@ class HeapAllocator {
   }
   
   static func formatSize(_ size: Int) -> String {
-    let kilobyte = 2 << 10
-    let megabyte = 2 << 20
-    let gigabyte = 2 << 30
+    let kilobyte = 1024
+    let megabyte = 1024 * 1024
+    let gigabyte = 1024 * 1024 * 1024
     var formatString: String
     var formatArgument = Double(size)
     
@@ -342,7 +342,7 @@ private extension HeapAllocator {
   }
   
   func makeBufferBlock(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
-    guard let heapBlock = removeHeapBlock(from: pool, size: requestedSize) else {
+    guard let heapBlock = removeHeapBlock(from: pool, size: size) else {
       return nil
     }
     let buffer = heapBlock.makeBuffer(length: size)!
@@ -358,9 +358,9 @@ private extension HeapAllocator {
       // passing it into `Swift.print`?
       print("""
         Allocated \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
-        \(Self.formatSize(size)) at \(bufferAddress) (requested size: \(requestedSize), heap size: \
-        \(Self.formatSize(heapBlock.availableSize)), total allocated: \
-        \(Self.formatSize(totalAllocatedMemory)))
+        \(Self.formatSize(size)) at \(bufferAddress) (requested size: \
+        \(Self.formatSize(requestedSize)), heap size: \(Self.formatSize(heapBlock.availableSize)), \
+        total allocated: \(Self.formatSize(totalAllocatedMemory)))
         """)
     }
     return bufferBlock
@@ -385,7 +385,8 @@ private extension HeapAllocator {
       let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
       print("""
         Reusing \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
-        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size: \(requestedSize))
+        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size:
+        \(Self.formatSize(requestedSize)))
         """)
     }
     return bufferBlock
