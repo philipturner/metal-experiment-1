@@ -263,12 +263,12 @@ final class MetalExperiment1Tests: XCTestCase {
       
       let blocks = customSet.blocks
       XCTAssertEqual(blocks[0].size, 4)
-      XCTAssertEqual(blocks[0].size, 6)
-      XCTAssertEqual(blocks[0].size, 6)
-      XCTAssertEqual(blocks[0].size, 6)
-      XCTAssertEqual(blocks[0].size, 8)
+      XCTAssertEqual(blocks[1].size, 6)
+      XCTAssertEqual(blocks[2].size, 6)
+      XCTAssertEqual(blocks[3].size, 6)
+      XCTAssertEqual(blocks[4].size, 8)
     }
+    
+    print("Debug enabled: \(HeapAllocator.debugInfoEnabled)")
   }
 }
-
-

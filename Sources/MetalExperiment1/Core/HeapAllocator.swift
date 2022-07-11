@@ -91,13 +91,15 @@ class BufferBlock: AllocatorBlockProtocol {
   var wrapped: MTLBuffer { buffer }
   
   var size: Int
+  var requestedSize: Int
   var inUse: Bool
   var bufferID: Int
   
-  init(size: Int, buffer: MTLBuffer, heapBlock: HeapBlock, bufferID: Int) {
+  init(size: Int, requestedSize: Int, buffer: MTLBuffer, heapBlock: HeapBlock, bufferID: Int) {
     self.heapBlock = heapBlock
     self.buffer = buffer
     self.size = size
+    self.requestedSize = requestedSize
     self.inUse = false
     self.bufferID = bufferID
   }
@@ -179,6 +181,9 @@ class BufferPool {
 class HeapAllocator {
   static var global = HeapAllocator()
   
+  // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
+  static var debugInfoEnabled = getenv("TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR") != nil
+  
   private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
   
   // Unallocated cached buffers larger than 1 MB.
@@ -258,20 +263,61 @@ internal extension HeapAllocator {
  };
  */
 
+fileprivate var debugInfoHeapCounter = 0
+
 private extension HeapAllocator {
   // Must insert the heap back into the pool afterwards.
-  func extractFreeHeap(from pool: BufferPool, allocationSize: Int) -> HeapBlock? {
-    if let index = pool.heapBlocks.indexOfSmallest(greaterThan: allocationSize) {
+  func extractFreeHeap(from pool: BufferPool, size: Int) -> HeapBlock? {
+    if let index = pool.heapBlocks.indexOfSmallest(greaterThan: size) {
       let heapBlock = pool.heapBlocks.blocks[index]
       pool.heapBlocks.remove(at: index)
+      
+      // Returned heap's size may not equal the requested size.
       return heapBlock
     } else {
-      let heap = HeapBlock.makeHeap(size: allocationSize, isShared: pool.isShared)
+      let heap = HeapBlock.makeHeap(size: size, isShared: pool.isShared)
       guard let heap = heap else {
         return nil
       }
-      let availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
-      return HeapBlock(size: availableSize, heap: heap, bufferPool: pool)
+      let heapSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
+      let output = HeapBlock(size: heapSize, heap: heap, bufferPool: pool)
+      
+      if HeapAllocator.debugInfoEnabled {
+        debugInfoHeapCounter += 1
+        print("""
+          Allocated \(pool.isSmall ? "small" : "large") \(pool.isShared ? "shared" : "private") \
+          heap of size \(Self.formatSize(heapSize)) (#heaps: \(debugInfoHeapCounter), free memory: \
+          \(Self.formatSize(maxAvailableSize)))
+          """)
+      }
+      return output
     }
+  }
+  
+  func allocateBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+    guard let heapBlock = extractFreeHeap(from: pool, size: requestedSize) else {
+      return nil
+    }
+    let buffer = heapBlock.makeBuffer(length: size)!
+    pool.heapBlocks.insert(heapBlock)
+    let bufferBlock = BufferBlock(
+      size: size, requestedSize: requestedSize, buffer: buffer, heapBlock: heapBlock,
+      bufferID: allocatedBuffers.count + 1)
+    let bufferAddress = withUnsafeAddress(of: buffer) { return $0 }
+    allocatedBuffers[bufferAddress] = bufferBlock
+    totalAllocatedMemory += size
+    
+    if HeapAllocator.debugInfoEnabled {
+      // Does PyTorch show just the buffer's memory address, or the entire ugly description from
+      // passing it into `Swift.print`?
+      print("""
+        Allocated \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
+        \(Self.formatSize(size)) at \(bufferAddress) (requested size: \(requestedSize), heap size: \
+        \(Self.formatSize(heapBlock.availableSize)), total allocated: \
+        \(Self.formatSize(totalAllocatedMemory)))
+        """)
+    }
+    
+    fatalError()
   }
 }
