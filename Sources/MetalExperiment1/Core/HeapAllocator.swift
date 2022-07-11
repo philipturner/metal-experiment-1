@@ -178,6 +178,8 @@ class BufferPool {
   }
 }
 
+// MARK: - Declaration of HeapAllocator
+
 class HeapAllocator {
   static var global = HeapAllocator()
   
@@ -248,20 +250,7 @@ internal extension HeapAllocator {
   
 }
 
-/*
- struct AllocParams
- {
-   AllocParams(size_t Alloc_Size, size_t Requested_Size, BufferPool* Pool) :
-             search_key(Alloc_Size), pool(Pool),
-             buffer_block(nullptr), requested_size(Requested_Size) {}
-   size_t size() const { return search_key.size; }
-
-   BufferBlock search_key;
-   BufferPool* pool;
-   BufferBlock* buffer_block;
-   size_t requested_size;
- };
- */
+// MARK: - Private methods of HeapAllocator
 
 fileprivate var debugInfoHeapCounter = 0
 
@@ -280,7 +269,7 @@ private extension HeapAllocator {
         return nil
       }
       let heapSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
-      let output = HeapBlock(size: heapSize, heap: heap, bufferPool: pool)
+      let heapBlock = HeapBlock(size: heapSize, heap: heap, bufferPool: pool)
       
       if HeapAllocator.debugInfoEnabled {
         debugInfoHeapCounter += 1
@@ -290,7 +279,7 @@ private extension HeapAllocator {
           \(Self.formatSize(maxAvailableSize)))
           """)
       }
-      return output
+      return heapBlock
     }
   }
   
@@ -317,7 +306,11 @@ private extension HeapAllocator {
         \(Self.formatSize(totalAllocatedMemory)))
         """)
     }
-    
+    return bufferBlock
+  }
+  
+  // Must insert the buffer back into the pool at some point.
+  func extractFreeBuffer(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
     fatalError()
   }
 }
