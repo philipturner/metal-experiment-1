@@ -113,8 +113,8 @@ final class MemoryTests: XCTestCase {
     print("Debug info enabled: \(HeapAllocator.debugInfoEnabled)")
   }
   
-  func testMemoryRecycling() throws {
-    testHeader("Memory recycling")
+  func testRecyclingThroughput() throws {
+    testHeader("Memory recycling throughput")
     HeapAllocator.global._releaseCachedBufferBlocks()
     
     func allocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
@@ -193,5 +193,35 @@ final class MemoryTests: XCTestCase {
     print("Time excluding GCD: \(nonGCDThroughput) \(Profiler.timeUnit)")
     let allocationThroughput = Double(totalTime - idCycleTime) / 20
     print("Time inside HeapAllocator: \(allocationThroughput) \(Profiler.timeUnit)")
+  }
+  
+  func testComplexAllocation() throws {
+    testHeader("Complex memory allocation")
+    HeapAllocator.global._releaseCachedBufferBlocks()
+    
+    func allocate(size: Int) -> UInt64 {
+      let id = Context.generateID(allocationSize: size)
+      try! Context.initialize(id: id) { _ in }
+      return id
+    }
+    func deallocate(id: UInt64) {
+      try! Context.deallocate(id: id)
+    }
+    
+    let id1 = allocate(size: 8_000_000)
+    let id2 = allocate(size: 12_000_000)
+    let id3 = allocate(size: 12_000_000)
+    deallocate(id: id1)
+    deallocate(id: id2)
+    deallocate(id: id3)
+    
+    let id4 = allocate(size: 999_000)
+    deallocate(id: id4)
+    
+    let id5 = allocate(size: 2_000_000)
+    deallocate(id: id5)
+    
+//    let id6 = allocate(size: 16 * 1024 * 1024 * 1024)
+//    deallocate(id: id6)
   }
 }

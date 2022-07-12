@@ -264,8 +264,10 @@ class HeapAllocator {
     var formatArgument = Double(size)
     
     if size <= kilobyte {
-      formatString = "%.2f bytes"
+      // Zero decimal places.
+      formatString = "%.0f bytes"
     } else if size <= megabyte {
+      // Two decimal places.
       formatString = "%.2f KB"
       formatArgument /= Double(kilobyte)
     } else if size <= gigabyte {

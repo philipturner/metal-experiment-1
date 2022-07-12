@@ -5,7 +5,6 @@
 //  Created by Philip Turner on 7/10/22.
 //
 
-import Metal
 import MetalPerformanceShadersGraph
 
 extension Context {
@@ -104,6 +103,7 @@ class Allocation {
   var mtlBuffer: MTLBuffer?
   // TODO: Shape
   // TODO: Data Type
+  var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
   
   // TODO: Store the latest command buffer ID that references this. To make a conditional barrier
@@ -125,14 +125,12 @@ class Allocation {
       return
     }
     
-    // Use PyTorch's optimized allocator later. For now, just make and debug an allocator that
-    // works.
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
       print("""
         Warning: an attempt to allocate a `MTLBuffer` returned `nil`. Flushing command stream and \
         trying again.
         """)
-      // TODO: Flush the command stream, try again.
+      // TODO: Flush the command stream, make a barrier, try again.
       throw AllocationError("System ran out of memory.")
     }
     self.mtlBuffer = mtlBuffer
