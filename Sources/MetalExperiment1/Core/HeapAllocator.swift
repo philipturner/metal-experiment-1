@@ -74,7 +74,7 @@ struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
         if elementAddress == minimumAddress {
           return middleBound
         } else {
-          aimedTooLow = elementAddress < minimumAddress.unsafelyUnwrapped
+          aimedTooLow = UInt(bitPattern: elementAddress) < UInt(bitPattern: minimumAddress)
         }
       }
       if aimedTooLow {
@@ -122,7 +122,7 @@ class BufferBlock: AllocatorBlockProtocol {
     if HeapAllocator.debugInfoEnabled {
       let isShared = buffer.storageMode == .shared
       print("""
-        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size
+        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size \
         \(HeapAllocator.formatSize(size))
         """)
     }
@@ -184,7 +184,7 @@ class HeapBlock: AllocatorBlockProtocol {
       let isShared = heap.storageMode == .shared
       print("""
         Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
-        heap of size \(totalSize) (free memory: \
+        heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \
         \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
         """)
     }
@@ -308,6 +308,11 @@ extension HeapAllocator {
     }
     freeBufferBlock(bufferBlock)
   }
+  
+  // Allow clearing of cached buffers in tests
+  internal func _releaseCachedBufferBlocks() {
+    self.releaseCachedBufferBlocks()
+  }
 }
 
 // MARK: - Private methods of HeapAllocator
@@ -385,7 +390,7 @@ private extension HeapAllocator {
       let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
       print("""
         Reusing \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
-        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size:
+        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size: \
         \(Self.formatSize(requestedSize)))
         """)
     }
@@ -407,8 +412,8 @@ private extension HeapAllocator {
     
     if HeapAllocator.debugInfoEnabled {
       print("""
-        Released buffer #\(bufferBlock.bufferID) of size \(bufferBlock.size) (heap size: \
-        \(Self.formatSize(heapBlock.availableSize)), total allocated: \
+        Released buffer #\(bufferBlock.bufferID) of size \(Self.formatSize(bufferBlock.size)) \
+        (heap size: \(Self.formatSize(heapBlock.availableSize)), total allocated: \
         \(Self.formatSize(totalAllocatedMemory)))
         """)
     }

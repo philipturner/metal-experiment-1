@@ -128,7 +128,6 @@ class Allocation {
     // Use PyTorch's optimized allocator later. For now, just make and debug an allocator that
     // works.
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
-//    guard let mtlBuffer = Context.global.device.makeBuffer(length: size) else {
       print("""
         Warning: an attempt to allocate a `MTLBuffer` returned `nil`. Flushing command stream and \
         trying again.

@@ -4,6 +4,7 @@ import XCTest
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")
+    HeapAllocator.global._releaseCachedBufferBlocks()
     
     do {
       let firstID = Context.generateID(allocationSize: 4000)
@@ -110,5 +111,87 @@ final class MemoryTests: XCTestCase {
     }
     
     print("Debug info enabled: \(HeapAllocator.debugInfoEnabled)")
+  }
+  
+  func testMemoryRecycling() throws {
+    testHeader("Memory recycling")
+    HeapAllocator.global._releaseCachedBufferBlocks()
+    
+    func allocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
+      var ids: [UInt64] = []
+      for _ in 0..<numBuffers {
+        let id = Context.generateID(allocationSize: bufferSize)
+        ids.append(id)
+      }
+      for id in ids {
+        try Context.initialize(id: id) { _ in }
+      }
+      for id in ids {
+        try Context.deallocate(id: id)
+      }
+    }
+    func fakeAllocateDeallocate(numBuffers: Int) throws {
+      var ids: [UInt64] = []
+      for _ in 0..<numBuffers {
+        let id = Context.dispatchQueue.sync {
+          return UInt64(2)
+        }
+        ids.append(id)
+      }
+      for id in ids {
+        Context.dispatchQueue.sync {
+          _ = id
+        }
+      }
+      for id in ids {
+        Context.dispatchQueue.sync {
+          _ = id
+        }
+      }
+    }
+    func emptyAllocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
+      var ids: [UInt64] = []
+      for _ in 0..<numBuffers {
+        let id = Context.generateID(allocationSize: bufferSize)
+        ids.append(id)
+      }
+      for id in ids {
+        Context.dispatchQueue.sync {
+          _ = id
+        }
+      }
+      for id in ids {
+        try Context.deallocate(id: id)
+      }
+    }
+    
+    try! allocateDeallocate(bufferSize: 4000, numBuffers: 5)
+    Profiler.checkpoint()
+    try! allocateDeallocate(bufferSize: 1000, numBuffers: 5)
+    try! allocateDeallocate(bufferSize: 2000, numBuffers: 5)
+    try! allocateDeallocate(bufferSize: 3000, numBuffers: 5)
+    try! allocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    let totalTime = Profiler.checkpoint()
+    
+    Profiler.checkpoint()
+    try! fakeAllocateDeallocate(numBuffers: 5)
+    try! fakeAllocateDeallocate(numBuffers: 5)
+    try! fakeAllocateDeallocate(numBuffers: 5)
+    try! fakeAllocateDeallocate(numBuffers: 5)
+    let gcdTime = Profiler.checkpoint()
+    
+    Profiler.checkpoint()
+    try! emptyAllocateDeallocate(bufferSize: 1000, numBuffers: 5)
+    try! emptyAllocateDeallocate(bufferSize: 2000, numBuffers: 5)
+    try! emptyAllocateDeallocate(bufferSize: 3000, numBuffers: 5)
+    try! emptyAllocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    let idCycleTime = Profiler.checkpoint()
+    
+    let totalThroughput = Double(totalTime) / 20
+    print("Memory recycling throughput: \(totalThroughput) \(Profiler.timeUnit)")
+    let nonGCDThroughput = Double(totalTime - gcdTime) / 20
+    print("Time excluding GCD: \(nonGCDThroughput) \(Profiler.timeUnit)")
+    let allocationThroughput = Double(totalTime - idCycleTime) / 20
+    print("Time inside HeapAllocator: \(allocationThroughput) \(Profiler.timeUnit)")
   }
 }
