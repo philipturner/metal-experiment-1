@@ -129,15 +129,20 @@ class Allocation {
     let allocatedSize = HeapAllocator.global.totalAllocatedMemory
     if Context.global.permitExceedingSystemRAM {
       if allocatedSize + size <= device.maxBufferLength {
-        print("Memory allocation returned to something smaller than system RAM.")
+        if HeapAllocator.debugInfoEnabled {
+          print("Memory allocation returned to something smaller than system RAM.")
+        }
         Context.global.permitExceedingSystemRAM = false
       }
     } else {
       if allocatedSize + size > device.recommendedMaxWorkingSetSize {
-        print("""
-          Warning: Memory allocation reached the limit of system RAM. Clearing GPU command stream \
-          to free memory.
-          """)
+        if HeapAllocator.debugInfoEnabled {
+          print("""
+            Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
+            memory.
+            """)
+        }
+        
         throw AllocationError("Memory allocation reached the limit of system RAM.")
       }
     }

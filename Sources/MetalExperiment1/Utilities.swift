@@ -82,3 +82,11 @@ func withUnsafeAddress<T: AnyObject, U>(
   let ptr = Unmanaged<T>.passUnretained(object).toOpaque()
   return try body(ptr)
 }
+
+func fetchEnvironmentBoolean(_ name: String) -> Bool {
+  if let value = getenv(name) {
+    let string = String(cString: value)
+    return Int(string) != 0
+  }
+  return false
+}

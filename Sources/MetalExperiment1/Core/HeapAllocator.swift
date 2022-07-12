@@ -118,15 +118,18 @@ class BufferBlock: AllocatorBlockProtocol {
     return (size + alignment - 1) & ~(alignment - 1)
   }
   
-//  deinit {
-//    if HeapAllocator.debugInfoEnabled {
-//      let isShared = buffer.storageMode == .shared
-//      print("""
-//        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size \
-//        \(HeapAllocator.formatSize(size))
-//        """)
-//    }
-//  }
+  // Activate this code if you suspect there are memory leaks.
+  #if false
+  deinit {
+    if HeapAllocator.debugInfoEnabled {
+      let isShared = buffer.storageMode == .shared
+      print("""
+        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size \
+        \(HeapAllocator.formatSize(size))
+        """)
+    }
+  }
+  #endif
 }
 
 class HeapBlock: AllocatorBlockProtocol {
@@ -180,14 +183,18 @@ class HeapBlock: AllocatorBlockProtocol {
   
   deinit {
     precondition(numBuffers == 0)
-//    if HeapAllocator.debugInfoEnabled {
-//      let isShared = heap.storageMode == .shared
-//      print("""
-//        Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
-//        heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \
-//        \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
-//        """)
-//    }
+    
+    // Activate this code if you suspect there are memory leaks.
+    #if false
+    if HeapAllocator.debugInfoEnabled {
+      let isShared = heap.storageMode == .shared
+      print("""
+        Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
+        heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \
+        \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
+        """)
+    }
+    #endif
   }
 }
 
@@ -211,13 +218,8 @@ class HeapAllocator {
   static var global = HeapAllocator()
   
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
-  static var debugInfoEnabled: Bool = {
-    if let value = getenv("TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR") {
-      let string = String(cString: value)
-      return Int(string) != 0
-    }
-    return false
-  }()
+  static var debugInfoEnabled = fetchEnvironmentBoolean(
+    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR")
   
   private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
   
@@ -283,6 +285,7 @@ class HeapAllocator {
 
 extension HeapAllocator {
   func malloc(size: Int, usingShared: Bool) -> MTLBuffer? {
+    // Important that this is `<=`, not `<` like in PyTorch.
     precondition(size <= Self.maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
     let allocationSize = Self.allocationSize(length: size, usingShared: usingShared)
     let pool = pool(size: allocationSize, usingShared: usingShared)

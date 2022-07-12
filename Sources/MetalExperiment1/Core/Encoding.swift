@@ -72,9 +72,6 @@ private extension Context {
     flushStream(precomputedBackPressure: backPressure)
   }
   
-  // Must perform graph optimizations that materialize memory before flushing the command stream,
-  // otherwise there will be infinite recursion when memory allocation exceeds RAM size and tries to
-  // free memory.
   func flushStream(precomputedBackPressure: Int? = nil) {
     guard bufferedOperations.count > 0 else {
       return

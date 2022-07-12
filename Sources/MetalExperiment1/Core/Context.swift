@@ -21,7 +21,9 @@ class Context {
   var buffer2: MTLBuffer // Output for next operation.
   var operationCount = 0 // Current value of elements in `buffer1`.
   
-  static var profilingEncoding = true
+  static var profilingEncoding = fetchEnvironmentBoolean(
+    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
+  
   static var maxCommandsPerBatch = 100
   var numCommittedBatches: ManagedAtomic<Int> = .init(0)
   var numScheduledBatches: ManagedAtomic<Int> = .init(0)
