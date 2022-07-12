@@ -37,6 +37,7 @@ class Context {
   // automatically fusing unary ops?
   var allocations: [UInt64: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
+  var permitExceedingSystemRAM = false
   
   init() {
     self.device = MTLCreateSystemDefaultDevice()!

@@ -118,15 +118,15 @@ class BufferBlock: AllocatorBlockProtocol {
     return (size + alignment - 1) & ~(alignment - 1)
   }
   
-  deinit {
-    if HeapAllocator.debugInfoEnabled {
-      let isShared = buffer.storageMode == .shared
-      print("""
-        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size \
-        \(HeapAllocator.formatSize(size))
-        """)
-    }
-  }
+//  deinit {
+//    if HeapAllocator.debugInfoEnabled {
+//      let isShared = buffer.storageMode == .shared
+//      print("""
+//        Deinitialized \(isShared ? "shared" : "private") buffer #\(bufferID) of size \
+//        \(HeapAllocator.formatSize(size))
+//        """)
+//    }
+//  }
 }
 
 class HeapBlock: AllocatorBlockProtocol {
@@ -180,14 +180,14 @@ class HeapBlock: AllocatorBlockProtocol {
   
   deinit {
     precondition(numBuffers == 0)
-    if HeapAllocator.debugInfoEnabled {
-      let isShared = heap.storageMode == .shared
-      print("""
-        Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
-        heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \
-        \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
-        """)
-    }
+//    if HeapAllocator.debugInfoEnabled {
+//      let isShared = heap.storageMode == .shared
+//      print("""
+//        Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
+//        heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \
+//        \(HeapAllocator.formatSize(HeapAllocator.maxAvailableSize)))
+//        """)
+//    }
   }
 }
 
@@ -229,7 +229,7 @@ class HeapAllocator {
   private var smallPoolShared = BufferPool(isSmall: true, isShared: true)
   private var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
   
-  private var totalAllocatedMemory = 0
+  private(set) var totalAllocatedMemory = 0
   
   private func pool(size: Int, usingShared: Bool) -> BufferPool {
     if size <= kMaxSmallAlloc {
@@ -283,7 +283,7 @@ class HeapAllocator {
 
 extension HeapAllocator {
   func malloc(size: Int, usingShared: Bool) -> MTLBuffer? {
-    precondition(size < Self.maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
+    precondition(size <= Self.maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
     let allocationSize = Self.allocationSize(length: size, usingShared: usingShared)
     let pool = pool(size: allocationSize, usingShared: usingShared)
     

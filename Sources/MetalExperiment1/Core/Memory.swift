@@ -125,13 +125,25 @@ class Allocation {
       return
     }
     
+    let device = Context.global.device
+    let allocatedSize = HeapAllocator.global.totalAllocatedMemory
+    if Context.global.permitExceedingSystemRAM {
+      if allocatedSize + size <= device.maxBufferLength {
+        print("Memory allocation returned to something smaller than system RAM.")
+        Context.global.permitExceedingSystemRAM = false
+      }
+    } else {
+      if allocatedSize + size > device.recommendedMaxWorkingSetSize {
+        print("""
+          Warning: Memory allocation reached the limit of system RAM. Clearing GPU command stream \
+          to free memory.
+          """)
+        throw AllocationError("Memory allocation reached the limit of system RAM.")
+      }
+    }
+    
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
-      print("""
-        Warning: an attempt to allocate a `MTLBuffer` returned `nil`. Flushing command stream and \
-        trying again.
-        """)
-      // TODO: Flush the command stream, make a barrier, try again.
-      throw AllocationError("System ran out of memory.")
+      throw AllocationError("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
     self.mtlBuffer = mtlBuffer
   }

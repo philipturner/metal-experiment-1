@@ -221,7 +221,46 @@ final class MemoryTests: XCTestCase {
     let id5 = allocate(size: 2_000_000)
     deallocate(id: id5)
     
-//    let id6 = allocate(size: 16 * 1024 * 1024 * 1024)
-//    deallocate(id: id6)
+    // Test mechanism for dealing with excessive memory allocation.
+    
+    do {
+      HeapAllocator.global._releaseCachedBufferBlocks()
+      let smallBufferID1 = allocate(size: 1_000)
+      defer { deallocate(id: smallBufferID1) }
+      Context.dispatchQueue.sync {
+        Context.global.permitExceedingSystemRAM = true
+      }
+      
+      let largeBufferSize = Context.global.device.maxBufferLength
+      let largeBufferID1 = allocate(size: largeBufferSize)
+      defer { deallocate(id: largeBufferID1) }
+      Context.dispatchQueue.sync {
+        XCTAssert(Context.global.permitExceedingSystemRAM)
+      }
+      
+      let smallBufferID2 = allocate(size: 1_000)
+      defer { deallocate(id: smallBufferID2) }
+      Context.dispatchQueue.sync {
+        XCTAssert(Context.global.permitExceedingSystemRAM)
+      }
+    }
+    Context.dispatchQueue.sync {
+      XCTAssert(Context.global.permitExceedingSystemRAM)
+    }
+    
+    do {
+      let smallBufferID3 = allocate(size: 1_000)
+      defer { deallocate(id: smallBufferID3) }
+      Context.dispatchQueue.sync {
+        XCTAssert(Context.global.permitExceedingSystemRAM)
+      }
+      
+      HeapAllocator.global._releaseCachedBufferBlocks()
+      let smallBufferID4 = allocate(size: 1_000)
+      defer { deallocate(id: smallBufferID4) }
+      Context.dispatchQueue.sync {
+        XCTAssertFalse(Context.global.permitExceedingSystemRAM)
+      }
+    }
   }
 }
