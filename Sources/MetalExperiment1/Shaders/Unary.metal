@@ -12,6 +12,5 @@ kernel void unaryOperation(
   uint tid [[thread_position_in_grid]]
 ) {
   float value = input[tid];
-  // To emulate skipping an intermediate tensor, add 2 here.
   output[tid] = value + increment;
 }

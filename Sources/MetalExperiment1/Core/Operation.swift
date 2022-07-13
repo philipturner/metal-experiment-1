@@ -90,7 +90,7 @@ private extension Context {
     try operation.output.materialize()
     encoder.setComputePipelineState(unaryComputePipeline)
     encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
-    encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 1)
+    encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
     
     var bytes = Float(operation.types.count)
     encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)

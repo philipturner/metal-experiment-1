@@ -119,7 +119,9 @@ private extension Context {
       // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
       // pointless. The delay is 200 μs in every case.
     }
-    commandBuffer.addCompletedHandler { _ in
+    commandBuffer.addCompletedHandler { [compiledOperations] _ in
+      // Retain compiled operations in this closure.
+      _ = compiledOperations
       let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
       let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
         ordering: .sequentiallyConsistent)

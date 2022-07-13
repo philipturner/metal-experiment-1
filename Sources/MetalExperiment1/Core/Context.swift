@@ -17,8 +17,8 @@ class Context {
   static let maxBatchesInFlight = 10
   
   static let numBufferElements = 1000
-  var allocation1: UInt64 = .max // Input for next operation, current state of execution.
-  var allocation2: UInt64 = .max // Output for next operation.
+  lazy var allocation1: UInt64 = generateID() // Input for next operation, current state of execution.
+  lazy var allocation2: UInt64 = generateID() // Output for next operation.
   var operationCount = 0 // Current value of elements in `buffer1`.
   
   static var profilingEncoding = fetchEnvironmentBoolean(
@@ -54,19 +54,18 @@ class Context {
     let unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
     let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
     self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
-    
+  }
+  
+  private func generateID() -> UInt64 {
     let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-    self.allocation1 = _unsafeGenerateID(allocationSize: bufferSize)
-    self.allocation2 = _unsafeGenerateID(allocationSize: bufferSize)
-    
-    func fill(id: UInt64) {
-      let allocation = try! _unsafeFetchAllocation(id: id)!
-      try! allocation.materialize()
-      try! allocation.initialize { bufferPointer in
-        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-        ptr.initialize(repeating: 0.0)
-      }
+    let id = _unsafeGenerateID(allocationSize: bufferSize)
+    let allocation = try! _unsafeFetchAllocation(id: id)!
+    try! allocation.materialize()
+    try! allocation.initialize { bufferPointer in
+      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
+      ptr.initialize(repeating: 0.0)
     }
+    return id
   }
   
   deinit {

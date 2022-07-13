@@ -40,6 +40,7 @@ final class MetalExperiment1Tests: XCTestCase {
   
   func testStreamedBatchThroughput() throws {
     testHeader("Streamed command buffer throughput")
+    Context.validate()
     
     do {
       Profiler.checkpoint()
