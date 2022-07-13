@@ -49,7 +49,8 @@ private extension Context {
   
   func validate() {
     barrier()
-    let lastOutputBuffer = buffer1
+    let allocation = try! _unsafeFetchAllocation(id: allocation1)!
+    let lastOutputBuffer = allocation.mtlBuffer!
     let ptr = lastOutputBuffer.contents().assumingMemoryBound(to: Float.self)
     precondition(ptr[0] == Float(operationCount))
   }
@@ -61,13 +62,13 @@ private extension Context {
   
   func commitStreamedCommand() {
     let operation = EagerOperation.Unary(
-      type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements)
-    bufferedOperations.append(.unary(operation))
+      type: .increment, input: allocation1, output: allocation2, size: Context.numBufferElements)
+    eagerOperations.append(.unary(operation))
     operationCount += 1
-    swap(&buffer1, &buffer2)
+    swap(&allocation1, &allocation2)
     
     let backPressure = queryQueueBackPressure()
-    if bufferedOperations.count < Context.maxCommandsPerBatch,
+    if eagerOperations.count < Context.maxCommandsPerBatch,
        backPressure >= 1 {
       return
     }
@@ -75,23 +76,31 @@ private extension Context {
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
-    guard bufferedOperations.count > 0 else {
+    let numEagerOperations = eagerOperations.count
+    guard numEagerOperations > 0 else {
       return
-    }
-    defer {
-      bufferedOperations.removeAll(keepingCapacity: true)
     }
     let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
     
-    var startTime: UInt64 = 0
+    var compileStartTime: UInt64 = 0
     if Context.profilingEncoding {
-      startTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+      compileStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
+    let compiledOperations = compileEagerOperations()
+    // Avoid retaining the reference to `compiledOperations` just to query its count later on.
+    let numCompiledOperations = compiledOperations.count
     
+    var encodeStartTime: UInt64 = 0
+    if Context.profilingEncoding {
+      encodeStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+    }
     let commandBuffer = commandQueue.makeCommandBuffer()!
     let encoder = commandBuffer.makeComputeCommandEncoder()!
-    for operation in bufferedOperations {
-      encodeEagerOperation(operation, into: encoder)
+    
+    // TODO: Divide the array of compiled operations when there is an out of memory error. Try to
+    // eliminate a function call by doing this in a loop.
+    for operation in compiledOperations {
+      try! encodeCompiledOperation(operation, into: encoder)
     }
     encoder.endEncoding()
     
@@ -127,12 +136,15 @@ private extension Context {
     lastCommandBuffer = commandBuffer
     
     if Context.profilingEncoding {
-      let endTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
-      let duration = Int(endTime - startTime) / 1000
+      let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+      // Try to vectorize the division by 1000.
+      let compileDuration = Int(encodeStartTime - compileStartTime) / 1000
+      let encodeDuration = Int(encodeEndTime - encodeStartTime) / 1000
       print("""
-        Encoding duration: \(duration) \(Profiler.timeUnit), \
+        Compile time: \(compileDuration) \(Profiler.timeUnit), \
+        Encode time: \(encodeDuration) \(Profiler.timeUnit), \
         Batches in flight: \(previousBackPressure), \
-        Encoded commands: \(bufferedOperations.count)
+        #Commands: \(numEagerOperations) -> \(numCompiledOperations)
         """)
     }
   }

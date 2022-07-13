@@ -19,8 +19,6 @@ class Context {
   static let numBufferElements = 1000
   var allocation1: UInt64 = .max // Input for next operation, current state of execution.
   var allocation2: UInt64 = .max // Output for next operation.
-  var buffer1: MTLBuffer
-  var buffer2: MTLBuffer
   var operationCount = 0 // Current value of elements in `buffer1`.
   
   static var profilingEncoding = fetchEnvironmentBoolean(
@@ -30,7 +28,7 @@ class Context {
   var numCommittedBatches: ManagedAtomic<Int> = .init(0)
   var numScheduledBatches: ManagedAtomic<Int> = .init(0)
   var numCompletedBatches: ManagedAtomic<Int> = .init(0)
-  var bufferedOperations: [EagerOperation] = []
+  var eagerOperations: [EagerOperation] = []
   
   // Function to write to the raw CPU-side memory (zero overhead)
   // Function to automatically de-allocate
@@ -58,11 +56,17 @@ class Context {
     self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
     
     let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-    self.buffer1 = device.makeBuffer(length: bufferSize, options: .storageModeShared)!
-    self.buffer2 = device.makeBuffer(length: bufferSize, options: .storageModeShared)!
+    self.allocation1 = _unsafeGenerateID(allocationSize: bufferSize)
+    self.allocation2 = _unsafeGenerateID(allocationSize: bufferSize)
     
-    self.allocation1 = self._unsafeGenerateID(allocationSize: bufferSize)
-    self.allocation2 = self._unsafeGenerateID(allocationSize: bufferSize)
+    func fill(id: UInt64) {
+      let allocation = try! _unsafeFetchAllocation(id: id)!
+      try! allocation.materialize()
+      try! allocation.initialize { bufferPointer in
+        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
+        ptr.initialize(repeating: 0.0)
+      }
+    }
   }
   
   deinit {

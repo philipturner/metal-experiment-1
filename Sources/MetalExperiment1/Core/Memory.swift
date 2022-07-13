@@ -162,7 +162,7 @@ class Allocation {
             memory.
             """)
         }
-        
+        // In the caller, set `permitExceedingSystemRAM` to true.
         throw AllocationError("Memory allocation reached the limit of system RAM.")
       }
     }
