@@ -12,6 +12,10 @@ func testHeader(_ message: String) {
   
   print()
   print("=== \(message) ===")
+  
+  // Stop messages about references from flooding the console. You can re-activate this inside a
+  // test function if you want.
+  Allocation.debugInfoEnabled = false
 }
 
 final class MetalExperiment1Tests: XCTestCase {

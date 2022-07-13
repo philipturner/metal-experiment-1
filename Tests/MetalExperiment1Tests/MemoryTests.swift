@@ -45,7 +45,7 @@ final class MemoryTests: XCTestCase {
       let id = Context.generateID(allocationSize: 4000)
       defer { try! Context.release(id: id) }
       assertErrorMessage(
-        try Context.read(id: id) { _ in }, "Read from memory with a null underlying `MTLBuffer`.")
+        try Context.read(id: id) { _ in }, "Cannot read from an uninitialized allocation.")
     }
     
     do {
@@ -264,6 +264,7 @@ final class MemoryTests: XCTestCase {
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
+    Allocation.debugInfoEnabled = true
     print("Start of function")
     do {
       _ = TensorHandle(repeating: 5, count: 2)

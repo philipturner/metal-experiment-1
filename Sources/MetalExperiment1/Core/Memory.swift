@@ -31,7 +31,7 @@ extension Context {
       guard let allocation = try ctx.fetchAllocation(id: id) else {
         throw AllocationError("Tried to read from memory that was deallocated.")
       }
-      allocation.read(body)
+      try allocation.read(body)
     }
   }
   
@@ -265,7 +265,7 @@ class Allocation {
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeRawBufferPointer) -> Void) {
+  func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
     // compiler will then mark it as initialized and safe to read from.
@@ -285,7 +285,11 @@ class Allocation {
     // beginning of `bufferedOperations`, unless one of those operations references it. This
     // violates sequential order of execution, but produces the same end result.
     Context._unsafeBarrier()
-    precondition(initialized, "Should have materialized during compilation.")
+    // If this was the outcome of a chain of operations, it should have been declared initialized
+    // during compilation.
+    guard initialized else {
+      throw AllocationError("Cannot read from an uninitialized allocation.")
+    }
     
     if isShared {
       bufferToRead = self.mtlBuffer!
