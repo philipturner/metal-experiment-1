@@ -24,6 +24,8 @@ extension Context {
         let types = [unary.type]
         let input = try! _unsafeFetchAllocation(id: unary.input)!
         let output = try! _unsafeFetchAllocation(id: unary.output)!
+        try! input.materialize()
+        try! output.materialize()
         let size = unary.size
         
         let multiUnary = CompiledOperation.MultiUnary(

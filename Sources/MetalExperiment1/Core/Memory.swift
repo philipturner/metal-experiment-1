@@ -111,12 +111,16 @@ class Allocation {
   // Wait to implement this until other things are debugged, because it adds too much complexity to
   // this prototype backend right now.
   
+  // Extracting this to its own property improves performance. It probably skips a reference count
+  // to the `MTLBuffer`. Also, it could be useful if there are multiple storage modes.
+  var materialized = false
+  
   // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
   // memory.
   var initialized = false
   var mtlBuffer: MTLBuffer?
-  // TODO: Shape
-  // TODO: Data Type
+  // TODO: Shape - mutable for zero-cost reshape op
+  // TODO: Data Type - mutable but only to match style of other properties
   var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
   
@@ -134,10 +138,19 @@ class Allocation {
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
   // stream. Then, it tries once more after all possible Metal memory is deallocated. If that
   // doesn't work, it crashes.
+  @inline(__always)
   func materialize() throws {
-    if mtlBuffer != nil {
+    if materialized {
       // Already materialized.
-      return
+    } else {
+      try actuallyMaterialize()
+    }
+  }
+  
+  @inline(never)
+  private func actuallyMaterialize() throws {
+    defer {
+      materialized = true
     }
     
     let device = Context.global.device
@@ -232,12 +245,9 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
-    guard let mtlBuffer = mtlBuffer else {
+    guard materialized else {
       return
     }
-    self.mpsGraphTensorData = nil
-    self.mpsMatrix = nil
-    self.mtlBuffer = nil
-    HeapAllocator.global.free(mtlBuffer)
+    HeapAllocator.global.free(self.mtlBuffer!)
   }
 }
