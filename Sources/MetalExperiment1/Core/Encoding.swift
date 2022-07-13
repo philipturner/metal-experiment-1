@@ -16,7 +16,7 @@ extension Context {
     }
   }
   
-  static func commitStreamedCommand() {
+  static func commitBasicStreamedCommand() {
     dispatchQueue.sync {
       Context.global.commitStreamedCommand()
     }
@@ -59,7 +59,7 @@ private extension Context {
   func commitStreamedCommand() {
     let operation = Operation.Unary(
       type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements,
-      inGraphMode: false)
+      constant: 1)
     bufferedOperations.append(.unary(operation))
     operationCount += 1
     swap(&buffer1, &buffer2)

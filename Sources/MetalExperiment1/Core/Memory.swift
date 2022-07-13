@@ -135,7 +135,12 @@ class Allocation {
         Context.global.permitExceedingSystemRAM = false
       }
     } else {
-      if allocatedSize + size > device.recommendedMaxWorkingSetSize {
+      #if os(macOS)
+      let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+      #else
+      let maxWorkingSize = device.maxBufferLength
+      #endif
+      if allocatedSize + size > maxWorkingSize {
         if HeapAllocator.debugInfoEnabled {
           print("""
             Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
@@ -209,13 +214,14 @@ class Allocation {
     body(ptr)
   }
   
+  // Retain a reference to this until the command buffer is finished. Hold the reference in the
+  // completion handler.
   deinit {
-    if mpsGraphTensorData != nil {
-      mpsGraphTensorData = nil
-    }
     guard let mtlBuffer = mtlBuffer else {
       return
     }
+    self.mpsGraphTensorData = nil
+    self.mpsMatrix = nil
     self.mtlBuffer = nil
     HeapAllocator.global.free(mtlBuffer)
   }

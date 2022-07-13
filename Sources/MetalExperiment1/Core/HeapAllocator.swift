@@ -255,7 +255,12 @@ class HeapAllocator {
   
   static var maxAvailableSize: Int {
     let device = Context.global.device
-    return Int(device.recommendedMaxWorkingSetSize) - device.currentAllocatedSize
+    #if os(macOS)
+    let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+    #else
+    let maxWorkingSize = device.maxBufferLength
+    #endif
+    return maxWorkingSize - device.currentAllocatedSize
   }
   
   static func formatSize(_ size: Int) -> String {

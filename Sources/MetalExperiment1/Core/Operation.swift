@@ -17,7 +17,7 @@ enum Operation {
     var input: MTLBuffer
     var output: MTLBuffer
     var size: Int
-    var inGraphMode: Bool
+    var constant: Float
   }
   
   case unary(Unary)
@@ -35,6 +35,8 @@ extension Context {
     encoder.setComputePipelineState(computePipeline)
     encoder.setBuffer(operation.input, offset: 0, index: 0)
     encoder.setBuffer(operation.output, offset: 0, index: 1)
+    var bytes: Float = operation.constant
+    encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
   }
 }

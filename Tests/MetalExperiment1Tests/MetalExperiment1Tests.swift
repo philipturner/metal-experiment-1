@@ -43,7 +43,7 @@ final class MetalExperiment1Tests: XCTestCase {
     
     do {
       Profiler.checkpoint()
-      Context.commitStreamedCommand()
+      Context.commitBasicStreamedCommand()
       let latency = Profiler.checkpoint()
       
       Context.validate()
@@ -58,7 +58,7 @@ final class MetalExperiment1Tests: XCTestCase {
       print("--- Stream size: \(length) ---")
       Profiler.checkpoint()
       for _ in 0..<length {
-        Context.commitStreamedCommand()
+        Context.commitBasicStreamedCommand()
       }
       let latency = Profiler.checkpoint()
       Context.validate()
