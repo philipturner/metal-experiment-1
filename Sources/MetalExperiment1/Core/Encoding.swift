@@ -96,6 +96,12 @@ private extension Context {
     numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
     commandBuffer.addScheduledHandler { _ in
       self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+      // TODO: Look back into the latency here. If the CPU does a control flow operator depending
+      // on flushing the command stream, checking numCommitted == numCompleted here could halve
+      // total latency. I originally settled on using the completion handler because in the
+      // scheduled handler, it was so unreliable and often harmed performance or did nothing. I
+      // should revisit this once I confirm the delay for a total stop of the pipeline is 400 μs.
+      // If done right, I could sometimes reduce it to 200 μs here.
     }
     commandBuffer.addCompletedHandler { _ in
       let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
