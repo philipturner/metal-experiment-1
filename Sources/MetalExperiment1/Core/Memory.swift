@@ -40,14 +40,27 @@ extension Context {
       try Context.global.deallocate(id: id)
     }
   }
+  
+  // Remove "_unsafe" wrappers once these are scoped as public or not.
+  internal func _unsafeGenerateID(allocationSize: Int) -> UInt64 {
+    self.generateID(allocationSize: allocationSize)
+  }
+  
+  internal func _unsafeFetchAllocation(id: UInt64) throws -> Allocation? {
+    try self.fetchAllocation(id: id)
+  }
+  
+  internal func _unsafeDeallocate(id: UInt64) throws {
+    try self.deallocate(id: id)
+  }
 }
 
 private extension Context {
   func generateID(allocationSize: Int) -> UInt64 {
-    let output = nextAllocationID
+    let id = nextAllocationID
     nextAllocationID += 1
-    allocations[output] = Allocation(size: allocationSize)
-    return output
+    allocations[id] = Allocation(id: id, size: allocationSize)
+    return id
   }
   
   // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
@@ -82,6 +95,7 @@ struct AllocationError: Error {
 }
 
 class Allocation {
+  var id: UInt64
   var size: Int
   var isShared: Bool
   
@@ -111,7 +125,8 @@ class Allocation {
   // buffers that are currently executing.
   var referencedCommandBufferID: Int?
   
-  init(size: Int) {
+  init(id: UInt64, size: Int) {
+    self.id = id
     self.size = size
     self.isShared = true
   }

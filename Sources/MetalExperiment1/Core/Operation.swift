@@ -5,9 +5,12 @@
 //  Created by Philip Turner on 7/9/22.
 //
 
-import Metal
+import MetalPerformanceShadersGraph
 
-enum Operation {
+// Two levels of IR. One is higher-level, eagerly submitted. This other is optimized, with IDs
+// filled in with allocations ready to be materialized.
+
+enum EagerOperation {
   struct Unary {
     enum OpType: UInt16, CaseIterable {
       case increment
@@ -17,26 +20,53 @@ enum Operation {
     var input: MTLBuffer
     var output: MTLBuffer
     var size: Int
-    var constant: Float
   }
   
   case unary(Unary)
 }
 
+enum CompiledOperation {
+  struct MultiUnary {
+    enum OpType: UInt16, CaseIterable {
+      case increment
+    }
+    
+    var types: [OpType]
+    var input: Allocation
+    var output: Allocation
+    var size: Int
+  }
+  
+  case multiUnary(MultiUnary)
+}
+
 extension Context {
-  func encodeSingleOperation(_ operation: Operation, into encoder: MTLComputeCommandEncoder) {
+  func encodeEagerOperation(
+    _ operation: EagerOperation,
+    into encoder: MTLComputeCommandEncoder
+  ) {
     switch operation {
     case .unary(let unary):
       encodeSingleUnary(unary, into: encoder)
     }
   }
   
-  func encodeSingleUnary(_ operation: Operation.Unary, into encoder: MTLComputeCommandEncoder) {
-    encoder.setComputePipelineState(computePipeline)
+  func encodeSingleUnary(
+    _ operation: EagerOperation.Unary,
+    into encoder: MTLComputeCommandEncoder
+  ) {
+    encoder.setComputePipelineState(unaryComputePipeline)
     encoder.setBuffer(operation.input, offset: 0, index: 0)
     encoder.setBuffer(operation.output, offset: 0, index: 1)
-    var bytes: Float = operation.constant
+    var bytes: Float = 1
     encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
+  }
+  
+  func encodeMultiUnary(
+    _ operation: CompiledOperation.MultiUnary,
+    into encoder: MTLComputeCommandEncoder
+  ) {
+    encoder.setComputePipelineState(unaryComputePipeline)
   }
 }

@@ -16,7 +16,7 @@ extension Context {
     }
   }
   
-  static func commitBasicStreamedCommand() {
+  static func commitStreamedCommand() {
     dispatchQueue.sync {
       Context.global.commitStreamedCommand()
     }
@@ -56,10 +56,12 @@ private extension Context {
 }
 
 private extension Context {
+  // Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
+  // allocation happens afterwards, during `flushStream`.
+  
   func commitStreamedCommand() {
-    let operation = Operation.Unary(
-      type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements,
-      constant: 1)
+    let operation = EagerOperation.Unary(
+      type: .increment, input: buffer1, output: buffer2, size: Context.numBufferElements)
     bufferedOperations.append(.unary(operation))
     operationCount += 1
     swap(&buffer1, &buffer2)
@@ -89,7 +91,7 @@ private extension Context {
     let commandBuffer = commandQueue.makeCommandBuffer()!
     let encoder = commandBuffer.makeComputeCommandEncoder()!
     for operation in bufferedOperations {
-      encodeSingleOperation(operation, into: encoder)
+      encodeEagerOperation(operation, into: encoder)
     }
     encoder.endEncoding()
     

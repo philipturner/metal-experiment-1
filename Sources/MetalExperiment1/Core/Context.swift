@@ -12,13 +12,15 @@ class Context {
   static var global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
-  var computePipeline: MTLComputePipelineState
+  var unaryComputePipeline: MTLComputePipelineState
   var lastCommandBuffer: MTLCommandBuffer?
   static let maxBatchesInFlight = 10
   
   static let numBufferElements = 1000
-  var buffer1: MTLBuffer // Input for next operation, current state of execution.
-  var buffer2: MTLBuffer // Output for next operation.
+  var allocation1: UInt64 = .max // Input for next operation, current state of execution.
+  var allocation2: UInt64 = .max // Output for next operation.
+  var buffer1: MTLBuffer
+  var buffer2: MTLBuffer
   var operationCount = 0 // Current value of elements in `buffer1`.
   
   static var profilingEncoding = fetchEnvironmentBoolean(
@@ -28,7 +30,7 @@ class Context {
   var numCommittedBatches: ManagedAtomic<Int> = .init(0)
   var numScheduledBatches: ManagedAtomic<Int> = .init(0)
   var numCompletedBatches: ManagedAtomic<Int> = .init(0)
-  var bufferedOperations: [Operation] = []
+  var bufferedOperations: [EagerOperation] = []
   
   // Function to write to the raw CPU-side memory (zero overhead)
   // Function to automatically de-allocate
@@ -53,10 +55,18 @@ class Context {
     
     let unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
     let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
-    self.computePipeline = try! device.makeComputePipelineState(function: unaryFunction)
+    self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
     
     let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
     self.buffer1 = device.makeBuffer(length: bufferSize, options: .storageModeShared)!
     self.buffer2 = device.makeBuffer(length: bufferSize, options: .storageModeShared)!
+    
+    self.allocation1 = self._unsafeGenerateID(allocationSize: bufferSize)
+    self.allocation2 = self._unsafeGenerateID(allocationSize: bufferSize)
+  }
+  
+  deinit {
+    try! self._unsafeDeallocate(id: allocation1)
+    try! self._unsafeDeallocate(id: allocation2)
   }
 }
