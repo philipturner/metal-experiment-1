@@ -69,7 +69,7 @@ class Context {
   }
   
   deinit {
-    try! self._unsafeDeallocate(id: allocation1)
-    try! self._unsafeDeallocate(id: allocation2)
+    try! self._unsafeRelease(id: allocation1)
+    try! self._unsafeRelease(id: allocation2)
   }
 }

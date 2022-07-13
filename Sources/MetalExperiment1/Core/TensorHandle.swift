@@ -36,7 +36,7 @@ class TensorHandle {
   }
   
   deinit {
-    try! Context.deallocate(id: id)
+    try! Context.release(id: id)
   }
 }
 

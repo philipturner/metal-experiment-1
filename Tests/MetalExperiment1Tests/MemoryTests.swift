@@ -10,8 +10,8 @@ final class MemoryTests: XCTestCase {
       let firstID = Context.generateID(allocationSize: 4000)
       let secondID = Context.generateID(allocationSize: 4000)
       
-      try! Context.deallocate(id: firstID)
-      try! Context.deallocate(id: secondID)
+      try! Context.release(id: firstID)
+      try! Context.release(id: secondID)
     }
     
     do {
@@ -19,7 +19,7 @@ final class MemoryTests: XCTestCase {
       let numIds = 100
       for _ in 0..<numIds {
         let id = Context.generateID(allocationSize: 4000)
-        try! Context.deallocate(id: id)
+        try! Context.release(id: id)
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(numIds)
@@ -43,7 +43,7 @@ final class MemoryTests: XCTestCase {
     
     do {
       let id = Context.generateID(allocationSize: 4000)
-      defer { try! Context.deallocate(id: id) }
+      defer { try! Context.release(id: id) }
       assertErrorMessage(
         try Context.read(id: id) { _ in }, "Read from memory with a null underlying `MTLBuffer`.")
     }
@@ -66,7 +66,7 @@ final class MemoryTests: XCTestCase {
       XCTAssert(wereEqual)
       
       // Try accessing the buffer after it's deallocated.
-      try! Context.deallocate(id: id)
+      try! Context.release(id: id)
       assertErrorMessage(
         try Context.initialize(id: id) { _ in }, "Tried to initialize memory that was deallocated.")
       assertErrorMessage(
@@ -109,8 +109,6 @@ final class MemoryTests: XCTestCase {
       XCTAssertEqual(customSet.remove(at: 0).size, 6)
       XCTAssertEqual(customSet.remove(at: 0).size, 8)
     }
-    
-    print("Debug info enabled: \(HeapAllocator.debugInfoEnabled)")
   }
   
   func testRecyclingThroughput() throws {
@@ -127,7 +125,7 @@ final class MemoryTests: XCTestCase {
         try Context.initialize(id: id) { _ in }
       }
       for id in ids {
-        try Context.deallocate(id: id)
+        try Context.release(id: id)
       }
     }
     func fakeAllocateDeallocate(numBuffers: Int) throws {
@@ -161,7 +159,7 @@ final class MemoryTests: XCTestCase {
         }
       }
       for id in ids {
-        try Context.deallocate(id: id)
+        try Context.release(id: id)
       }
     }
     
@@ -205,7 +203,7 @@ final class MemoryTests: XCTestCase {
       return id
     }
     func deallocate(id: UInt64) {
-      try! Context.deallocate(id: id)
+      try! Context.release(id: id)
     }
     
     let id1 = allocate(size: 8_000_000)
@@ -266,25 +264,37 @@ final class MemoryTests: XCTestCase {
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
+    print("Start of function")
     do {
       _ = TensorHandle(repeating: 5, count: 2)
     }
-    print("checkpoint 1")
+    
+    print()
+    print("Handle 1")
     let handle1 = TensorHandle(repeating: 5, count: 2)
     XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
     
-    print("checkpoint 2")
+    print()
+    print("Handle 2")
     let handle2 = handle1.incremented()
     XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
     
-    print("checkpoint 3")
+    print()
+    print("Handle 3")
     let handle3 = handle1.incremented().incremented()
     XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
     
-    print("checkpoint 4")
-    let handle4 = handle2.incremented().incremented().incremented()
-    XCTAssertEqual(handle4.copyScalars(), [9.0, 9.0])
-//    let handle5 = handle4.incremented()
-//    XCTAssertEqual(handle5.copyScalars(), [9.0, 9.0])
+    print()
+    print("Handle 4")
+    let handle4 = handle2.incremented().incremented()
+    XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
+    
+    print()
+    print("Handle 5")
+    let handle5 = handle4.incremented().incremented().incremented()
+    XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
+    
+    print()
+    print("End of function")
   }
 }

@@ -86,6 +86,8 @@ private extension Context {
   }
   
   func commitIncrement(inputID: UInt64, outputID: UInt64) {
+    try! _unsafeRetain(id: inputID)
+    try! _unsafeRetain(id: outputID)
     let operation = EagerOperation.Unary(
       type: .increment, input: inputID, output: outputID, size: Context.numBufferElements)
     eagerOperations.append(.unary(operation))

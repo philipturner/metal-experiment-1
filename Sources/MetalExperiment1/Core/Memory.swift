@@ -35,9 +35,9 @@ extension Context {
     }
   }
   
-  static func deallocate(id: UInt64) throws {
+  static func release(id: UInt64) throws {
     try dispatchQueue.sync {
-      try Context.global.deallocate(id: id)
+      try Context.global.release(id: id)
     }
   }
   
@@ -53,8 +53,27 @@ extension Context {
     try self.fetchAllocation(id: id, releasingZombies: releasingZombies)
   }
   
-  internal func _unsafeDeallocate(id: UInt64) throws {
-    try self.deallocate(id: id)
+  internal func _unsafeRetain(id: UInt64) throws {
+    try self.retain(id: id)
+  }
+  
+  internal func _unsafeRelease(id: UInt64) throws {
+    try self.release(id: id)
+  }
+  
+  @inline(__always)
+  internal func _compilerRelease(_ allocation: Allocation) {
+    let id = allocation.id
+    let referenceCount = allocation.referenceCount - 1
+    allocation.referenceCount = referenceCount
+    if referenceCount == 0 {
+      allocations[id] = nil
+      if _slowPath(Allocation.debugInfoEnabled) {
+        print("Allocation #\(id) was deallocated.")
+      }
+    } else if _slowPath(Allocation.debugInfoEnabled) {
+      print("Allocation #\(id) dropped to a reference count of \(referenceCount).")
+    }
   }
 }
 
@@ -73,36 +92,39 @@ private extension Context {
     guard id < nextAllocationID else {
       throw AllocationError("No memory has ever been allocated with ID #\(id).")
     }
-    if let allocation = allocations[id] {
-      if releasingZombies && allocation.isZombie {
-        if HeapAllocator.debugInfoEnabled {
-          print("Allocation #\(id) was a zombie and has been deallocated.")
-        }
-        allocations[id] = nil
-      }
-      return allocation
-    } else {
-      return nil
+    // Dictionary subscript returns an optional.
+    return allocations[id]
+  }
+  
+  func retain(id: UInt64) throws {
+    guard id < nextAllocationID else {
+      throw AllocationError("No memory has ever been allocated with ID #\(id).")
+    }
+    guard let allocation = allocations[id] else {
+      // Catch memory management bugs.
+      throw AllocationError("Allocation #\(id) has already been deallocated.")
+    }
+    allocation.referenceCount += 1
+    if Allocation.debugInfoEnabled {
+      print("Allocation #\(id) jumped to a reference count of \(allocation.referenceCount).")
     }
   }
   
-  // Makes the ID invald and releases the Swift object. Its erasure prevents memory leaks in a
-  // program running forever.
-  func deallocate(id: UInt64) throws {
+  func release(id: UInt64) throws {
     // Catch memory management bugs.
     guard let allocation = allocations[id] else {
       throw AllocationError("Cannot deallocate something twice.")
     }
-    if allocation.initialized {
-      if HeapAllocator.debugInfoEnabled {
-        print("Allocation #\(id) became a zombie.")
-      }
-      allocation.isZombie = true
-    } else {
-      if HeapAllocator.debugInfoEnabled {
+    allocation.referenceCount -= 1
+    if allocation.referenceCount == 0 {
+      if Allocation.debugInfoEnabled {
         print("Allocation #\(id) was deallocated.")
       }
       allocations[id] = nil
+    } else {
+      if Allocation.debugInfoEnabled {
+        print("Allocation #\(id) dropped to a reference count of \(allocation.referenceCount).")
+      }
     }
   }
 }
@@ -117,6 +139,10 @@ struct AllocationError: Error {
 }
 
 class Allocation {
+  static var debugInfoEnabled = fetchEnvironmentBoolean(
+    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
+  var referenceCount: Int
+  
   var id: UInt64
   var size: Int
   var isShared: Bool
@@ -141,11 +167,6 @@ class Allocation {
   // memory.
   var initialized = false
   
-  // Initializing and quickly deallocating a tensor makes it a zombie. We still need to know what
-  // its contents were. Do not forget to check this property in the compiler and force-deallocate a
-  // zombie tensor!
-  var isZombie = false
-  
   var mtlBuffer: MTLBuffer?
   // TODO: Shape - mutable for zero-cost reshape op
   // TODO: Data Type - mutable but only to match style of other properties
@@ -158,6 +179,7 @@ class Allocation {
   var referencedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
+    self.referenceCount = 1
     self.id = id
     self.size = size
     self.isShared = true
@@ -245,7 +267,8 @@ class Allocation {
   // deallocate or become undefined after the closure finishes.
   func read(_ body: (UnsafeRawBufferPointer) -> Void) {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
-    // is in the compiler, where it's at least derived from something that was initialized.
+    // is in the compiler, where it's at least derived from something that was initialized. The
+    // compiler will then mark it as initialized and safe to read from.
     var bufferToRead: MTLBuffer!
     if !isShared {
       // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
@@ -262,7 +285,7 @@ class Allocation {
     // beginning of `bufferedOperations`, unless one of those operations references it. This
     // violates sequential order of execution, but produces the same end result.
     Context._unsafeBarrier()
-    precondition(materialized, "Should have materialized during compilation.")
+    precondition(initialized, "Should have materialized during compilation.")
     
     if isShared {
       bufferToRead = self.mtlBuffer!
@@ -275,6 +298,8 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
+    // Catch memory management bugs.
+    precondition(referenceCount == 0)
     guard materialized else {
       return
     }
