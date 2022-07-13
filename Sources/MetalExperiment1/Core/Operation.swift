@@ -40,16 +40,6 @@ enum CompiledOperation {
 }
 
 extension Context {
-//  func encodeEagerOperation(
-//    _ operation: EagerOperation,
-//    into encoder: MTLComputeCommandEncoder
-//  ) {
-//    switch operation {
-//    case .unary(let unary):
-//      encodeSingleUnary(unary, into: encoder)
-//    }
-//  }
-  
   func encodeCompiledOperation(
     _ operation: CompiledOperation,
     into encoder: MTLComputeCommandEncoder
@@ -63,25 +53,6 @@ extension Context {
 
 // Making these private forces them to inline into their caller.
 private extension Context {
-  func encodeSingleUnary(
-    _ operation: EagerOperation.Unary,
-    into encoder: MTLComputeCommandEncoder
-  ) {
-    func getBuffer(id: UInt64) -> MTLBuffer {
-      let allocation = try! _unsafeFetchAllocation(id: id)!
-      try! allocation.materialize()
-      return allocation.mtlBuffer!
-    }
-    let buffer1 = getBuffer(id: operation.input)
-    let buffer2 = getBuffer(id: operation.output)
-    encoder.setComputePipelineState(unaryComputePipeline)
-    encoder.setBuffer(buffer1, offset: 0, index: 0)
-    encoder.setBuffer(buffer2, offset: 0, index: 1)
-    var bytes: Float = 1
-    encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
-    encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
-  }
-  
   func encodeMultiUnary(
     _ operation: CompiledOperation.MultiUnary,
     into encoder: MTLComputeCommandEncoder

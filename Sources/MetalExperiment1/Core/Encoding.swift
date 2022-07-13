@@ -8,7 +8,18 @@
 import Metal
 
 extension Context {
+  // TODO: A special `with` function the caller can use to make everything inside happen on the
+  // dispatch queue. This eliminates the extra 0.3 µs overhead from calling into the dispatch queue
+  // on each function call. The actual dispatch queue will still be opaque. This should be used
+  // widely in the _Raw namespace.
   static let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.Context.dispatchQueue")
+  
+  // Internally, use an inline-always synchronization function that checks a global variable.
+  // static func withSynchronization(_ body: ???)
+  
+  // Also, once you enter synchronization in any situation, this wrapper could free deadlocks. But
+  // wait to implement that feature so you can find thread synchronization bugs in the early stages
+  // of development.
   
   static func validate() {
     dispatchQueue.sync {
@@ -19,6 +30,12 @@ extension Context {
   static func commitStreamedCommand() {
     dispatchQueue.sync {
       Context.global.commitStreamedCommand()
+    }
+  }
+  
+  static func commitIncrement(inputID: UInt64, outputID: UInt64) {
+    dispatchQueue.sync {
+      Context.global.commitIncrement(inputID: inputID, outputID: outputID)
     }
   }
   
@@ -61,11 +78,17 @@ private extension Context {
   // allocation happens afterwards, during `flushStream`.
   
   func commitStreamedCommand() {
-    let operation = EagerOperation.Unary(
-      type: .increment, input: allocation1, output: allocation2, size: Context.numBufferElements)
-    eagerOperations.append(.unary(operation))
+    let inputID = allocation1
+    let outputID = allocation2
     operationCount += 1
     swap(&allocation1, &allocation2)
+    commitIncrement(inputID: inputID, outputID: outputID)
+  }
+  
+  func commitIncrement(inputID: UInt64, outputID: UInt64) {
+    let operation = EagerOperation.Unary(
+      type: .increment, input: inputID, output: outputID, size: Context.numBufferElements)
+    eagerOperations.append(.unary(operation))
     
     let backPressure = queryQueueBackPressure()
     if eagerOperations.count < Context.maxCommandsPerBatch,

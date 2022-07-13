@@ -77,6 +77,11 @@ final class MetalExperiment1Tests: XCTestCase {
     }
   }
   
+  // Alternative throughput test that validates differently.
+  func testStreamedBatchThroughput2() throws {
+    testHeader("Streamed command buffer throughput 2")
+  }
+  
   private struct ARCEvent: Equatable {
     var id: Int
     var wasAllocating: Bool

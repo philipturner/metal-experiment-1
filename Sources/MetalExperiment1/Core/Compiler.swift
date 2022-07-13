@@ -22,8 +22,10 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         let types = [unary.type]
-        let input = try! _unsafeFetchAllocation(id: unary.input)!
-        let output = try! _unsafeFetchAllocation(id: unary.output)!
+        let input = try! _unsafeFetchAllocation(id: unary.input, releasingZombies: true)!
+        let output = try! _unsafeFetchAllocation(id: unary.output, releasingZombies: true)!
+        // Allow this to become a zombie instead of deallocating normally.
+        output.initialized = true
         try! input.materialize()
         try! output.materialize()
         let size = unary.size

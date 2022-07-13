@@ -31,7 +31,7 @@ extension Context {
       guard let allocation = try ctx.fetchAllocation(id: id) else {
         throw AllocationError("Tried to read from memory that was deallocated.")
       }
-      try allocation.read(body)
+      allocation.read(body)
     }
   }
   
@@ -46,8 +46,11 @@ extension Context {
     self.generateID(allocationSize: allocationSize)
   }
   
-  internal func _unsafeFetchAllocation(id: UInt64) throws -> Allocation? {
-    try self.fetchAllocation(id: id)
+  internal func _unsafeFetchAllocation(
+    id: UInt64,
+    releasingZombies: Bool = false
+  ) throws -> Allocation? {
+    try self.fetchAllocation(id: id, releasingZombies: releasingZombies)
   }
   
   internal func _unsafeDeallocate(id: UInt64) throws {
@@ -66,22 +69,41 @@ private extension Context {
   // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
   // crashes because that's probably erroneous behavior on the frontend. Never retain the allocation
   // because that messes with ARC for deallocation. Instead, retain just the ID.
-  func fetchAllocation(id: UInt64) throws -> Allocation? {
+  func fetchAllocation(id: UInt64, releasingZombies: Bool = false) throws -> Allocation? {
     guard id < nextAllocationID else {
       throw AllocationError("No memory has ever been allocated with ID #\(id).")
     }
-    // Dictionary subscript returns an optional.
-    return allocations[id]
+    if let allocation = allocations[id] {
+      if releasingZombies && allocation.isZombie {
+        if HeapAllocator.debugInfoEnabled {
+          print("Allocation #\(id) was a zombie and has been deallocated.")
+        }
+        allocations[id] = nil
+      }
+      return allocation
+    } else {
+      return nil
+    }
   }
   
   // Makes the ID invald and releases the Swift object. Its erasure prevents memory leaks in a
   // program running forever.
   func deallocate(id: UInt64) throws {
     // Catch memory management bugs.
-    guard allocations[id] != nil else {
+    guard let allocation = allocations[id] else {
       throw AllocationError("Cannot deallocate something twice.")
     }
-    allocations[id] = nil
+    if allocation.initialized {
+      if HeapAllocator.debugInfoEnabled {
+        print("Allocation #\(id) became a zombie.")
+      }
+      allocation.isZombie = true
+    } else {
+      if HeapAllocator.debugInfoEnabled {
+        print("Allocation #\(id) was deallocated.")
+      }
+      allocations[id] = nil
+    }
   }
 }
 
@@ -118,6 +140,12 @@ class Allocation {
   // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
   // memory.
   var initialized = false
+  
+  // Initializing and quickly deallocating a tensor makes it a zombie. We still need to know what
+  // its contents were. Do not forget to check this property in the compiler and force-deallocate a
+  // zombie tensor!
+  var isZombie = false
+  
   var mtlBuffer: MTLBuffer?
   // TODO: Shape - mutable for zero-cost reshape op
   // TODO: Data Type - mutable but only to match style of other properties
@@ -215,16 +243,14 @@ class Allocation {
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
-    guard let bufferToCopy = mtlBuffer else {
-      throw AllocationError("Read from memory with a null underlying `MTLBuffer`.")
-    }
-    var bufferToRead: MTLBuffer
-    if isShared {
-      bufferToRead = bufferToCopy
-    } else {
+  func read(_ body: (UnsafeRawBufferPointer) -> Void) {
+    // Cannot materialize here because it might not be initialized. Only safe place to materialize
+    // is in the compiler, where it's at least derived from something that was initialized.
+    var bufferToRead: MTLBuffer!
+    if !isShared {
       // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
-      // TODO: Append a command that will copy the memory.
+      // TODO: Append a command that will copy the memory. This command is special, in that is takes
+      // a `MTLBuffer` as output but can have an unmaterialized allocation as input.
       fatalError("Haven't implemented reading memory from a discrete GPU.")
     }
     // TODO: Special barrier, waits until the last command buffer referencing this finishes. If the
@@ -236,7 +262,11 @@ class Allocation {
     // beginning of `bufferedOperations`, unless one of those operations references it. This
     // violates sequential order of execution, but produces the same end result.
     Context._unsafeBarrier()
+    precondition(materialized, "Should have materialized during compilation.")
     
+    if isShared {
+      bufferToRead = self.mtlBuffer!
+    }
     let contents = bufferToRead.contents()
     let ptr = UnsafeRawBufferPointer(start: contents, count: size)
     body(ptr)

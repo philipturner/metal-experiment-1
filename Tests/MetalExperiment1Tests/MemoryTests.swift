@@ -263,4 +263,28 @@ final class MemoryTests: XCTestCase {
       }
     }
   }
+  
+  func testTensorHandleLifetime() throws {
+    testHeader("Tensor handle lifetime")
+    do {
+      _ = TensorHandle(repeating: 5, count: 2)
+    }
+    print("checkpoint 1")
+    let handle1 = TensorHandle(repeating: 5, count: 2)
+    XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+    
+    print("checkpoint 2")
+    let handle2 = handle1.incremented()
+    XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+    
+    print("checkpoint 3")
+    let handle3 = handle1.incremented().incremented()
+    XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
+    
+    print("checkpoint 4")
+    let handle4 = handle2.incremented().incremented().incremented()
+    XCTAssertEqual(handle4.copyScalars(), [9.0, 9.0])
+//    let handle5 = handle4.incremented()
+//    XCTAssertEqual(handle5.copyScalars(), [9.0, 9.0])
+  }
 }
