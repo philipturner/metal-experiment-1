@@ -102,6 +102,11 @@ private extension Context {
       // scheduled handler, it was so unreliable and often harmed performance or did nothing. I
       // should revisit this once I confirm the delay for a total stop of the pipeline is 400 μs.
       // If done right, I could sometimes reduce it to 200 μs here.
+      //
+      // "constant folding" on the CPU should reduce the overhead of scalar-wise operators after the
+      // read to near-zero, so maybe we don't need to wait for two command buffers to come through
+      // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
+      // pointless. The delay is 200 μs in every case.
     }
     commandBuffer.addCompletedHandler { _ in
       let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
