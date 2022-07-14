@@ -215,10 +215,6 @@ class Allocation {
   
   @inline(never)
   private func actuallyMaterialize() throws {
-    defer {
-      materialized = true
-    }
-    
     let device = Context.global.device
     let allocatedSize = HeapAllocator.global.totalAllocatedMemory
     if Context.global.permitExceedingSystemRAM {
@@ -259,6 +255,7 @@ class Allocation {
       throw AllocationError("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
     self.mtlBuffer = mtlBuffer
+    self.materialized = true
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is

@@ -300,4 +300,53 @@ final class MemoryTests: XCTestCase {
     print()
     print("End of function")
   }
+  
+  func testMassiveAllocation() throws {
+    testHeader("Massive memory allocation")
+    HeapAllocator.global._releaseCachedBufferBlocks()
+    
+    let device = Context.global.device
+    #if os(macOS)
+    let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+    #else
+    let maxWorkingSize = device.maxBufferLength
+    #endif
+    let maxBufferLength = device.maxBufferLength
+    
+    let bufferSize1 = maxBufferLength - 16384
+    let bufferSize2 = (maxWorkingSize - maxBufferLength) + 16384
+    let bufferCount3 = 16384 / MemoryLayout<Float>.stride
+    
+    let bufferID1 = Context.generateID(allocationSize: bufferSize1)
+    let bufferID2 = Context.generateID(allocationSize: bufferSize2)
+    defer {
+      try! Context.release(id: bufferID1)
+      try! Context.release(id: bufferID2)
+    }
+    
+    var tensor3: TensorHandle?
+    Context.withDispatchQueue {
+      Context.global.permitExceedingSystemRAM = true
+      try! Context.initialize(id: bufferID1) { _ in }
+      
+      Context.global.permitExceedingSystemRAM = true
+      try! Context.initialize(id: bufferID2) { _ in }
+      
+      Context.global.permitExceedingSystemRAM = true
+      tensor3 = TensorHandle(repeating: 0, count: bufferCount3)
+      Context.global.permitExceedingSystemRAM = false
+    }
+    guard let tensor3 = tensor3 else {
+      fatalError("This should never happen.")
+    }
+    
+    withExtendedLifetime(tensor3) {
+      let tensor4 = tensor3.incremented()
+      
+      let scalars3 = tensor3.copyScalars()
+      let scalars4 = tensor4.copyScalars()
+      print("Tensor 3: [\(scalars3[0]), ...]")
+      print("Tensor 4: [\(scalars4[0]), ...]")
+    }
+  }
 }

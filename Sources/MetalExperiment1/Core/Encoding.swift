@@ -227,10 +227,10 @@ private extension Context {
         }
         if encounteredError {
           if numCommittedBatches.load(ordering: .sequentiallyConsistent) == 0 {
-            if HeapAllocator.debugInfoEnabled {
+            if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
               print("""
-                One of the first commands ever submitted was to interact with an exorbitant amount
-                of memory.
+                One of the first commands ever submitted was to interact with an exorbitant amount \
+                of memory. An allocation may have exceeded the size of your GPU's RAM.
                 """)
             }
           } else {
