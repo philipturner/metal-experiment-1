@@ -25,22 +25,36 @@ final class MetalExperiment1Tests: XCTestCase {
     
     for _ in 0..<2 {
       Profiler.checkpoint()
-      _ = Context.dispatchQueue.sync {
+      _ = Context.withDispatchQueue {
         Bool.random()
       }
       Profiler.log("Dispatch queue latency")
     }
     
-    Profiler.checkpoint()
-    let iterations = 100
-    for _ in 0..<iterations {
-      _ = Context.dispatchQueue.sync {
-        Bool.random()
+    do {
+      Profiler.checkpoint()
+      let iterations = 100
+      for _ in 0..<iterations {
+        _ = Context.withDispatchQueue {
+          Bool.random()
+        }
       }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("Dispatch queue throughput: \(throughput) \(Profiler.timeUnit)")
     }
-    let totalTime = Profiler.checkpoint()
-    let throughput = Double(totalTime) / Double(iterations)
-    print("Dispatch queue throughput: \(throughput) \(Profiler.timeUnit)")
+    
+    do {
+      Profiler.checkpoint()
+      let iterations = 1000
+      for _ in 0..<iterations {
+        Context.testSynchronizationOverhead()
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("Synchronization throughput: \(throughput) \(Profiler.timeUnit)")
+    }
+    
   }
   
   func testStreamedBatchThroughput() throws {
@@ -66,17 +80,20 @@ final class MetalExperiment1Tests: XCTestCase {
     func profileStream(length: Int) {
       print("--- Stream size: \(length) ---")
       Profiler.checkpoint()
-      for _ in 0..<length {
-        Context.commitStreamedCommand()
+      Context.withDispatchQueue {
+        for _ in 0..<length {
+          Context.commitStreamedCommand()
+        }
       }
       let latency = Profiler.checkpoint()
       Context.validate()
       
       let totalTime = latency + Profiler.checkpoint()
       let latencyAverage = Double(latency * 10 / length) / 10
+      let throughputAverage = Double(totalTime * 10 / length) / 10
       print("""
         Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
-        Amortized sequential throughput: \(totalTime / length) \(Profiler.timeUnit), \
+        Amortized sequential throughput: \(throughputAverage) \(Profiler.timeUnit), \
         Total time: \(totalTime) \(Profiler.timeUnit)
         """)
     }
@@ -117,19 +134,22 @@ final class MetalExperiment1Tests: XCTestCase {
     func profileStream(length: Int) {
       print("--- Stream size: \(length) ---")
       Profiler.checkpoint()
-      var handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
-      for _ in 0..<length {
-//        handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
-        handle = handle.incremented()
+      let handle = Context.withDispatchQueue {
+        var handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
+        for _ in 0..<length {
+          handle = handle.incremented()
+        }
+        return handle
       }
       let latency = Profiler.checkpoint()
       validate(handle, value: Float(length))
       
       let totalTime = latency + Profiler.checkpoint()
       let latencyAverage = Double(latency * 10 / length) / 10
+      let throughputAverage = Double(totalTime * 10 / length) / 10
       print("""
         Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
-        Amortized sequential throughput: \(totalTime / length) \(Profiler.timeUnit), \
+        Amortized sequential throughput: \(throughputAverage) \(Profiler.timeUnit), \
         Total time: \(totalTime) \(Profiler.timeUnit)
         """)
     }

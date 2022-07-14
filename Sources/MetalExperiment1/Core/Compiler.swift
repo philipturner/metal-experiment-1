@@ -86,13 +86,13 @@ extension Context {
           if pendingFusionOperationExists() {
             appendFusionOperation()
           }
-          input = try! _unsafeFetchAllocation(id: unary.input)!
+          input = _compilerFetchAllocation(id: unary.input)
           unaryFusionHead = input
           unaryFusionSize = unary.size
         }
         unaryFusionArray.append(unary.type)
         
-        let output = try! _unsafeFetchAllocation(id: unary.output)!
+        let output = _compilerFetchAllocation(id: unary.output)
         unaryFusionTail = output
         unaryFusionTailID = unary.output
         _compilerRelease(input)

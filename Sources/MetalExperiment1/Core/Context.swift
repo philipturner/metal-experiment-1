@@ -9,7 +9,7 @@ import Atomics
 import Metal
 
 class Context {
-  static var global = Context()
+  static let global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var unaryComputePipeline: MTLComputePipelineState
@@ -58,18 +58,11 @@ class Context {
   
   private func generateID() -> UInt64 {
     let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-    let id = _unsafeGenerateID(allocationSize: bufferSize)
-    let allocation = try! _unsafeFetchAllocation(id: id)!
-    try! allocation.materialize()
-    try! allocation.initialize { bufferPointer in
+    let id = Context.generateID(allocationSize: bufferSize)
+    try! Context.initialize(id: id) { bufferPointer in
       let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
       ptr.initialize(repeating: 0.0)
     }
     return id
-  }
-  
-  deinit {
-    try! self._unsafeRelease(id: allocation1)
-    try! self._unsafeRelease(id: allocation2)
   }
 }

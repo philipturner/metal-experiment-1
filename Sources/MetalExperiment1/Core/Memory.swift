@@ -9,13 +9,13 @@ import MetalPerformanceShadersGraph
 
 extension Context {
   static func generateID(allocationSize: Int) -> UInt64 {
-    dispatchQueue.sync {
+    withDispatchQueue {
       Context.global.generateID(allocationSize: allocationSize)
     }
   }
   
   static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    try dispatchQueue.sync {
+    try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
         throw AllocationError("Tried to initialize memory that was deallocated.")
@@ -26,7 +26,7 @@ extension Context {
   }
   
   static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
-    try dispatchQueue.sync {
+    try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
         throw AllocationError("Tried to read from memory that was deallocated.")
@@ -36,26 +36,37 @@ extension Context {
   }
   
   static func release(id: UInt64) throws {
-    try dispatchQueue.sync {
+    try withDispatchQueue {
       try Context.global.release(id: id)
     }
   }
   
-  // Remove "_unsafe" wrappers once these are scoped as public or not.
-  internal func _unsafeGenerateID(allocationSize: Int) -> UInt64 {
-    self.generateID(allocationSize: allocationSize)
+  @inline(never)
+  private func _slowFail(id: UInt64) -> Never {
+    if id < nextAllocationID {
+      preconditionFailure("No memory has ever been allocated with ID #\(id).")
+    } else {
+      preconditionFailure("Allocation #\(id) has already been deallocated.")
+    }
   }
   
-  internal func _unsafeFetchAllocation(id: UInt64) throws -> Allocation? {
-    try self.fetchAllocation(id: id)
+  @inline(__always)
+  internal func _compilerFetchAllocation(id: UInt64) -> Allocation {
+    guard let allocation = allocations[id] else {
+      _slowFail(id: id)
+    }
+    return allocation
   }
   
-  internal func _unsafeRetain(id: UInt64) throws {
-    try self.retain(id: id)
-  }
-  
-  internal func _unsafeRelease(id: UInt64) throws {
-    try self.release(id: id)
+  @inline(__always)
+  internal func _compilerRetain(id: UInt64) {
+    guard let allocation = allocations[id] else {
+      _slowFail(id: id)
+    }
+    allocation.referenceCount += 1
+    if _slowPath(Allocation.debugInfoEnabled) {
+      print("Allocation #\(id) jumped to a reference count of \(allocation.referenceCount).")
+    }
   }
   
   @inline(__always)
@@ -289,7 +300,7 @@ class Allocation {
     // You can also prioritize the copying op, if on a discrete GPU. Prepend the copying op to the
     // beginning of `bufferedOperations`, unless one of those operations references it. This
     // violates sequential order of execution, but produces the same end result.
-    Context._unsafeBarrier()
+    Context.global._compilerBarrier()
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
     guard initialized else {

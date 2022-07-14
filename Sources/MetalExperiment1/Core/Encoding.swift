@@ -8,45 +8,42 @@
 import Metal
 
 extension Context {
-  // TODO: A special `with` function the caller can use to make everything inside happen on the
-  // dispatch queue. This eliminates the extra 0.3 µs overhead from calling into the dispatch queue
-  // on each function call. The actual dispatch queue will still be opaque. This should be used
-  // widely in the _Raw namespace.
-  static let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.Context.dispatchQueue")
-  
-  // Internally, use an inline-always synchronization function that checks a global variable.
-  // static func withSynchronization(_ body: ???)
-  
-  // Also, once you enter synchronization in any situation, this wrapper could free deadlocks. But
-  // wait to implement that feature so you can find thread synchronization bugs in the early stages
-  // of development.
-  
   static func validate() {
-    dispatchQueue.sync {
-      Context.global.validate()
+    withDispatchQueue {
+      let ctx = Context.global
+      ctx.barrier()
+      try! Context.read(id: ctx.allocation1) { bufferPointer in
+        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
+        precondition(ptr[0] == Float(ctx.operationCount))
+      }
     }
   }
   
   static func commitStreamedCommand() {
-    dispatchQueue.sync {
+    withDispatchQueue {
       Context.global.commitStreamedCommand()
     }
   }
   
   static func commitIncrement(inputID: UInt64, outputID: UInt64) {
-    dispatchQueue.sync {
+    withDispatchQueue {
       Context.global.commitIncrement(inputID: inputID, outputID: outputID)
     }
   }
   
   static func barrier() {
-    dispatchQueue.sync {
+    withDispatchQueue {
       Context.global.barrier()
     }
   }
   
-  static func _unsafeBarrier() {
-    Context.global.barrier()
+  @inline(__always)
+  internal func _compilerBarrier() {
+    let ctx = Context.global
+    ctx.flushStream()
+    if let commandBuffer = ctx.lastCommandBuffer {
+      commandBuffer.waitUntilCompleted()
+    }
   }
 }
 
@@ -63,14 +60,6 @@ private extension Context {
     let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
     return numCommitted - numScheduled
   }
-  
-  func validate() {
-    barrier()
-    let allocation = try! _unsafeFetchAllocation(id: allocation1)!
-    let lastOutputBuffer = allocation.mtlBuffer!
-    let ptr = lastOutputBuffer.contents().assumingMemoryBound(to: Float.self)
-    precondition(ptr[0] == Float(operationCount))
-  }
 }
 
 private extension Context {
@@ -86,8 +75,8 @@ private extension Context {
   }
   
   func commitIncrement(inputID: UInt64, outputID: UInt64) {
-    try! _unsafeRetain(id: inputID)
-    try! _unsafeRetain(id: outputID)
+    _compilerRetain(id: inputID)
+    _compilerRetain(id: outputID)
     let operation = EagerOperation.Unary(
       type: .increment, input: inputID, output: outputID, size: Context.numBufferElements)
     eagerOperations.append(.unary(operation))
@@ -105,7 +94,9 @@ private extension Context {
     // Idea: After a "read" instruction, you have a certain window of time to delay the next command
     // buffer. This should compound with the CPU-side "constant folding". To prevent this from
     // harming GPU-executed performance in the future, it wears off after a fixed number of µs. For
-    // example, the round-trip latency of a command buffer (150 µs, but can vary between platforms).
+    // example, the timer could be 1/2 the round-trip latency of a command buffer (1/2 * 200 µs, but
+    // can vary between platforms). I could track the minimum command buffer latency at runtime to
+    // get a better estimate of its value across all GPUs.
     flushStream(precomputedBackPressure: backPressure)
   }
   
@@ -152,10 +143,14 @@ private extension Context {
       // read to near-zero, so maybe we don't need to wait for two command buffers to come through
       // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
       // pointless. The delay is 200 μs in every case.
+      //
+      // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
+      // to `flushStream(precomputedBackpressure:)`.
     }
-    commandBuffer.addCompletedHandler { [compiledOperations] _ in
-      // Retain compiled operations in this closure.
-      _ = compiledOperations
+    
+    // Retain compiled operations in this closure.
+    let retainCompiledOperations = { _ = compiledOperations }
+    commandBuffer.addCompletedHandler { _ in
       let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
       let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
         ordering: .sequentiallyConsistent)
@@ -163,9 +158,12 @@ private extension Context {
       // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
       // frontend never calls into the backend, leaving the GPU starved of work.
       if numCommitted == numCompleted {
-        Context.dispatchQueue.async {
+        Context._dispatchQueue.async {
+          retainCompiledOperations()
           Context.global.flushStream()
         }
+      } else {
+        Context._dispatchQueue.async(execute: retainCompiledOperations)
       }
     }
     commandBuffer.commit()

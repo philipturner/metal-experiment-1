@@ -215,7 +215,7 @@ class BufferPool {
 // MARK: - Declaration of HeapAllocator
 
 class HeapAllocator {
-  static var global = HeapAllocator()
+  static let global = HeapAllocator()
   
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
   static var debugInfoEnabled = fetchEnvironmentBoolean(

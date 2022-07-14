@@ -131,18 +131,18 @@ final class MemoryTests: XCTestCase {
     func fakeAllocateDeallocate(numBuffers: Int) throws {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
-        let id = Context.dispatchQueue.sync {
+        let id = Context.withDispatchQueue {
           return UInt64(2)
         }
         ids.append(id)
       }
       for id in ids {
-        Context.dispatchQueue.sync {
+        Context.withDispatchQueue {
           _ = id
         }
       }
       for id in ids {
-        Context.dispatchQueue.sync {
+        Context.withDispatchQueue {
           _ = id
         }
       }
@@ -154,7 +154,7 @@ final class MemoryTests: XCTestCase {
         ids.append(id)
       }
       for id in ids {
-        Context.dispatchQueue.sync {
+        Context.withDispatchQueue {
           _ = id
         }
       }
@@ -225,38 +225,38 @@ final class MemoryTests: XCTestCase {
       HeapAllocator.global._releaseCachedBufferBlocks()
       let smallBufferID1 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID1) }
-      Context.dispatchQueue.sync {
+      Context.withDispatchQueue {
         Context.global.permitExceedingSystemRAM = true
       }
       
       let largeBufferSize = Context.global.device.maxBufferLength
       let largeBufferID1 = allocate(size: largeBufferSize)
       defer { deallocate(id: largeBufferID1) }
-      Context.dispatchQueue.sync {
+      Context.withDispatchQueue {
         XCTAssert(Context.global.permitExceedingSystemRAM)
       }
       
       let smallBufferID2 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID2) }
-      Context.dispatchQueue.sync {
+      Context.withDispatchQueue {
         XCTAssert(Context.global.permitExceedingSystemRAM)
       }
     }
-    Context.dispatchQueue.sync {
+    Context.withDispatchQueue {
       XCTAssert(Context.global.permitExceedingSystemRAM)
     }
     
     do {
       let smallBufferID3 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID3) }
-      Context.dispatchQueue.sync {
+      Context.withDispatchQueue {
         XCTAssert(Context.global.permitExceedingSystemRAM)
       }
       
       HeapAllocator.global._releaseCachedBufferBlocks()
       let smallBufferID4 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID4) }
-      Context.dispatchQueue.sync {
+      Context.withDispatchQueue {
         XCTAssertFalse(Context.global.permitExceedingSystemRAM)
       }
     }
