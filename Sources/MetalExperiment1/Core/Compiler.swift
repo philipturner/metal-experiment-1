@@ -26,7 +26,9 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    for eagerOperation in eagerOperations {
+    let maxIndex = eagerOperations.count - 1
+    for i in 0...maxIndex {
+      let eagerOperation = eagerOperations[i]
       switch eagerOperation {
       case .unary(let unary):
         let types = [unary.type]
@@ -34,9 +36,13 @@ extension Context {
         let output = try! _unsafeFetchAllocation(id: unary.output)!
         let size = unary.size
         
-        try! input.materialize()
-        try! output.materialize()
-        output.initialized = true
+        // TODO: Change this heuristic from (last instruction's buffer gets marked initialized) to
+        // (last buffer in a dependency chain gets marked initialized). But to pull that off, I need
+        // to construct an entire graph data structure inside this function, which can be
+        // efficiently traversed by querying a buffer.
+        if i == maxIndex {
+          output.initialized = true
+        }
         _compilerRelease(input)
         _compilerRelease(output)
         

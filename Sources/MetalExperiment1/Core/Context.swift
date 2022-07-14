@@ -24,7 +24,7 @@ class Context {
   static var profilingEncoding = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
   
-  static var maxCommandsPerBatch = 100
+  static var maxCommandsPerBatch = 128
   var numCommittedBatches: ManagedAtomic<Int> = .init(0)
   var numScheduledBatches: ManagedAtomic<Int> = .init(0)
   var numCompletedBatches: ManagedAtomic<Int> = .init(0)

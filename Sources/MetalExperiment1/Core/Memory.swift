@@ -69,7 +69,11 @@ extension Context {
     if referenceCount == 0 {
       allocations[id] = nil
       if _slowPath(Allocation.debugInfoEnabled) {
-        print("Allocation #\(id) was deallocated.")
+        if allocation.initialized {
+          print("Allocation #\(id) was deallocated after being initialized.")
+        } else {
+          print("Allocation #\(id) was deallocated.")
+        }
       }
     } else if _slowPath(Allocation.debugInfoEnabled) {
       print("Allocation #\(id) dropped to a reference count of \(referenceCount).")
@@ -118,7 +122,11 @@ private extension Context {
     allocation.referenceCount -= 1
     if allocation.referenceCount == 0 {
       if Allocation.debugInfoEnabled {
-        print("Allocation #\(id) was deallocated.")
+        if allocation.initialized {
+          print("Allocation #\(id) was deallocated after being initialized.")
+        } else {
+          print("Allocation #\(id) was deallocated.")
+        }
       }
       allocations[id] = nil
     } else {
