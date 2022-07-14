@@ -264,7 +264,9 @@ final class MemoryTests: XCTestCase {
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
-    Allocation.debugInfoEnabled = true
+    Context.withDispatchQueue {
+      Allocation.debugInfoEnabled = true
+    }
     print("Start of function")
     do {
       _ = TensorHandle(repeating: 5, count: 2)

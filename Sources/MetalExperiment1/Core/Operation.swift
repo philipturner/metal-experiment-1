@@ -25,11 +25,11 @@ enum EagerOperation {
   case unary(Unary)
 }
 
-// Instead of keeping references to the individual buffers, this keeps references to the
-// compiled operations until finishing. That's a simpler way to manage the memory.
+// Instead of keeping references to the individual buffers, this keeps references to the compiled
+// operations until finishing. That's a simpler way to manage the memory.
 enum CompiledOperation {
   struct MultiUnary {
-    // Change this to a possible SIMD vector to prevent allocating an array.
+    // TODO: Change this to a possible SIMD vector to prevent allocating an array.
     var types: [UnaryOperationType]
     var input: Allocation
     var output: Allocation
@@ -39,27 +39,70 @@ enum CompiledOperation {
   case multiUnary(MultiUnary)
 }
 
-extension Context {
-  func encodeCompiledOperation(
-    _ operation: CompiledOperation,
-    into encoder: MTLComputeCommandEncoder
-  ) throws {
-    switch operation {
-    case .multiUnary(let multiUnary):
-      try encodeMultiUnary(multiUnary, into: encoder)
+// MARK: - Metal Compute Command Encoding
+
+struct EncodingContext {
+  let commandBuffer: MTLCommandBuffer
+  private var encoder: MTLComputeCommandEncoder?
+  private unowned var state: MTLComputePipelineState?
+  
+  init(commandBuffer: MTLCommandBuffer) {
+    self.commandBuffer = commandBuffer
+  }
+  
+  @inline(__always)
+  mutating func makeEncoder() -> MTLComputeCommandEncoder {
+    if let encoder = encoder {
+      return encoder
+    } else {
+      let encoder = commandBuffer.makeComputeCommandEncoder()!
+      self.encoder = encoder
+      return encoder
+    }
+  }
+  
+  @inline(__always)
+  mutating func finishEncoder() {
+    if let encoder = encoder {
+      encoder.endEncoding()
+      self.encoder = nil
+    }
+  }
+  
+  @inline(__always)
+  mutating func setComputePipelineState(_ state: MTLComputePipelineState) {
+    if self.state === state {
+      // Skip function call.
+    } else {
+      self.state = state
+      encoder!.setComputePipelineState(state)
     }
   }
 }
 
-// Making these private forces them to inline into their caller.
+extension Context {
+  func encodeCompiledOperation(
+    _ operation: CompiledOperation,
+    into ectx: inout EncodingContext
+  ) throws {
+    switch operation {
+    case .multiUnary(let multiUnary):
+      try encodeMultiUnary(multiUnary, into: &ectx)
+    }
+  }
+}
+
 private extension Context {
   func encodeMultiUnary(
     _ operation: CompiledOperation.MultiUnary,
-    into encoder: MTLComputeCommandEncoder
+    into ectx: inout EncodingContext
   ) throws {
     try operation.input.materialize()
     try operation.output.materialize()
-    encoder.setComputePipelineState(unaryComputePipeline)
+    
+    let encoder = ectx.makeEncoder()
+    ectx.setComputePipelineState(unaryComputePipeline)
+    
     encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
     

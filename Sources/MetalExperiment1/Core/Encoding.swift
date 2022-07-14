@@ -117,14 +117,14 @@ private extension Context {
     }
     let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
     let commandBuffer = commandQueue.makeCommandBuffer()!
-    let encoder = commandBuffer.makeComputeCommandEncoder()!
+    var encodingContext = EncodingContext(commandBuffer: commandBuffer)
     
     // TODO: Divide the array of compiled operations when there is an out of memory error. Try to
     // eliminate a function call by doing this in a loop.
     for operation in compiledOperations {
-      try! encodeCompiledOperation(operation, into: encoder)
+      try! encodeCompiledOperation(operation, into: &encodingContext)
     }
-    encoder.endEncoding()
+    encodingContext.finishEncoder()
     
     numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
     commandBuffer.addScheduledHandler { _ in

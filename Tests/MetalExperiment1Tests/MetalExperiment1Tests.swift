@@ -3,7 +3,9 @@ import XCTest
 
 func testHeader(_ message: String) {
   Profiler.checkpoint()
-  _ = Context.global
+  Context.withDispatchQueue {
+    _ = Context.global
+  }
   let startupTime = Profiler.checkpoint()
   if startupTime > 1000 {
     print("=== Initialize context ===")
@@ -15,7 +17,9 @@ func testHeader(_ message: String) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Allocation.debugInfoEnabled = false
+  Context.withDispatchQueue {
+    Allocation.debugInfoEnabled = false
+  }
   Context.barrier()
 }
 
