@@ -101,6 +101,11 @@ private extension Context {
     // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
     // slow start right after reading a buffer's contents, being unable to fuse unary operators and
     // creating a no-op pass through the compiler.
+    //
+    // Idea: After a "read" instruction, you have a certain window of time to delay the next command
+    // buffer. This should compound with the CPU-side "constant folding". To prevent this from
+    // harming GPU-executed performance in the future, it wears off after a fixed number of µs. For
+    // example, the round-trip latency of a command buffer (150 µs, but can vary between platforms).
     flushStream(precomputedBackPressure: backPressure)
   }
   
