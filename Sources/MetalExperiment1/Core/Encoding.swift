@@ -97,6 +97,10 @@ private extension Context {
     // example, the timer could be 1/2 the round-trip latency of a command buffer (1/2 * 200 µs, but
     // can vary between platforms). I could track the minimum command buffer latency at runtime to
     // get a better estimate of its value across all GPUs.
+    //
+    // Perhaps to query a reasonable minimum for command buffer latency, I can send an empty one at
+    // program startup. It should take longer than most because the system isn't fired up, but it
+    // will at least be smaller than a supermassive batch with 128 unique commands in it.
     flushStream(precomputedBackPressure: backPressure)
   }
   
