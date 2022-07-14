@@ -222,6 +222,15 @@ class Allocation {
     let device = Context.global.device
     let allocatedSize = HeapAllocator.global.totalAllocatedMemory
     if Context.global.permitExceedingSystemRAM {
+      // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
+      // length should be >50% system memory size. If it's hovering above the system RAM size
+      // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
+      // command stream. In that case, flushing the command stream constantly as is oscillates above
+      // and below a certain threshold would seriously degrade performance. But if it jumped the
+      // threshold because my backend queued up too many commands, most of the memory would quickly
+      // deallocate.
+      //
+      // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
       if allocatedSize + size <= device.maxBufferLength {
         if HeapAllocator.debugInfoEnabled {
           print("Memory allocation returned to something smaller than system RAM.")

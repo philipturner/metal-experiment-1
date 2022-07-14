@@ -105,20 +105,17 @@ private extension Context {
     guard numEagerOperations > 0 else {
       return
     }
-    let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
-    
     var compileStartTime: UInt64 = 0
+    var encodeStartTime: UInt64 = 0
     if Context.profilingEncoding {
       compileStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     let compiledOperations = compileEagerOperations()
-    // Avoid retaining the reference to `compiledOperations` just to query its count later on.
-    let numCompiledOperations = compiledOperations.count
-    
-    var encodeStartTime: UInt64 = 0
+   
     if Context.profilingEncoding {
       encodeStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
+    let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
     let commandBuffer = commandQueue.makeCommandBuffer()!
     let encoder = commandBuffer.makeComputeCommandEncoder()!
     
@@ -148,8 +145,11 @@ private extension Context {
       // to `flushStream(precomputedBackpressure:)`.
     }
     
+    // Avoid retaining the reference to `compiledOperations` just to query its count later on.
+    let numCompiledOperations = compiledOperations.count
     // Retain compiled operations in this closure.
     let retainCompiledOperations = { _ = compiledOperations }
+    
     commandBuffer.addCompletedHandler { _ in
       let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
       let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(

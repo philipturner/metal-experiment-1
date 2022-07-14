@@ -8,8 +8,8 @@
 import Metal
 
 extension Context {
-  // Start off with a no-op compiler, which doesn't fuse any placeholders. Aggressively optimize the
-  // function calls here for low CPU-side overhead.
+  // Make specialized execution paths for having either 1 or 2 eager operations queued up. These
+  // paths will have lower CPU-side latency.
   func compileEagerOperations() -> [CompiledOperation] {
     if _slowPath(Allocation.debugInfoEnabled) {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
