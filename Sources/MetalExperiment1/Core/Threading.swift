@@ -35,7 +35,7 @@ extension Context {
   // Also, once you enter synchronization in any situation, this wrapper could free deadlocks. But
   // wait to implement that feature so you can find thread synchronization bugs in the early stages
   // of development.
-  static func withDispatchQueue<T>(_ body: () throws -> T) rethrows -> T {
+  public static func withDispatchQueue<T>(_ body: () throws -> T) rethrows -> T {
     if DispatchQueue.getSpecific(key: dispatchQueueIdentifier) == true {
       return try body()
     } else {

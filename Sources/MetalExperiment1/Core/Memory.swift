@@ -8,13 +8,13 @@
 import MetalPerformanceShadersGraph
 
 extension Context {
-  static func generateID(allocationSize: Int) -> UInt64 {
+  public static func generateID(allocationSize: Int) -> UInt64 {
     withDispatchQueue {
       Context.global.generateID(allocationSize: allocationSize)
     }
   }
   
-  static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
     try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
@@ -25,7 +25,7 @@ extension Context {
     }
   }
   
-  static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
+  public static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
     try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
@@ -35,7 +35,7 @@ extension Context {
     }
   }
   
-  static func release(id: UInt64) throws {
+  public static func release(id: UInt64) throws {
     try withDispatchQueue {
       try Context.global.release(id: id)
     }

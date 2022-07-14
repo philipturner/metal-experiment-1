@@ -8,7 +8,7 @@
 import Atomics
 import Metal
 
-class Context {
+public class Context {
   static let global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue

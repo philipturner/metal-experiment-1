@@ -25,7 +25,7 @@ extension Context {
     }
   }
   
-  static func commitIncrement(inputID: UInt64, outputID: UInt64) {
+  public static func commitIncrement(inputID: UInt64, outputID: UInt64) {
     withDispatchQueue {
       Context.global.commitIncrement(inputID: inputID, outputID: outputID)
     }

@@ -5,7 +5,7 @@
 //  Created by Philip Turner on 7/13/22.
 //
 
-@testable import MetalExperiment1
+import MetalExperiment1
 
 class TensorHandle {
   private(set) var id: UInt64
