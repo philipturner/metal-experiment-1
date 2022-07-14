@@ -105,30 +105,55 @@ private extension Context {
     guard numEagerOperations > 0 else {
       return
     }
+    
+    // Start profiling compilation.
     var compileStartTime: UInt64 = 0
-    var encodeStartTime: UInt64 = 0
     if Context.profilingEncoding {
       compileStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     let compiledOperations = compileEagerOperations()
-   
+    
+    // Start profiling encoding.
+    var encodeStartTime: UInt64 = 0
     if Context.profilingEncoding {
       encodeStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
-    let commandBuffer = commandQueue.makeCommandBuffer()!
-    var encodingContext = EncodingContext(commandBuffer: commandBuffer)
-    
-    // TODO: Divide the array of compiled operations when there is an out of memory error. Try to
-    // eliminate a function call by doing this in a loop.
-    for operation in compiledOperations {
-      try! encodeCompiledOperation(operation, into: &encodingContext)
+    defer {
+      if Context.profilingEncoding {
+        let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        // Try to vectorize the division by 1000.
+        let compileDuration = Int(encodeStartTime - compileStartTime) / 1000
+        let encodeDuration = Int(encodeEndTime - encodeStartTime) / 1000
+        print("""
+          Compile time: \(compileDuration) \(Profiler.timeUnit), \
+          Encode time: \(encodeDuration) \(Profiler.timeUnit), \
+          Batches in flight: \(previousBackPressure), \
+          #Commands: \(numEagerOperations) -> \(compiledOperations.count)
+          """)
+      }
     }
-    encodingContext.finishEncoder()
     
-    numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
-    commandBuffer.addScheduledHandler { _ in
-      self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+    // If the compiler removes all eager operations (by constant folding or eliding no-ops), avoid
+    // the overhead of creating a command buffer.
+    if compiledOperations.count == 0 {
+      return
+    }
+    var encodingContext = EncodingContext(commandBuffer: commandQueue.makeCommandBuffer()!)
+    
+    // Only called in one location, the loop that iterates over each operation.
+    func submitBatch(range: Range<Int>) {
+      encodingContext.finishEncoder()
+      
+      // Force the memory allocations to stay alive until the command buffer finishes.
+      var retainClosure: () -> Void
+      if range == compiledOperations.indices {
+        retainClosure = { _ = compiledOperations }
+      } else {
+        let submittedOperations = Array(compiledOperations[range])
+        retainClosure = { _ = submittedOperations }
+      }
+      
       // TODO: Look back into the latency here. If the CPU does a control flow operator depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
       // total latency. I originally settled on using the completion handler because in the
@@ -143,43 +168,78 @@ private extension Context {
       //
       // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
       // to `flushStream(precomputedBackpressure:)`.
-    }
-    
-    // Avoid retaining the reference to `compiledOperations` just to query its count later on.
-    let numCompiledOperations = compiledOperations.count
-    // Retain compiled operations in this closure.
-    let retainCompiledOperations = { _ = compiledOperations }
-    
-    commandBuffer.addCompletedHandler { _ in
-      let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
-      let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
-        ordering: .sequentiallyConsistent)
-      
-      // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
-      // frontend never calls into the backend, leaving the GPU starved of work.
-      if numCommitted == numCompleted {
-        Context._dispatchQueue.async {
-          retainCompiledOperations()
-          Context.global.flushStream()
-        }
-      } else {
-        Context._dispatchQueue.async(execute: retainCompiledOperations)
+      numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+      encodingContext.commandBuffer.addScheduledHandler { _ in
+        self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
+      
+      encodingContext.commandBuffer.addCompletedHandler { _ in
+        let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
+        let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
+          ordering: .sequentiallyConsistent)
+        
+        // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
+        // frontend never calls into the backend, leaving the GPU starved of work.
+        if numCommitted == numCompleted {
+          Context._dispatchQueue.async {
+            retainClosure()
+            Context.global.flushStream()
+          }
+        } else {
+          Context._dispatchQueue.async(execute: retainClosure)
+        }
+      }
+      encodingContext.commandBuffer.commit()
+      lastCommandBuffer = encodingContext.commandBuffer
     }
-    commandBuffer.commit()
-    lastCommandBuffer = commandBuffer
     
-    if Context.profilingEncoding {
-      let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
-      // Try to vectorize the division by 1000.
-      let compileDuration = Int(encodeStartTime - compileStartTime) / 1000
-      let encodeDuration = Int(encodeEndTime - encodeStartTime) / 1000
-      print("""
-        Compile time: \(compileDuration) \(Profiler.timeUnit), \
-        Encode time: \(encodeDuration) \(Profiler.timeUnit), \
-        Batches in flight: \(previousBackPressure), \
-        #Commands: \(numEagerOperations) -> \(numCompiledOperations)
-        """)
+    var i = 0
+    var rangeStart = 0
+    repeat {
+      let operation = compiledOperations[i]
+      var encounteredError = false
+      do {
+        try encodeCompiledOperation(operation, into: &encodingContext)
+      } catch let error as AllocationError {
+        // TODO: Change `AllocationError` from a wrapper over a string to an `enum`. This will
+        // improve performance and readability.
+        Context.global.permitExceedingSystemRAM = true
+        guard error.message == "Memory allocation reached the limit of system RAM." else {
+          fatalError(error.localizedDescription)
+        }
+        
+        // Retry the command that failed in the next command buffer.
+        i -= 1
+        encounteredError = true
+      } catch {
+        fatalError(error.localizedDescription)
+      }
+      
+      let nextIterator = i + 1
+      let isLoopEnd = nextIterator == compiledOperations.count
+      if encounteredError || isLoopEnd {
+        if nextIterator > rangeStart {
+          submitBatch(range: rangeStart..<nextIterator)
+          rangeStart = nextIterator
+          if encounteredError {
+            encodingContext = EncodingContext(commandBuffer: commandQueue.makeCommandBuffer()!)
+          }
+        }
+        if encounteredError {
+          if numCommittedBatches.load(ordering: .sequentiallyConsistent) == 0 {
+            if HeapAllocator.debugInfoEnabled {
+              print("""
+                One of the first commands ever submitted was to interact with an exorbitant amount
+                of memory.
+                """)
+            }
+          } else {
+            lastCommandBuffer!.waitUntilCompleted()
+          }
+        }
+      }
+      i = nextIterator
     }
+    while i < compiledOperations.count
   }
 }
