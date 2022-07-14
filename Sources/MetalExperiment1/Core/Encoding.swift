@@ -97,6 +97,10 @@ private extension Context {
        backPressure >= 1 {
       return
     }
+    
+    // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
+    // slow start right after reading a buffer's contents, being unable to fuse unary operators and
+    // creating a no-op pass through the compiler.
     flushStream(precomputedBackPressure: backPressure)
   }
   

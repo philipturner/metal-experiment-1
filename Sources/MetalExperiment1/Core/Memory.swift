@@ -46,11 +46,8 @@ extension Context {
     self.generateID(allocationSize: allocationSize)
   }
   
-  internal func _unsafeFetchAllocation(
-    id: UInt64,
-    releasingZombies: Bool = false
-  ) throws -> Allocation? {
-    try self.fetchAllocation(id: id, releasingZombies: releasingZombies)
+  internal func _unsafeFetchAllocation(id: UInt64) throws -> Allocation? {
+    try self.fetchAllocation(id: id)
   }
   
   internal func _unsafeRetain(id: UInt64) throws {
@@ -92,7 +89,7 @@ private extension Context {
   // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
   // crashes because that's probably erroneous behavior on the frontend. Never retain the allocation
   // because that messes with ARC for deallocation. Instead, retain just the ID.
-  func fetchAllocation(id: UInt64, releasingZombies: Bool = false) throws -> Allocation? {
+  func fetchAllocation(id: UInt64) throws -> Allocation? {
     guard id < nextAllocationID else {
       throw AllocationError("No memory has ever been allocated with ID #\(id).")
     }
