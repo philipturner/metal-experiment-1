@@ -18,7 +18,7 @@ extension Context {
     try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
-        throw AllocationError("Tried to initialize memory that was deallocated.")
+        throw AllocationError.other("Tried to initialize memory that was deallocated.")
       }
       try allocation.materialize()
       try allocation.initialize(body)
@@ -29,7 +29,7 @@ extension Context {
     try withDispatchQueue {
       let ctx = Context.global
       guard let allocation = try ctx.fetchAllocation(id: id) else {
-        throw AllocationError("Tried to read from memory that was deallocated.")
+        throw AllocationError.other("Tried to read from memory that was deallocated.")
       }
       try allocation.read(body)
     }
@@ -102,7 +102,7 @@ private extension Context {
   // because that messes with ARC for deallocation. Instead, retain just the ID.
   func fetchAllocation(id: UInt64) throws -> Allocation? {
     guard id < nextAllocationID else {
-      throw AllocationError("No memory has ever been allocated with ID #\(id).")
+      throw AllocationError.other("No memory has ever been allocated with ID #\(id).")
     }
     // Dictionary subscript returns an optional.
     return allocations[id]
@@ -110,11 +110,11 @@ private extension Context {
   
   func retain(id: UInt64) throws {
     guard id < nextAllocationID else {
-      throw AllocationError("No memory has ever been allocated with ID #\(id).")
+      throw AllocationError.other("No memory has ever been allocated with ID #\(id).")
     }
     guard let allocation = allocations[id] else {
       // Catch memory management bugs.
-      throw AllocationError("Allocation #\(id) has already been deallocated.")
+      throw AllocationError.other("Allocation #\(id) has already been deallocated.")
     }
     allocation.referenceCount += 1
     if Allocation.debugInfoEnabled {
@@ -125,7 +125,7 @@ private extension Context {
   func release(id: UInt64) throws {
     // Catch memory management bugs.
     guard let allocation = allocations[id] else {
-      throw AllocationError("Cannot deallocate something twice.")
+      throw AllocationError.other("Cannot deallocate something twice.")
     }
     allocation.referenceCount -= 1
     if allocation.referenceCount == 0 {
@@ -146,12 +146,11 @@ private extension Context {
 }
 
 // Throw an error instead of crashing so that unit tests can check what happens when you do
-// something invalid.
-struct AllocationError: Error {
-  var message: String
-  init(_ message: String) {
-    self.message = message
-  }
+// something invalid. TODO: In the final product, prevent these errors from reaching the frontend.
+// The only error the frontend can accept is something conforming to `PluggableDeviceError`.
+enum AllocationError: Error {
+  case exceededSystemRAM
+  case other(String)
 }
 
 class Allocation {
@@ -247,12 +246,12 @@ class Allocation {
             """)
         }
         // In the caller, set `permitExceedingSystemRAM` to true.
-        throw AllocationError("Memory allocation reached the limit of system RAM.")
+        throw AllocationError.exceededSystemRAM
       }
     }
     
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
-      throw AllocationError("An attempt to allocate a `MTLBuffer` returned `nil`.")
+      throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
     self.mtlBuffer = mtlBuffer
     self.materialized = true
@@ -265,11 +264,11 @@ class Allocation {
   // Does not automatically materialize because doing so should be made explicit.
   func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
     guard let mtlBuffer = mtlBuffer else {
-      throw AllocationError("Initialized memory with a null underlying `MTLBuffer`.")
+      throw AllocationError.other("Initialized memory with a null underlying `MTLBuffer`.")
     }
     // Catch memory management bugs.
     if initialized {
-      throw AllocationError("Cannot initialize something twice.")
+      throw AllocationError.other("Cannot initialize something twice.")
     }
     defer {
       initialized = true
@@ -310,7 +309,7 @@ class Allocation {
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
     guard initialized else {
-      throw AllocationError("Cannot read from an uninitialized allocation.")
+      throw AllocationError.other("Cannot read from an uninitialized allocation.")
     }
     
     if isShared {

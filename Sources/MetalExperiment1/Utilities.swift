@@ -90,3 +90,110 @@ func fetchEnvironmentBoolean(_ name: String) -> Bool {
   }
   return false
 }
+
+// MARK: - OperationTypeList
+
+// Similar to the `SmallVector<_, _>` C++ type in LLVM.
+protocol OperationTypeList {
+  associatedtype Element: CaseIterable & RawRepresentable
+  where Element.RawValue: FixedWidthInteger & SIMDScalar
+  
+  associatedtype Vector: SIMD where Vector.Scalar == Element.RawValue
+  var storage: OperationTypeListStorage<Vector> { get set }
+}
+
+struct OperationTypeListStorage<Vector: SIMD>
+where Vector.Scalar: FixedWidthInteger & SIMDScalar {
+  private var vector: Vector
+  private(set) fileprivate var count: Int
+  private var array: [Vector.Scalar]?
+  
+  @inline(__always)
+  fileprivate init() {
+    vector = .zero
+    count = 0
+    array = nil
+  }
+  
+  @inline(__always)
+  fileprivate mutating func append(_ newElement: Vector.Scalar) {
+    if count < Vector.scalarCount {
+      vector[count] = newElement
+    } else {
+      if _slowPath(array == nil) {
+        array = Array(unsafeUninitializedCapacity: Vector.scalarCount + 1) { bufferPointer, count in
+          count = self.count
+          bufferPointer.withMemoryRebound(to: Vector.self) { ptr in
+            ptr[0] = vector
+          }
+        }
+      }
+      array!.append(newElement)
+    }
+    count += 1
+  }
+  
+  @inline(__always)
+  fileprivate subscript(index: Int) -> Vector.Scalar {
+    if count <= Vector.scalarCount {
+      return vector[index]
+    } else {
+      return array.unsafelyUnwrapped[index]
+    }
+  }
+}
+
+extension OperationTypeList {
+  @inline(__always)
+  mutating func append(_ newElement: Element) {
+    storage.append(newElement.rawValue)
+  }
+  
+  @inline(__always)
+  var count: Int {
+    storage.count
+  }
+  
+  @inline(__always)
+  subscript(index: Int) -> Element {
+    Element(rawValue: storage[index]).unsafelyUnwrapped
+  }
+}
+
+// MARK: - OperationTypeList Implementations
+
+struct OperationTypeList2<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD2<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}
+
+struct OperationTypeList4<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD4<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}
+
+struct OperationTypeList8<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD8<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}
+
+struct OperationTypeList16<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD16<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}
+
+struct OperationTypeList32<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD32<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}
+
+struct OperationTypeList64<Element: CaseIterable & RawRepresentable>: OperationTypeList
+where Element.RawValue: FixedWidthInteger & SIMDScalar {
+  typealias Vector = SIMD64<Element.RawValue>
+  var storage: OperationTypeListStorage<Vector> = .init()
+}

@@ -26,7 +26,7 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var unaryFusionArray: [UnaryOperationType] = []
+    var unaryFusionArray: OperationTypeList16<UnaryOperationType> = .init()
     var unaryFusionHead: Allocation?
     var unaryFusionTail: Allocation?
     var unaryFusionTailID: UInt64 = .max
@@ -41,10 +41,7 @@ extension Context {
     func appendFusionOperation() {
       defer {
         // COW would make `remove(keepingCapacity:)` useless, so just re-initialize.
-        let capacity = unaryFusionArray.capacity
-        unaryFusionArray = []
-        unaryFusionArray.reserveCapacity(capacity)
-        
+        unaryFusionArray = .init()
         unaryFusionHead = nil
         unaryFusionTail = nil
         unaryFusionTailID = .max

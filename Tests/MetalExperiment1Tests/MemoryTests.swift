@@ -30,9 +30,9 @@ final class MemoryTests: XCTestCase {
       var threwError = false
       do {
         try body()
-      } catch let error as AllocationError {
+      } catch AllocationError.other(let errorMessage) {
         threwError = true
-        XCTAssertEqual(error.message, message)
+        XCTAssertEqual(errorMessage, message)
       } catch {
         XCTFail(error.localizedDescription)
       }

@@ -244,4 +244,34 @@ final class MetalExperiment1Tests: XCTestCase {
     ]
     XCTAssertEqual(Self.history, expectedHistory)
   }
+  
+  func testOperationTypeList() throws {
+    testHeader("OperationTypeList")
+    
+    enum TestOperationType: UInt8, CaseIterable {
+      case type1
+      case type2
+      case type3
+      case type4
+    }
+    
+    var list1 = OperationTypeList2<TestOperationType>()
+    list1.append(.type2)
+    XCTAssertEqual(list1.count, 1)
+    XCTAssertEqual(list1[0], .type2)
+    
+    list1.append(.type3)
+    list1.append(.type4)
+    XCTAssertEqual(list1.count, 3)
+    XCTAssertEqual(list1[0], .type2)
+    XCTAssertEqual(list1[1], .type3)
+    XCTAssertEqual(list1[2], .type4)
+    
+    // Would crash with a regular Swift array, but is acceptable here.
+    let list2 = OperationTypeList16<TestOperationType>()
+    XCTAssertEqual(list2.count, 0)
+    XCTAssertEqual(TestOperationType.type1.rawValue, 0)
+    XCTAssertEqual(list2[0], .type1)
+    XCTAssertEqual(list2[1], .type1)
+  }
 }

@@ -5,12 +5,9 @@
 //  Created by Philip Turner on 7/9/22.
 //
 
-import MetalPerformanceShadersGraph
+import Metal
 
-// Two levels of IR. One is higher-level, eagerly submitted. This other is optimized, with IDs
-// filled in with allocations ready to be materialized.
-
-enum UnaryOperationType: UInt16, CaseIterable {
+enum UnaryOperationType: UInt8, CaseIterable {
   case increment
 }
 
@@ -25,12 +22,12 @@ enum EagerOperation {
   case unary(Unary)
 }
 
-// Instead of keeping references to the individual buffers, this keeps references to the compiled
-// operations until finishing. That's a simpler way to manage the memory.
+// Instead of manually extracting references to the individual buffers, this keeps references to the
+// compiled operations until finishing. It indirectly stores references to the buffers, making it
+// easier to implement and more performant.
 enum CompiledOperation {
   struct MultiUnary {
-    // TODO: Change this to a possible SIMD vector to prevent allocating an array.
-    var types: [UnaryOperationType]
+    var types: OperationTypeList16<UnaryOperationType>
     var input: Allocation
     var output: Allocation
     var size: Int

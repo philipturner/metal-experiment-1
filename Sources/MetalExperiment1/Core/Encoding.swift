@@ -204,13 +204,8 @@ private extension Context {
       var encounteredError = false
       do {
         try encodeCompiledOperation(operation, into: &encodingContext)
-      } catch let error as AllocationError {
-        // TODO: Change `AllocationError` from a wrapper over a string to an `enum`. This will
-        // improve performance and readability.
+      } catch AllocationError.exceededSystemRAM {
         Context.global.permitExceedingSystemRAM = true
-        guard error.message == "Memory allocation reached the limit of system RAM." else {
-          fatalError(error.localizedDescription)
-        }
         
         // Retry the command that failed in the next command buffer.
         i -= 1
