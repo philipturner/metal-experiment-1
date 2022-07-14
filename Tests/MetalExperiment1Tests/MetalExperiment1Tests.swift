@@ -16,6 +16,7 @@ func testHeader(_ message: String) {
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
   Allocation.debugInfoEnabled = false
+  Context.barrier()
 }
 
 final class MetalExperiment1Tests: XCTestCase {
@@ -46,7 +47,8 @@ final class MetalExperiment1Tests: XCTestCase {
     testHeader("Streamed command buffer throughput")
     Context.validate()
     
-    do {
+    func testWarmup(name: String) {
+      print("--- Stream size: 1 ---")
       Profiler.checkpoint()
       Context.commitStreamedCommand()
       let latency = Profiler.checkpoint()
@@ -54,10 +56,12 @@ final class MetalExperiment1Tests: XCTestCase {
       Context.validate()
       let totalTime = latency + Profiler.checkpoint()
       print("""
-        First batch latency: \(latency) \(Profiler.timeUnit), \
+        \(name) batch latency: \(latency) \(Profiler.timeUnit), \
         Total time: \(totalTime) \(Profiler.timeUnit)
         """)
     }
+    testWarmup(name: "First")
+    testWarmup(name: "Second")
     
     func profileStream(length: Int) {
       print("--- Stream size: \(length) ---")
@@ -69,8 +73,9 @@ final class MetalExperiment1Tests: XCTestCase {
       Context.validate()
       
       let totalTime = latency + Profiler.checkpoint()
+      let latencyAverage = Double(latency * 10 / length) / 10
       print("""
-        Average CPU-side latency: \(latency / length) \(Profiler.timeUnit), \
+        Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
         Amortized sequential throughput: \(totalTime / length) \(Profiler.timeUnit), \
         Total time: \(totalTime) \(Profiler.timeUnit)
         """)
@@ -84,6 +89,54 @@ final class MetalExperiment1Tests: XCTestCase {
   // Alternative throughput test that validates differently.
   func testStreamedBatchThroughput2() throws {
     testHeader("Streamed command buffer throughput 2")
+    
+    func validate(_ tensorHandle: TensorHandle, value: Float) {
+      XCTAssertEqual(tensorHandle.copyScalars()[0], value)
+    }
+    
+    func testWarmup(name: String) {
+      print("--- Stream size: 1 ---")
+      Profiler.checkpoint()
+      let handle1 = TensorHandle(repeating: 0, count: Context.numBufferElements)
+      let creationTime = Profiler.checkpoint()
+      
+      let handle2 = handle1.incremented()
+      let latency = Profiler.checkpoint()
+      validate(handle2, value: 1.0)
+      
+      let totalTime = latency + Profiler.checkpoint()
+      print("""
+        Creation time: \(creationTime) \(Profiler.timeUnit)
+        First batch latency: \(latency) \(Profiler.timeUnit)
+        Total time: \(totalTime) \(Profiler.timeUnit)
+        """)
+    }
+    testWarmup(name: "First")
+    testWarmup(name: "Second")
+    
+    func profileStream(length: Int) {
+      print("--- Stream size: \(length) ---")
+      Profiler.checkpoint()
+      var handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
+      for _ in 0..<length {
+//        handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
+        handle = handle.incremented()
+      }
+      let latency = Profiler.checkpoint()
+      validate(handle, value: Float(length))
+      
+      let totalTime = latency + Profiler.checkpoint()
+      let latencyAverage = Double(latency * 10 / length) / 10
+      print("""
+        Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
+        Amortized sequential throughput: \(totalTime / length) \(Profiler.timeUnit), \
+        Total time: \(totalTime) \(Profiler.timeUnit)
+        """)
+    }
+    
+    for _ in 0..<5 {
+      profileStream(length: Context.maxCommandsPerBatch * 4)
+    }
   }
   
   private struct ARCEvent: Equatable {
