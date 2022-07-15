@@ -16,16 +16,16 @@ extension Context {
     }
   }
   
-  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    try withDispatchQueue {
-      let ctx = Context.global
-      guard let allocation = try ctx.fetchAllocation(id: id) else {
-        throw AllocationError.other("Tried to initialize memory that was deallocated.")
-      }
-      try allocation.materialize()
-      try allocation.initialize(body)
-    }
-  }
+//  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+//    try withDispatchQueue {
+//      let ctx = Context.global
+//      guard let allocation = try ctx.fetchAllocation(id: id) else {
+//        throw AllocationError.other("Tried to initialize memory that was deallocated.")
+//      }
+//      try allocation.materialize()
+//      try allocation.initialize(body)
+//    }
+//  }
   
   public static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
     try withDispatchQueue {
@@ -210,18 +210,15 @@ class Allocation {
   @inline(__always)
   func materialize() throws {
     precondition(mtlBuffer == nil)
-    guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
-      throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
-    }
-    self.mtlBuffer = mtlBuffer
+    self.mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true)!
   }
   
-  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    let contents = mtlBuffer!.contents()
-    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
-    body(ptr)
-    initialized = true
-  }
+//  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+//    let contents = mtlBuffer!.contents()
+//    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
+//    body(ptr)
+//    initialized = true
+//  }
   
   func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
     let contents = self.mtlBuffer!.contents()
@@ -230,14 +227,6 @@ class Allocation {
   }
   
   deinit {
-    precondition({
-      if let commandBufferID = lastReferencedCommandBufferID {
-        return Context.global.commandBufferDictionary[commandBufferID] == nil
-      } else {
-        return true
-      }
-    }())
-    
     precondition(referenceCount == 0)
     guard mtlBuffer != nil else {
       return

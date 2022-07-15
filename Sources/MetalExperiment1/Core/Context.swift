@@ -58,12 +58,13 @@ public class Context {
   }
   
   private func generateID() -> UInt64 {
-    let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-    let id = Context.generateID(allocationSize: bufferSize)
-    try! Context.initialize(id: id) { bufferPointer in
-      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-      ptr.initialize(repeating: 0.0)
-    }
-    return id
+    fatalError()
+//    let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
+//    let id = Context.generateID(allocationSize: bufferSize)
+//    try! Context.initialize(id: id) { bufferPointer in
+//      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
+//      ptr.initialize(repeating: 0.0)
+//    }
+//    return id
   }
 }
