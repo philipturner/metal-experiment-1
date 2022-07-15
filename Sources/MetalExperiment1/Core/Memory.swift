@@ -51,6 +51,11 @@ extension Context {
   }
   
   @inline(__always)
+  func _compilerGenerateID(allocationSize: Int) -> UInt64 {
+    self.generateID(allocationSize: allocationSize)
+  }
+  
+  @inline(__always)
   internal func _compilerFetchAllocation(id: UInt64) -> Allocation {
     guard let allocation = allocations[id] else {
       _slowFail(id: id)

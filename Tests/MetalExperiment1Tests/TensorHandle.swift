@@ -11,6 +11,10 @@ class TensorHandle {
   private(set) var id: UInt64
   private(set) var count: Int
   
+  // Create this initializer.
+  // init(owning:count:)
+  
+  // Remove this initializer.
   init(unsafeUninitializedCount count: Int) {
     let allocationSize = count * MemoryLayout<Float>.stride
     self.id = Context.generateID(allocationSize: allocationSize)
@@ -48,6 +52,7 @@ extension TensorHandle {
 
 enum _Raw {
   static func increment(_ input: TensorHandle) -> TensorHandle {
+    // Update comment about `withDispatchQueue` performance, switch to the new _Raw interface.
     Context.withDispatchQueue {
       let output = TensorHandle(unsafeUninitializedCount: input.count)
       Context.commitIncrement(inputID: input.id, outputID: output.id, size: input.count)

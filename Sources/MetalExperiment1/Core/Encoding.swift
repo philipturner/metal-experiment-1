@@ -39,6 +39,45 @@ extension Context {
   }
 }
 
+extension Context {
+  public static func executeOperation(
+    _ name: UnsafePointer<Int8>,
+    _ inputs: UnsafeBufferPointer<UInt64>,
+    _ outputs: UnsafeMutableBufferPointer<UInt64>
+  ) {
+    _dispatchQueue.sync {
+      Context.global._executeOperation(name, inputs, outputs)
+    }
+  }
+  
+  // TODO: Figure out how to pass attributes in. Try the OpenCL approach, which should have the
+  // lowest overhead.
+  private func _executeOperation(
+    _ name: UnsafePointer<Int8>,
+    _ inputs: UnsafeBufferPointer<UInt64>,
+    _ outputs: UnsafeMutableBufferPointer<UInt64>
+  ) {
+    // When there are multiple ops, instead of switching over an enumeration, query a dictionary of
+    // strings to @convention(c) function pointers. To avoid the overhead of creating a string
+    // object, try using something besides a `String` for the dictionary's key. For example, limit
+    // strings to 63 bytes and make an efficient hash table. How fast is Swift's automatic hashing
+    // mechanism?
+    precondition(String(cString: name) == "increment")
+    precondition(inputs.count == 1)
+    precondition(outputs.count == 1)
+    
+    // TODO: Optimize this by only fetching from the dictionary once. Use the retrieved allocation
+    // for both extracting size and incrementing its reference count. Also, make a force-inlined
+    // internal function for generating IDs, which returns the newly generated `Allocation` without
+    // requiring that it be fetched from a dictionary later on.
+    let input1 = inputs[0]
+    let allocationSize = _compilerFetchAllocation(id: input1).size
+    let output1 = _compilerGenerateID(allocationSize: allocationSize)
+    let size = allocationSize / MemoryLayout<Float>.stride
+    commitIncrement(inputID: input1, outputID: output1, size: size)
+  }
+}
+
 // Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
 // allocation happens afterwards, during `flushStream`.
 private extension Context {
@@ -55,6 +94,8 @@ private extension Context {
     let operation = EagerOperation.Unary(
       type: .increment, input: inputID, output: outputID, size: size)
     eagerOperations.append(.unary(operation))
+    
+    // TODO: Split this into a function that optionally flushes.
     
     // This part of the function needs to be semantically separated from the part that processes
     // unique instructions. If they are physically separated by a lack of inlining, that is fine.
