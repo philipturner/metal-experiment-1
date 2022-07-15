@@ -195,7 +195,7 @@ class Allocation {
   var lastModifiedCommandBuffer: MTLCommandBuffer?
   
   // Wait for this command buffer to complete so that you don't free it until it's safe to do so.
-  // There should be no need to store this.
+  // There should be no need to store this... or wait, maybe there is!
   var lastReferencedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
