@@ -309,11 +309,9 @@ class Allocation {
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
-    print("ID: \(id)")
-    print("Last Modified ID: \(lastModifiedCommandBufferID ?? -1)")
     
     // Prevent it from defaulting to the latest command buffer.
-    let commandBufferID = lastModifiedCommandBufferID ?? nil//-1
+    let commandBufferID = lastModifiedCommandBufferID ?? -1
     Context.global._compilerBarrier(commandBufferID: commandBufferID)
     
     // If this was the outcome of a chain of operations, it should have been declared initialized

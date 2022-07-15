@@ -302,34 +302,27 @@ final class MemoryTests: XCTestCase {
       print("End of function")
     }
     
+    Context.withDispatchQueue {
+      Allocation.debugInfoEnabled = false
+    }
+    
+    // This is one of the reproducers for a memory management bug I encountered. Retaining it, but
+    // suppressing its print output.
     do {
-      print()
-      print("Handle 1")
       let handle1 = TensorHandle(repeating: 5, count: 2)
       XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
       
-      print()
-      print("Handle 2")
       let handle2 = handle1.incremented()
       XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
       
-      print()
-      print("Handle 3")
       let handle3 = handle1.incremented().incremented()
       XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
       
-      print()
-      print("Handle 4")
       let handle4 = handle2.incremented().incremented()
       XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
       
-      print()
-      print("Handle 5")
       let handle5 = handle4.incremented().incremented().incremented()
       XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
-      
-      print()
-      print("End of function")
     }
   }
   
@@ -391,34 +384,31 @@ final class MemoryTests: XCTestCase {
       _ = TensorHandle(repeating: 5, count: 2)
     }
     
+    // TODO: Fix the memory management bug reproduced here.
     for i in 0..<2 {
       print()
+      
       Profiler.checkpoint()
-      let startScalar: Float = i == 1 ? 5.1 : 5
-      let handle1 = TensorHandle(repeating: startScalar, count: 2)
+      let handle1 = TensorHandle(repeating: 5, count: 2)
       XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
       Profiler.log("Read handle 1 (fast)")
       
-      print()
       let handle2 = handle1.incremented()
-  //    XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
       XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
       Profiler.log("Read handle 2 (slow)")
       
-      print()
+      // This should be fast, but isn't.
       let handle3 = handle1.incremented()
       XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
       Profiler.log("Read handle 1 again (fast)")
       
-      print()
+      // This should be slow, bug isn't.
       XCTAssertEqual(handle3.copyScalars(), [6.0, 6.0])
       Profiler.log("Read handle 3 after execution (medium)")
       
-      print()
       let handle4 = handle3.incremented()
       XCTAssertEqual(handle4.copyScalars(), [7.0, 7.0])
       Profiler.log("Read handle 4 (slow)")
     }
-   
   }
 }
