@@ -95,7 +95,7 @@ private extension Context {
       type: .increment, input: inputID, output: outputID, size: size)
     eagerOperations.append(.unary(operation))
     
-    // TODO: Split this into a function that optionally flushes.
+    // TODO: Extract this code into the top-level function that calls into `eagerOperations.append`.
     
     // This part of the function needs to be semantically separated from the part that processes
     // unique instructions. If they are physically separated by a lack of inlining, that is fine.
