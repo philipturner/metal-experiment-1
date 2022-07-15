@@ -209,142 +209,27 @@ class Allocation {
   // doesn't work, it crashes.
   @inline(__always)
   func materialize() throws {
-//    if materialized {
-    if mtlBuffer != nil {
-      // Already materialized.
-    } else {
-      try actuallyMaterialize()
-    }
-  }
-  
-  @inline(never)
-  private func actuallyMaterialize() throws {
-    let device = Context.global.device
-    let allocatedSize = HeapAllocator.global.totalAllocatedMemory
-    if Context.global.permitExceedingSystemRAM {
-      // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
-      // length should be >50% system memory size. If it's hovering above the system RAM size
-      // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
-      // command stream. In that case, flushing the command stream constantly as is oscillates above
-      // and below a certain threshold would seriously degrade performance. But if it jumped the
-      // threshold because my backend queued up too many commands, most of the memory would quickly
-      // deallocate.
-      //
-      // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
-      if allocatedSize + size <= device.maxBufferLength {
-        if HeapAllocator.debugInfoEnabled {
-          print("Memory allocation returned to something smaller than system RAM.")
-        }
-        Context.global.permitExceedingSystemRAM = false
-      }
-    } else {
-      #if os(macOS)
-      let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
-      #else
-      let maxWorkingSize = device.maxBufferLength
-      #endif
-      if allocatedSize + size > maxWorkingSize {
-        if HeapAllocator.debugInfoEnabled {
-          print("""
-            Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
-            memory.
-            """)
-        }
-        // In the caller, set `permitExceedingSystemRAM` to true.
-        throw AllocationError.exceededSystemRAM
-      }
-    }
-    
-//    guard let mtlBuffer = Context.global.device.makeBuffer(length: size) else {
+    precondition(mtlBuffer == nil)
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
       throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
-    print("Allocation #\(id) materialized.")
     self.mtlBuffer = mtlBuffer
-//    self.materialized = true
   }
   
-  // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
-  // undefined. On a discrete GPU, this calls `malloc` on CPU memory and enqueues a command to copy
-  // it to device memory.
-  //
-  // Does not automatically materialize because doing so should be made explicit.
   func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    guard let mtlBuffer = mtlBuffer else {
-      throw AllocationError.other("Initialized memory with a null underlying `MTLBuffer`.")
-    }
-    // Catch memory management bugs.
-    if initialized {
-      throw AllocationError.other("Cannot initialize something twice.")
-    }
-    defer {
-      initialized = true
-    }
-    if isShared {
-      let contents = mtlBuffer.contents()
-      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
-      body(ptr)
-      let floatPtr = contents.assumingMemoryBound(to: Float.self)
-      print("Initializing #\(id), float val: \(floatPtr.pointee)")
-    } else {
-      // TODO: Append a command that will copy the memory.
-      fatalError("Haven't implemented copying memory to a discrete GPU.")
-    }
+    let contents = mtlBuffer!.contents()
+    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
+    body(ptr)
+    initialized = true
   }
   
-  // Making a function like `read` that just modifies the underlying storage is technically possible
-  // and even more performant on a discrete GPU. However, it would be unused in the frontend.
-  
-  // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
-  // before flushing the command stream. You must copy the data inside the pointer, because it will
-  // deallocate or become undefined after the closure finishes.
   func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
-    // Cannot materialize here because it might not be initialized. Only safe place to materialize
-    // is in the compiler, where it's at least derived from something that was initialized. The
-    // compiler will then mark it as initialized and safe to read from.
-    var bufferToRead: MTLBuffer!
-    if !isShared {
-      // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
-      // TODO: Append a command that will copy the memory. This command is special, in that is takes
-      // a `MTLBuffer` as output but can have an unmaterialized allocation as input.
-      fatalError("Haven't implemented reading memory from a discrete GPU.")
-    }
-    
-    // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
-    // next command buffer. That way, you synchronize without dividing into two separate command
-    // buffers (more overhead). It would also reduce I/O bottlenecks if you have several calls to
-    // `read` in a row. This `MTLEvent` should never cause glitches in the graph compilier, because
-    // the buffer here is not deallocated and not a placeholder. Keeping the entire pending command
-    // batch intact provides more opportunities for fusing non-adjacent nodes in the graph.
-    //
-    // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
-    // of `bufferedOperations`, unless one of those operations references it. This violates
-    // sequential order of execution, but produces the same end result.
-    
-    // Prevent it from defaulting to the latest command buffer.
-    let commandBufferID = lastModifiedCommandBufferID ?? -1
-    Context.global._compilerBarrier(commandBufferID: commandBufferID)
-    
-    // If this was the outcome of a chain of operations, it should have been declared initialized
-    // during compilation.
-    guard initialized else {
-      throw AllocationError.other("Cannot read from an uninitialized allocation.")
-    }
-    
-    if isShared {
-      bufferToRead = self.mtlBuffer!
-    }
-    let contents = bufferToRead.contents()
+    let contents = self.mtlBuffer!.contents()
     let ptr = UnsafeRawBufferPointer(start: contents, count: size)
     body(ptr)
   }
   
-  // Retain a reference to this until the command buffer is finished. Hold the reference in the
-  // completion handler.
   deinit {
-    // The command buffer must be released from the context before its referenced memory can
-    // deallocate. Avoiding this check in debug mode because it's very costly.
-//    assert({
     precondition({
       if let commandBufferID = lastReferencedCommandBufferID {
         return Context.global.commandBufferDictionary[commandBufferID] == nil
@@ -352,16 +237,11 @@ class Allocation {
         return true
       }
     }())
-    // Can't deallocate until the last command buffer _referencing_ (not modifying) this is
-    // finishes.
     
-    // Catch memory management bugs.
     precondition(referenceCount == 0)
-//    guard materialized else {
     guard mtlBuffer != nil else {
       return
     }
     HeapAllocator.global.free(self.mtlBuffer!)
-//    self.mtlBuffer = nil
   }
 }
