@@ -36,7 +36,7 @@ extension Context {
       unaryFusionSize != -1
     }
     
-    // Might be called on non-unary operations.
+    // Might be called while encoding non-unary operations.
     @inline(never)
     func appendFusionOperation() {
       defer {
@@ -75,6 +75,7 @@ extension Context {
       case .unary(let unary):
         var input: Allocation
         if unary.input == unaryFusionTailID {
+          // TODO: check that unary fusion tail isn't initialized.
           // In the middle of a unary fusion.
           input = unaryFusionTail!
         } else {

@@ -16,9 +16,10 @@ public class Context {
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   static let maxBatchesInFlight = 10
   
+  // TODO: Remove these properties and place them in a test of theoretical maximum throughput.
   static let numBufferElements = 1000
-  lazy var allocation1: UInt64 = generateID() // Input for next operation, current state of execution.
-  lazy var allocation2: UInt64 = generateID() // Output for next operation.
+  lazy var allocation1: UInt64 = generateID() // Next operation's input, current state of execution.
+  lazy var allocation2: UInt64 = generateID() // Next operation's output.
   var operationCount = 0 // Current value of elements in `buffer1`.
   
   static var profilingEncoding = fetchEnvironmentBoolean(
@@ -30,13 +31,6 @@ public class Context {
   var numCompletedBatches: ManagedAtomic<Int> = .init(0)
   var eagerOperations: [EagerOperation] = []
   
-  // Function to write to the raw CPU-side memory (zero overhead)
-  // Function to automatically de-allocate
-  // Does not automatically allocate
-  // Lazy allocation so that placeholders in fused ops (or graph mode) can happen
-  //
-  // Could deallocate already be called by the user, showing which tensors disappear and
-  // automatically fusing unary ops?
   var allocations: [UInt64: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
   var permitExceedingSystemRAM = false
