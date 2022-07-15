@@ -16,12 +16,6 @@ public class Context {
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   static let maxBatchesInFlight = 10
   
-  // TODO: Remove these properties and place them in a test of theoretical maximum throughput.
-  static let numBufferElements = 1000
-  lazy var allocation1: UInt64 = generateID() // Next operation's input, current state of execution.
-  lazy var allocation2: UInt64 = generateID() // Next operation's output.
-  var operationCount = 0 // Current value of elements in `buffer1`.
-  
   static var profilingEncoding = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
   
@@ -48,15 +42,5 @@ public class Context {
     let unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
     let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
     self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
-  }
-  
-  private func generateID() -> UInt64 {
-    let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-    let id = Context.generateID(allocationSize: bufferSize)
-    try! Context.initialize(id: id) { bufferPointer in
-      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-      ptr.initialize(repeating: 0.0)
-    }
-    return id
   }
 }

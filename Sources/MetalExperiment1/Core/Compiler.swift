@@ -36,7 +36,7 @@ extension Context {
       unaryFusionSize != -1
     }
     
-    // Might be called while encoding non-unary operations.
+    // Call this before encoding non-unary operations.
     @inline(never)
     func appendFusionOperation() {
       defer {
@@ -62,7 +62,7 @@ extension Context {
       compiledOperations.append(.multiUnary(multiUnary))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if unaryFusionArray.count >= 2 {
-          print("--- Fused \(unaryFusionArray.count) unary operators ---")
+          print("*** Fused \(unaryFusionArray.count) unary operators ***")
         } else {
           print("Appended single unary operation")
         }
@@ -75,12 +75,19 @@ extension Context {
       case .unary(let unary):
         var input: Allocation
         if unary.input == unaryFusionTailID {
-          // TODO: check that unary fusion tail isn't initialized.
           // In the middle of a unary fusion.
           input = unaryFusionTail!
+          
+          // The tail was the output of previous operation. Something that's initialized by the
+          // frontend can't be the output of an operation, only the input.
+          precondition(!input.initialized)
         } else {
           // At the start of a unary fusion.
           if pendingFusionOperationExists() {
+            // Finish the previous unary fusion. When fusing non-adjacent operators, don't check
+            // whether the output needs to be computed. It might make the JIT graph compiler take
+            // longer, or make benchmarks difficult. TODO: Revisit this decision after more complex
+            // fusions are implemented.
             appendFusionOperation()
           }
           input = _compilerFetchAllocation(id: unary.input)

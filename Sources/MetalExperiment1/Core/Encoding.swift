@@ -8,24 +8,6 @@
 import Metal
 
 extension Context {
-  static func validate() {
-    withDispatchQueue {
-      let ctx = Context.global
-      ctx._compilerFlushStream()
-      ctx._compilerBarrier()
-      try! Context.read(id: ctx.allocation1) { bufferPointer in
-        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-        precondition(ptr[0] == Float(ctx.operationCount))
-      }
-    }
-  }
-  
-  static func commitStreamedCommand() {
-    withDispatchQueue {
-      Context.global.commitStreamedCommand()
-    }
-  }
-  
   public static func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
     withDispatchQueue {
       Context.global.commitIncrement(inputID: inputID, outputID: outputID, size: size)
@@ -45,27 +27,12 @@ extension Context {
     flushStream()
   }
   
-  // Must flush before calling this function.
+  // Flush the command stream before calling this function.
   @inline(__always)
   internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
-    barrier(commandBufferID: chosenID)
-  }
-}
-
-private extension Context {
-  @inline(__always)
-  func queryQueueBackPressure() -> Int {
-    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
-    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
-    return numCommitted - numScheduled
-  }
-  
-  @inline(__always)
-  func barrier(commandBufferID chosenID: Int? = nil) {
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    let commandBufferID =
-      chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
+    let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
       lastCommandBuffer.waitUntilCompleted()
     }
@@ -75,12 +42,11 @@ private extension Context {
 // Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
 // allocation happens afterwards, during `flushStream`.
 private extension Context {
-  func commitStreamedCommand() {
-    let inputID = allocation1
-    let outputID = allocation2
-    operationCount += 1
-    swap(&allocation1, &allocation2)
-    commitIncrement(inputID: inputID, outputID: outputID, size: Context.numBufferElements)
+  @inline(__always)
+  func queryQueueBackPressure() -> Int {
+    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
+    return numCommitted - numScheduled
   }
   
   func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
@@ -270,7 +236,7 @@ private extension Context {
                 """)
             }
           } else {
-            barrier()
+            _compilerBarrier()
           }
         }
       }

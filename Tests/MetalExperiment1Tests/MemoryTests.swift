@@ -265,8 +265,10 @@ final class MemoryTests: XCTestCase {
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
     Context.withDispatchQueue {
+      // Already overrode the environment variable for this in `testHeader`.
       Allocation.debugInfoEnabled = true
     }
+    
     print("Start of function")
     do {
       _ = TensorHandle(repeating: 5, count: 2)
@@ -410,5 +412,43 @@ final class MemoryTests: XCTestCase {
       XCTAssertEqual(handle4.copyScalars(), [7.0 + loopOffset, 7.0 + loopOffset])
       Profiler.log("Read handle 4 (slow)")
     }
+  }
+  
+  func testInterruptedUnaryFusion() throws {
+    testHeader("Interrupted unary fusion")
+    
+    Profiler.checkpoint()
+    
+    // Don't override the environment variable for other tests.
+    var previousProfilingEncoding = false
+    Context.withDispatchQueue {
+      previousProfilingEncoding = Context.profilingEncoding
+      Context.profilingEncoding = true
+    }
+    defer {
+      Context.withDispatchQueue {
+        Context.profilingEncoding = previousProfilingEncoding
+      }
+    }
+    
+    for _ in 0..<2 {
+      let fusion1_part1 = TensorHandle(repeating: 101, count: 2)
+      let fusion1_part2 = fusion1_part1.incremented()
+      let fusion1_part3 = fusion1_part2.incremented()
+      let fusion1_part4 = fusion1_part3.incremented()
+      
+      let fusion2_part1 = TensorHandle(repeating: 201, count: 2)
+      let fusion2_part2 = fusion2_part1.incremented()
+      let fusion2_part3 = fusion2_part2.incremented()
+      let fusion2_part4 = fusion2_part3.incremented()
+      
+      let fusion1_part5 = fusion1_part4.incremented()
+      let fusion1_part6 = fusion1_part5.incremented()
+      let fusion1_part7 = fusion1_part6.incremented()
+      XCTAssertEqual(fusion1_part7.copyScalars(), [107, 107])
+      XCTAssertEqual(fusion2_part4.copyScalars(), [204, 204])
+    }
+    
+    Profiler.log("Interrupted unary fusion")
   }
 }

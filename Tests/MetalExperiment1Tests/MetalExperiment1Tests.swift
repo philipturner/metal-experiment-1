@@ -63,62 +63,15 @@ final class MetalExperiment1Tests: XCTestCase {
   
   func testStreamedBatchThroughput() throws {
     testHeader("Streamed command buffer throughput")
-    Context.validate()
-    
-    func testWarmup(name: String) {
-      print("--- Stream size: 1 ---")
-      Profiler.checkpoint()
-      Context.commitStreamedCommand()
-      let latency = Profiler.checkpoint()
-      
-      Context.validate()
-      let totalTime = latency + Profiler.checkpoint()
-      print("""
-        \(name) batch latency: \(latency) \(Profiler.timeUnit), \
-        Total time: \(totalTime) \(Profiler.timeUnit)
-        """)
-    }
-    testWarmup(name: "First")
-    testWarmup(name: "Second")
-    
-    func profileStream(length: Int) {
-      print("--- Stream size: \(length) ---")
-      Profiler.checkpoint()
-      Context.withDispatchQueue {
-        for _ in 0..<length {
-          Context.commitStreamedCommand()
-        }
-      }
-      let latency = Profiler.checkpoint()
-      Context.validate()
-      
-      let totalTime = latency + Profiler.checkpoint()
-      let latencyAverage = Double(latency * 10 / length) / 10
-      let throughputAverage = Double(totalTime * 10 / length) / 10
-      print("""
-        Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
-        Amortized sequential throughput: \(throughputAverage) \(Profiler.timeUnit), \
-        Total time: \(totalTime) \(Profiler.timeUnit)
-        """)
-    }
-    
-    for _ in 0..<5 {
-      profileStream(length: Context.maxCommandsPerBatch * 4)
-    }
-  }
-  
-  // Alternative throughput test that validates differently.
-  func testStreamedBatchThroughput2() throws {
-    testHeader("Streamed command buffer throughput 2")
     
     func validate(_ tensorHandle: TensorHandle, value: Float) {
       XCTAssertEqual(tensorHandle.copyScalars()[0], value)
     }
     
     func testWarmup(name: String) {
-      print("--- Stream size: 1 ---")
+      print("--- Stream size: 1")
       Profiler.checkpoint()
-      let handle1 = TensorHandle(repeating: 0, count: Context.numBufferElements)
+      let handle1 = TensorHandle(repeating: 0, count: 10)
       let creationTime = Profiler.checkpoint()
       
       let handle2 = handle1.incremented()
@@ -136,10 +89,10 @@ final class MetalExperiment1Tests: XCTestCase {
     testWarmup(name: "Second")
     
     func profileStream(length: Int) {
-      print("--- Stream size: \(length) ---")
+      print("--- Stream size: \(length)")
       Profiler.checkpoint()
       let handle = Context.withDispatchQueue {
-        var handle = TensorHandle(repeating: 0, count: Context.numBufferElements)
+        var handle = TensorHandle(repeating: 0, count: 10)
         for _ in 0..<length {
           handle = handle.incremented()
         }
