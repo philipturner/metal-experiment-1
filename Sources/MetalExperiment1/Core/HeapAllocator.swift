@@ -65,7 +65,7 @@ struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
     var lowerBound = 0
     var upperBound = blocks.count - 1
     while lowerBound <= upperBound {
-      let middleBound = (lowerBound + upperBound) / 2
+      let middleBound = (lowerBound &+ upperBound) &>> 1
       let element = blocks[middleBound]
       
       var aimedTooLow = element.size < minimumSize
@@ -78,9 +78,9 @@ struct AllocatorBlockSet<Element: AllocatorBlockProtocol> {
         }
       }
       if aimedTooLow {
-        lowerBound = middleBound + 1
+        lowerBound = middleBound &+ 1
       } else {
-        upperBound = middleBound - 1
+        upperBound = middleBound &- 1
       }
     }
     if lowerBound == blocks.count {

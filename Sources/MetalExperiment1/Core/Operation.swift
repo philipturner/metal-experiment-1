@@ -40,11 +40,13 @@ enum CompiledOperation {
 
 struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
+  let commandBufferID: Int
   private var encoder: MTLComputeCommandEncoder?
   private unowned var state: MTLComputePipelineState?
   
-  init(commandBuffer: MTLCommandBuffer) {
+  init(commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
     self.commandBuffer = commandBuffer
+    self.commandBufferID = commandBufferID
   }
   
   @inline(__always)

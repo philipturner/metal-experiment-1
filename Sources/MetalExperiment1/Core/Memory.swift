@@ -63,7 +63,7 @@ extension Context {
     guard let allocation = allocations[id] else {
       _slowFail(id: id)
     }
-    allocation.referenceCount += 1
+    allocation.referenceCount &+= 1
     if _slowPath(Allocation.debugInfoEnabled) {
       print("Allocation #\(id) jumped to a reference count of \(allocation.referenceCount).")
     }
@@ -72,7 +72,7 @@ extension Context {
   @inline(__always)
   internal func _compilerRelease(_ allocation: Allocation) {
     let id = allocation.id
-    let referenceCount = allocation.referenceCount - 1
+    let referenceCount = allocation.referenceCount &- 1
     allocation.referenceCount = referenceCount
     if referenceCount == 0 {
       allocations[id] = nil

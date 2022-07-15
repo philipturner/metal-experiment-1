@@ -143,7 +143,9 @@ private extension Context {
     if compiledOperations.count == 0 {
       return
     }
-    var encodingContext = EncodingContext(commandBuffer: commandQueue.makeCommandBuffer()!)
+    var commandBufferID = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    var encodingContext = EncodingContext(
+      commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
     
     // Only called in one location, the loop that iterates over each operation.
     func submitBatch(range: Range<Int>) {
@@ -157,6 +159,13 @@ private extension Context {
         let submittedOperations = Array(compiledOperations[range])
         retainClosure = { _ = submittedOperations }
       }
+      
+      // This code will always execute on the same thread, so it's okay to increment in a way that
+      // isn't perfectly atomic.
+//      numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+      commandBufferID += 1
+      numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
+      
       
       // TODO: Look back into the latency here. If the CPU does a control flow operator depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
@@ -172,7 +181,6 @@ private extension Context {
       //
       // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
       // to `flushStream(precomputedBackpressure:)`.
-      numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       encodingContext.commandBuffer.addScheduledHandler { _ in
         self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
@@ -218,10 +226,12 @@ private extension Context {
       let isLoopEnd = nextIterator == compiledOperations.count
       if encounteredError || isLoopEnd {
         if nextIterator > rangeStart {
+          // This function increments the command buffer ID.
           submitBatch(range: rangeStart..<nextIterator)
           rangeStart = nextIterator
           if encounteredError {
-            encodingContext = EncodingContext(commandBuffer: commandQueue.makeCommandBuffer()!)
+            encodingContext = EncodingContext(
+              commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
           }
         }
         if encounteredError {

@@ -121,7 +121,7 @@ where Vector.Scalar: FixedWidthInteger & SIMDScalar {
       vector[count] = newElement
     } else {
       if _slowPath(array == nil) {
-        array = Array(unsafeUninitializedCapacity: Vector.scalarCount + 1) { bufferPointer, count in
+        array = Array(unsafeUninitializedCapacity: Vector.scalarCount &+ 1) { bufferPointer, count in
           count = self.count
           bufferPointer.withMemoryRebound(to: Vector.self) { ptr in
             ptr[0] = vector
@@ -130,7 +130,7 @@ where Vector.Scalar: FixedWidthInteger & SIMDScalar {
       }
       array!.append(newElement)
     }
-    count += 1
+    count &+= 1
   }
   
   @inline(__always)
