@@ -188,10 +188,8 @@ class Allocation {
   var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
   
-  // TODO: Store the latest command buffer ID that references this. To make a conditional barrier
-  // that waits until this specific command buffer completes, always store references to any command
-  // buffers that are currently executing.
-  var lastReferencedCommandBufferID: Int?
+  // The last command buffer that mutated this allocation's underlying memory.
+  var lastModifiedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
     self.referenceCount = 1
@@ -311,7 +309,12 @@ class Allocation {
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
-    Context.global._compilerBarrier(commandBufferID: lastReferencedCommandBufferID)
+    print("ID: \(id)")
+    print("Last Modified ID: \(lastModifiedCommandBufferID ?? -1)")
+    
+    // Prevent it from defaulting to the latest command buffer.
+    let commandBufferID = lastModifiedCommandBufferID ?? nil//-1
+    Context.global._compilerBarrier(commandBufferID: commandBufferID)
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
@@ -333,7 +336,7 @@ class Allocation {
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in debug mode because it's very costly.
     assert({
-      if let commandBufferID = lastReferencedCommandBufferID {
+      if let commandBufferID = lastModifiedCommandBufferID {
         return Context.global.commandBufferDictionary[commandBufferID] == nil
       } else {
         return true

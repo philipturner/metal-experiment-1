@@ -39,8 +39,9 @@ extension Context {
   
   @inline(__always)
   internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
+    print("Info function: \(chosenID as Any)")
     flushStream()
-    barrier(commandBufferID: chosenID)
+    barrier(commandBufferID: nil)
   }
 }
 
@@ -54,12 +55,17 @@ private extension Context {
   
   @inline(__always)
   func barrier(commandBufferID chosenID: Int? = nil) {
+    lastCommandBuffer?.waitUntilCompleted()
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    let commandBufferID = chosenID ?? numCommittedBatches.load(ordering: .relaxed) - 1
+    let commandBufferID = nil ?? (numCommittedBatches.load(ordering: .sequentiallyConsistent) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
+      print("Waited on command buffer #\(commandBufferID)")
       lastCommandBuffer.waitUntilCompleted()
+    } else {
+      print("Attempted to wait on command buffer #\(commandBufferID)")
     }
+    print("#Command buffers: \(numCommittedBatches.load(ordering: .sequentiallyConsistent) - 1)")
   }
 }
 
@@ -150,7 +156,7 @@ private extension Context {
     
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    var commandBufferID = numCommittedBatches.load(ordering: .relaxed)
+    var commandBufferID = numCommittedBatches.load(ordering: .sequentiallyConsistent)
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -182,7 +188,8 @@ private extension Context {
       // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
       // atomic.
       commandBufferID += 1
-      numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
+      numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+//      numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
       
       // TODO: Look back into the latency here. If the CPU does a control flow operator depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
@@ -218,6 +225,7 @@ private extension Context {
           Context._dispatchQueue.async(execute: retainClosure)
         }
       }
+      lastCommandBuffer = encodingContext.commandBuffer
       encodingContext.commandBuffer.commit()
     }
     

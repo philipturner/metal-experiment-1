@@ -98,8 +98,7 @@ private extension Context {
   ) throws {
     try operation.input.materialize()
     try operation.output.materialize()
-    operation.input.lastReferencedCommandBufferID = ectx.commandBufferID
-    operation.output.lastReferencedCommandBufferID = ectx.commandBufferID
+    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     let encoder = ectx.makeEncoder()
     ectx.setComputePipelineState(unaryComputePipeline)

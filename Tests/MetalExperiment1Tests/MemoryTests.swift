@@ -272,38 +272,73 @@ final class MemoryTests: XCTestCase {
       _ = TensorHandle(repeating: 5, count: 2)
     }
     
-    print()
-    print("Handle 1")
-    let handle1 = TensorHandle(repeating: 5, count: 2)
-    XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+    do {
+      print()
+      print("Handle 1")
+      let handle1 = TensorHandle(repeating: 5, count: 2)
+      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      
+      print()
+      print("Handle 2")
+      let handle2 = handle1.incremented()
+      XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+      
+      print()
+      print("Handle 3")
+      let handle3 = handle1.incremented().incremented()
+      XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
+      
+      print()
+      print("Handle 4")
+      let handle4 = handle2.incremented().incremented()
+      XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
+      
+      print()
+      print("Handle 5")
+      let handle5 = handle4.incremented().incremented().incremented()
+      XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
+      
+      print()
+      print("End of function")
+    }
     
-    print()
-    print("Handle 2")
-    let handle2 = handle1.incremented()
-    XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
-    
-    print()
-    print("Handle 3")
-    let handle3 = handle1.incremented().incremented()
-    XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
-    
-    print()
-    print("Handle 4")
-    let handle4 = handle2.incremented().incremented()
-    XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
-    
-    print()
-    print("Handle 5")
-    let handle5 = handle4.incremented().incremented().incremented()
-    XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
-    
-    print()
-    print("End of function")
+    do {
+      print()
+      print("Handle 1")
+      let handle1 = TensorHandle(repeating: 5, count: 2)
+      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      
+      print()
+      print("Handle 2")
+      let handle2 = handle1.incremented()
+      XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+      
+      print()
+      print("Handle 3")
+      let handle3 = handle1.incremented().incremented()
+      XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
+      
+      print()
+      print("Handle 4")
+      let handle4 = handle2.incremented().incremented()
+      XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
+      
+      print()
+      print("Handle 5")
+      let handle5 = handle4.incremented().incremented().incremented()
+      XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
+      
+      print()
+      print("End of function")
+    }
   }
   
   func testMassiveAllocation() throws {
     testHeader("Massive memory allocation")
     HeapAllocator.global._releaseCachedBufferBlocks()
+    defer {
+      HeapAllocator.global._releaseCachedBufferBlocks()
+    }
     
     let device = Context.global.device
     #if os(macOS)
@@ -348,5 +383,42 @@ final class MemoryTests: XCTestCase {
       print("Tensor 3: [\(scalars3[0]), ...]")
       print("Tensor 4: [\(scalars4[0]), ...]")
     }
+  }
+  
+  func testReadPerformance() {
+    testHeader("Buffer read performance")
+    do {
+      _ = TensorHandle(repeating: 5, count: 2)
+    }
+    
+    for i in 0..<2 {
+      print()
+      Profiler.checkpoint()
+      let startScalar: Float = i == 1 ? 5.1 : 5
+      let handle1 = TensorHandle(repeating: startScalar, count: 2)
+      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      Profiler.log("Read handle 1 (fast)")
+      
+      print()
+      let handle2 = handle1.incremented()
+  //    XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+      Profiler.log("Read handle 2 (slow)")
+      
+      print()
+      let handle3 = handle1.incremented()
+      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      Profiler.log("Read handle 1 again (fast)")
+      
+      print()
+      XCTAssertEqual(handle3.copyScalars(), [6.0, 6.0])
+      Profiler.log("Read handle 3 after execution (medium)")
+      
+      print()
+      let handle4 = handle3.incremented()
+      XCTAssertEqual(handle4.copyScalars(), [7.0, 7.0])
+      Profiler.log("Read handle 4 (slow)")
+    }
+   
   }
 }
