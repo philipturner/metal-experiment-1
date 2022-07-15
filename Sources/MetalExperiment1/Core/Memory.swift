@@ -261,9 +261,6 @@ class Allocation {
     }
     print("Allocation #\(id) materialized.")
     self.mtlBuffer = mtlBuffer
-    let pointer = mtlBuffer.contents()
-    pointer.initializeMemory(as: Float.self, repeating: -2, count: size / 4)
-//    self.materialized = true
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
