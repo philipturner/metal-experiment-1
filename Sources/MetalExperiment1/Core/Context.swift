@@ -26,18 +26,11 @@ public class Context {
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
   
   static var maxCommandsPerBatch = 128
-  var numCommittedBatches: ManagedAtomic<Int> = .init(0)
-  var numScheduledBatches: ManagedAtomic<Int> = .init(0)
-  var numCompletedBatches: ManagedAtomic<Int> = .init(0)
+//  var numCommittedBatches: ManagedAtomic<Int> = .init(0)
+//  var numScheduledBatches: ManagedAtomic<Int> = .init(0)
+//  var numCompletedBatches: ManagedAtomic<Int> = .init(0)
   var eagerOperations: [EagerOperation] = []
   
-  // Function to write to the raw CPU-side memory (zero overhead)
-  // Function to automatically de-allocate
-  // Does not automatically allocate
-  // Lazy allocation so that placeholders in fused ops (or graph mode) can happen
-  //
-  // Could deallocate already be called by the user, showing which tensors disappear and
-  // automatically fusing unary ops?
   var allocations: [UInt64: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
   var permitExceedingSystemRAM = false
@@ -59,12 +52,5 @@ public class Context {
   
   private func generateID() -> UInt64 {
     fatalError()
-//    let bufferSize = Context.numBufferElements * MemoryLayout<Float>.stride
-//    let id = Context.generateID(allocationSize: bufferSize)
-//    try! Context.initialize(id: id) { bufferPointer in
-//      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-//      ptr.initialize(repeating: 0.0)
-//    }
-//    return id
   }
 }
