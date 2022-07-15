@@ -10,7 +10,9 @@ import MetalPerformanceShadersGraph
 extension Context {
   public static func generateID(allocationSize: Int) -> UInt64 {
     withDispatchQueue {
-      Context.global.generateID(allocationSize: allocationSize)
+      let output = Context.global.generateID(allocationSize: allocationSize)
+      print("Generated ID: \(output)")
+      return output
     }
   }
   
@@ -176,7 +178,7 @@ class Allocation {
   
   // Extracting this to its own property improves performance. It probably skips a reference count
   // to the `MTLBuffer`. Also, it could be useful if there are multiple storage modes.
-  var materialized = false
+//  var materialized = false
   
   // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
   // memory.
@@ -190,6 +192,11 @@ class Allocation {
   
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int?
+  var lastModifiedCommandBuffer: MTLCommandBuffer?
+  
+  // Wait for this command buffer to complete so that you don't free it until it's safe to do so.
+  // There should be no need to store this.
+  var lastReferencedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
     self.referenceCount = 1
@@ -203,7 +210,8 @@ class Allocation {
   // doesn't work, it crashes.
   @inline(__always)
   func materialize() throws {
-    if materialized {
+//    if materialized {
+    if mtlBuffer != nil {
       // Already materialized.
     } else {
       try actuallyMaterialize()
@@ -248,11 +256,15 @@ class Allocation {
       }
     }
     
+//    guard let mtlBuffer = Context.global.device.makeBuffer(length: size) else {
     guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
       throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
+    print("Allocation #\(id) materialized.")
     self.mtlBuffer = mtlBuffer
-    self.materialized = true
+    let pointer = mtlBuffer.contents()
+    pointer.initializeMemory(as: Float.self, repeating: -2, count: size / 4)
+//    self.materialized = true
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
@@ -275,6 +287,8 @@ class Allocation {
       let contents = mtlBuffer.contents()
       let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
       body(ptr)
+      let floatPtr = contents.assumingMemoryBound(to: Float.self)
+      print("Initializing #\(id), float val: \(floatPtr.pointee)")
     } else {
       // TODO: Append a command that will copy the memory.
       fatalError("Haven't implemented copying memory to a discrete GPU.")
@@ -310,12 +324,20 @@ class Allocation {
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
     
+    print("Read from #\(id) which was (materialized=\(mtlBuffer != nil)) (initialized=\(initialized))")
     // Prevent it from defaulting to the latest command buffer.
     let commandBufferID = lastModifiedCommandBufferID ?? -1
+    print("Attempting to wait on command buffer #\(commandBufferID)")
     Context.global._compilerBarrier(commandBufferID: commandBufferID)
+    
+    if let cmdbuf = lastModifiedCommandBuffer {
+      print("Waiting on modified command buffer at address \(withUnsafeAddress(of: cmdbuf) { $0 })")
+      cmdbuf.waitUntilCompleted()
+    }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
+    precondition(mtlBuffer != nil)
     guard initialized else {
       throw AllocationError.other("Cannot read from an uninitialized allocation.")
     }
@@ -331,21 +353,28 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
+    print("Deinitializing allocation #\(id)")
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in debug mode because it's very costly.
-    assert({
-      if let commandBufferID = lastModifiedCommandBufferID {
+//    assert({
+    precondition({
+      if let commandBufferID = lastReferencedCommandBufferID {
+        precondition(mtlBuffer != nil)
         return Context.global.commandBufferDictionary[commandBufferID] == nil
       } else {
         return true
       }
     }())
+    // Can't deallocate until the last command buffer _referencing_ (not modifying) this is
+    // finishes.
     
     // Catch memory management bugs.
     precondition(referenceCount == 0)
-    guard materialized else {
+//    guard materialized else {
+    guard mtlBuffer != nil else {
       return
     }
     HeapAllocator.global.free(self.mtlBuffer!)
+//    self.mtlBuffer = nil
   }
 }

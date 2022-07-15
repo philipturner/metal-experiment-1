@@ -56,9 +56,12 @@ private extension Context {
   func barrier(commandBufferID chosenID: Int? = nil) {
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    let commandBufferID = nil ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
+    let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .sequentiallyConsistent) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
+      print("Waited on command buffer #\(commandBufferID)")
       lastCommandBuffer.waitUntilCompleted()
+    } else {
+      print("Failed to wait on command buffer #\(commandBufferID)")
     }
   }
 }
@@ -159,6 +162,8 @@ private extension Context {
     func submitBatch(range: Range<Int>) {
       encodingContext.finishEncoder()
       
+      let idCopy = commandBufferID
+      
       // Force the memory allocations to stay alive until the command buffer finishes.
       var retainClosure: () -> Void
       if range == compiledOperations.indices {
@@ -166,14 +171,18 @@ private extension Context {
         // something greater than we want inside the closure. To fix this, each closure captures the
         // ID inside its explicit capture list.
         retainClosure = { [commandBufferID = commandBufferID] in
+          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
+          print("Removed command buffer #\(idCopy)")
           _ = compiledOperations
         }
       } else {
         let submittedOperations = Array(compiledOperations[range])
         
         retainClosure = { [commandBufferID = commandBufferID] in
+          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
+          print("Removed command buffer #\(idCopy)")
           _ = submittedOperations
         }
       }
@@ -198,11 +207,13 @@ private extension Context {
       //
       // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
       // to `flushStream(precomputedBackpressure:)`.
-      encodingContext.commandBuffer.addScheduledHandler { _ in
+      encodingContext.commandBuffer.addScheduledHandler { selfRef in
+        precondition(selfRef.status == .scheduled)
         self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
       
-      encodingContext.commandBuffer.addCompletedHandler { _ in
+      encodingContext.commandBuffer.addCompletedHandler { selfRef in
+        precondition(selfRef.status == .completed)
         let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
         let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
           ordering: .sequentiallyConsistent)

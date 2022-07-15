@@ -14,6 +14,7 @@ public class Context {
   var commandQueue: MTLCommandQueue
   var unaryComputePipeline: MTLComputePipelineState
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
+  var fence: MTLFence?
   static let maxBatchesInFlight = 10
   
   static let numBufferElements = 1000
