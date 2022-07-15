@@ -32,9 +32,9 @@ extension Context {
   // to it equal the same overhead of calling into the dispatch queue. Because of this overhead,
   // calling into `withDispatchQueue` is avoided internally when possible.
   //
-  // Also, once you enter synchronization in any situation, this wrapper could free deadlocks. But
-  // wait to implement that feature so you can find thread synchronization bugs in the early stages
-  // of development.
+  // Another concern found while narrowing a bug: this blocks memory retained by a command buffer
+  // from deallocating. Unless the operations contained by it are likely to fuse, this could degrade
+  // performance.
   public static func withDispatchQueue<T>(_ body: () throws -> T) rethrows -> T {
     if DispatchQueue.getSpecific(key: dispatchQueueIdentifier) == true {
       return try body()

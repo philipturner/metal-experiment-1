@@ -119,7 +119,7 @@ class BufferBlock: AllocatorBlockProtocol {
   }
   
   // Activate this code if you suspect there are memory leaks.
-  #if true
+  #if false
   deinit {
     if HeapAllocator.debugInfoEnabled {
       let isShared = buffer.storageMode == .shared
@@ -161,28 +161,16 @@ class HeapBlock: AllocatorBlockProtocol {
     }
     desc.storageMode = isShared ? .shared : .private
     desc.hazardTrackingMode = .tracked
-    desc.resourceOptions = [.hazardTrackingModeTracked, .storageModeShared]
     
     let device = Context.global.device
-    let output = device.makeHeap(descriptor: desc)!
-    precondition(output.hazardTrackingMode == .tracked)
-    precondition(output.cpuCacheMode == .defaultCache)
-    precondition(output.storageMode == .shared)
-    precondition(output.resourceOptions.contains(.hazardTrackingModeTracked))
-    output.setPurgeableState(.nonVolatile)
-    return output
-//    return device.makeHeap(descriptor: desc)
+    return device.makeHeap(descriptor: desc)
   }
   
   func makeBuffer(length: Int) -> MTLBuffer? {
-    let buffer = heap.makeBuffer(length: length, options: [.hazardTrackingModeTracked, .storageModeShared])
+    let buffer = heap.makeBuffer(length: length)
     guard let buffer = buffer else {
       return nil
     }
-    precondition(buffer.hazardTrackingMode == .tracked)
-    precondition(buffer.cpuCacheMode == .defaultCache)
-    precondition(buffer.storageMode == .shared)
-    precondition(buffer.resourceOptions.contains(.hazardTrackingModeTracked))
     availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
     numBuffers += 1
     return buffer
@@ -197,7 +185,7 @@ class HeapBlock: AllocatorBlockProtocol {
     precondition(numBuffers == 0)
     
     // Activate this code if you suspect there are memory leaks.
-    #if true
+    #if false
     if HeapAllocator.debugInfoEnabled {
       let isShared = heap.storageMode == .shared
       print("""
@@ -323,11 +311,7 @@ extension HeapAllocator {
   }
   
   func free(_ buffer: MTLBuffer) {
-    let pointer = buffer.contents()
-    pointer.initializeMemory(as: Float.self, repeating: -300, count: buffer.length / 4)
-    
     let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
-    print("Freed buffer at address \(bufferAddress)")
     guard let bufferBlock = allocatedBuffers[bufferAddress] else {
       // Catch memory management bugs.
       preconditionFailure("Cannot free a buffer twice.")
@@ -414,12 +398,9 @@ private extension HeapAllocator {
       // Does PyTorch show just the buffer's memory address, or the entire ugly description from
       // passing it into `Swift.print`?
       let bufferAddress = withUnsafeAddress(of: bufferBlock.buffer) { $0 }
-      let ptr = bufferBlock.buffer.contents()
-      let floatPtr = ptr.assumingMemoryBound(to: Float.self)
-      let floatVal = floatPtr.pointee
       print("""
         Reusing \(pool.isShared ? "shared" : "private") buffer #\(bufferBlock.bufferID) of size \
-        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) with memory \(floatVal) (requested size: \
+        \(Self.formatSize(bufferBlock.size)) at \(bufferAddress) (requested size: \
         \(Self.formatSize(requestedSize)))
         """)
     }

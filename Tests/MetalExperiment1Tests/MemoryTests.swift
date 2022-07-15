@@ -306,8 +306,8 @@ final class MemoryTests: XCTestCase {
       Allocation.debugInfoEnabled = false
     }
     
-    // This is one of the reproducers for a memory management bug I encountered. Retaining it, but
-    // suppressing its print output.
+    // This is one of the reproducers for a memory management bug I encountered. Retaining it as a
+    // regression test, but suppressing its print output.
     do {
       let handle1 = TensorHandle(repeating: 5, count: 2)
       XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
@@ -380,62 +380,35 @@ final class MemoryTests: XCTestCase {
   
   func testReadPerformance() {
     testHeader("Buffer read performance")
-    HeapAllocator.debugInfoEnabled = true
-    defer {
-      HeapAllocator.debugInfoEnabled = false
-    }
     do {
       _ = TensorHandle(repeating: 4, count: 2)
     }
     
-    // TODO: Fix the memory management bug reproduced here.
-    //
-    // The bug doesn't happen when you put everything on `dispatchQueue`. Perhaps that's a GCD-side
-    // data race. It could also be a `HeapAllocator`-side bug, because now tensors don't deallocate
-    // when released by a command buffer.
-//    Context.withDispatchQueue {
-      for i in 0..<2 {
-        print()
-        
-        let loopOffset: Float = (i == 0) ? 0.0 : 0.1
-        
-        Profiler.checkpoint()
-        let handle1 = Context.withDispatchQueue {
-          let handle1 = TensorHandle(repeating: 5 + loopOffset, count: 2)
-          XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
-          Profiler.log("Read handle 1 (fast)")
-          return handle1
-        }
-        
-        let handle2 = Context.withDispatchQueue {
-          let handle2 = handle1.incremented()
-          XCTAssertEqual(handle2.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
-          Profiler.log("Read handle 2 (slow)")
-          return handle2
-        }
-        
-        // This should be fast, but isn't.
-        let handle3 = Context.withDispatchQueue {
-          let handle3 = handle1.incremented()
-          XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
-          Profiler.log("Read handle 1 again (fast)")
-          return handle3
-        }
-        
-        // This should be medium, but isn't.
-        Context.withDispatchQueue {
-          XCTAssertEqual(handle3.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
-          Profiler.log("Read handle 3 after execution (medium)")
-        }
-        
-        let handle4 = Context.withDispatchQueue {
-          let handle4 = handle3.incremented()
-          XCTAssertEqual(handle4.copyScalars(), [7.0 + loopOffset, 7.0 + loopOffset])
-          Profiler.log("Read handle 4 (slow)")
-          return handle4
-        }
-        _ = handle4
-      }
-//    }
+    for i in 0..<2 {
+      print()
+      let loopOffset: Float = (i == 0) ? 0.0 : 0.1
+      
+      Profiler.checkpoint()
+      let handle1 = TensorHandle(repeating: 5 + loopOffset, count: 2)
+      XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
+      Profiler.log("Read handle 1 (fast)")
+      
+      let handle2 = handle1.incremented()
+      XCTAssertEqual(handle2.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
+      Profiler.log("Read handle 2 (slow)")
+      
+      // This should be fast, but isn't.
+      let handle3 = handle1.incremented()
+      XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
+      Profiler.log("Read handle 1 again (fast)")
+      
+      // This should be medium, but isn't.
+      XCTAssertEqual(handle3.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
+      Profiler.log("Read handle 3 after execution (slow)")
+      
+      let handle4 = handle3.incremented()
+      XCTAssertEqual(handle4.copyScalars(), [7.0 + loopOffset, 7.0 + loopOffset])
+      Profiler.log("Read handle 4 (slow)")
+    }
   }
 }

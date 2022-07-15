@@ -11,6 +11,7 @@ extension Context {
   static func validate() {
     withDispatchQueue {
       let ctx = Context.global
+      ctx._compilerFlushStream()
       ctx._compilerBarrier()
       try! Context.read(id: ctx.allocation1) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
@@ -25,21 +26,28 @@ extension Context {
     }
   }
   
-  public static func commitIncrement(inputID: UInt64, outputID: UInt64) {
+  public static func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
     withDispatchQueue {
-      Context.global.commitIncrement(inputID: inputID, outputID: outputID)
+      Context.global.commitIncrement(inputID: inputID, outputID: outputID, size: size)
     }
   }
   
   static func barrier() {
     withDispatchQueue {
-      Context.global._compilerBarrier()
+      let ctx = Context.global
+      ctx._compilerFlushStream()
+      ctx._compilerBarrier()
     }
   }
   
   @inline(__always)
-  internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
+  internal func _compilerFlushStream() {
     flushStream()
+  }
+  
+  // Must flush before calling this function.
+  @inline(__always)
+  internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
     barrier(commandBufferID: chosenID)
   }
 }
@@ -56,12 +64,10 @@ private extension Context {
   func barrier(commandBufferID chosenID: Int? = nil) {
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .sequentiallyConsistent) - 1)
+    let commandBufferID =
+      chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
-      print("Waited on command buffer #\(commandBufferID)")
       lastCommandBuffer.waitUntilCompleted()
-    } else {
-      print("Failed to wait on command buffer #\(commandBufferID)")
     }
   }
 }
@@ -74,14 +80,14 @@ private extension Context {
     let outputID = allocation2
     operationCount += 1
     swap(&allocation1, &allocation2)
-    commitIncrement(inputID: inputID, outputID: outputID)
+    commitIncrement(inputID: inputID, outputID: outputID, size: Context.numBufferElements)
   }
   
-  func commitIncrement(inputID: UInt64, outputID: UInt64) {
+  func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
     _compilerRetain(id: inputID)
     _compilerRetain(id: outputID)
     let operation = EagerOperation.Unary(
-      type: .increment, input: inputID, output: outputID, size: Context.numBufferElements)
+      type: .increment, input: inputID, output: outputID, size: size)
     eagerOperations.append(.unary(operation))
     
     // This part of the function needs to be semantically separated from the part that processes
@@ -133,6 +139,7 @@ private extension Context {
     defer {
       if Context.profilingEncoding {
         let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        
         // Try to vectorize the division by 1000.
         let compileDuration = Int(encodeStartTime - compileStartTime) / 1000
         let encodeDuration = Int(encodeEndTime - encodeStartTime) / 1000
@@ -153,7 +160,7 @@ private extension Context {
     
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
-    var commandBufferID = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    var commandBufferID = numCommittedBatches.load(ordering: .relaxed)
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -162,8 +169,6 @@ private extension Context {
     func submitBatch(range: Range<Int>) {
       encodingContext.finishEncoder()
       
-      let idCopy = commandBufferID
-      
       // Force the memory allocations to stay alive until the command buffer finishes.
       var retainClosure: () -> Void
       if range == compiledOperations.indices {
@@ -171,18 +176,14 @@ private extension Context {
         // something greater than we want inside the closure. To fix this, each closure captures the
         // ID inside its explicit capture list.
         retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
-          print("Removed command buffer #\(idCopy)")
           _ = compiledOperations
         }
       } else {
+        // Capture only the range of operations encoded in this batch.
         let submittedOperations = Array(compiledOperations[range])
-        
         retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
-          print("Removed command buffer #\(idCopy)")
           _ = submittedOperations
         }
       }
@@ -207,13 +208,11 @@ private extension Context {
       //
       // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
       // to `flushStream(precomputedBackpressure:)`.
-      encodingContext.commandBuffer.addScheduledHandler { selfRef in
-        precondition(selfRef.status == .scheduled)
+      encodingContext.commandBuffer.addScheduledHandler { _ in
         self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
       
-      encodingContext.commandBuffer.addCompletedHandler { selfRef in
-        precondition(selfRef.status == .completed)
+      encodingContext.commandBuffer.addCompletedHandler { _ in
         let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
         let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
           ordering: .sequentiallyConsistent)

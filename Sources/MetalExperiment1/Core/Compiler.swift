@@ -40,7 +40,6 @@ extension Context {
     @inline(never)
     func appendFusionOperation() {
       defer {
-        // COW would make `remove(keepingCapacity:)` useless, so just re-initialize.
         unaryFusionArray = .init()
         unaryFusionHead = nil
         unaryFusionTail = nil
@@ -55,10 +54,7 @@ extension Context {
       }
       
       // Make the unary fusion tail valid to read from.
-      let wasInitialized = unaryFusionTail.initialized
-      let id = unaryFusionTail.id
       unaryFusionTail.initialized = true
-      print("Compiler marked #\(id) as initialized. Previously, it was \(wasInitialized).")
       
       let multiUnary = CompiledOperation.MultiUnary(
         types: unaryFusionArray, input: unaryFusionHead, output: unaryFusionTail,
