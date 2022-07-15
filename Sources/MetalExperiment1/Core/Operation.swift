@@ -106,18 +106,15 @@ private extension Context {
   ) throws {
     try operation.input.materialize()
     try operation.output.materialize()
-    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
+//    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
     
-    operation.input.lastReferencedCommandBufferID = ectx.commandBufferID
-    operation.input.lastModifiedCommandBufferID = ectx.commandBufferID
-
     let encoder = ectx.makeEncoder()
     ectx.setComputePipelineState(unaryComputePipeline)
     
     encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
     
-    var bytes = Float(operation.types.count)
+    var bytes: Float = 1
     encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
   }

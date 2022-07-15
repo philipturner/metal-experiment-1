@@ -261,6 +261,7 @@ class Allocation {
     }
     print("Allocation #\(id) materialized.")
     self.mtlBuffer = mtlBuffer
+//    self.materialized = true
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is

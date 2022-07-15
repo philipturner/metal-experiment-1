@@ -156,117 +156,61 @@ private extension Context {
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
     
     // Only called in one location, the loop that iterates over each operation.
-    func submitBatch(range: Range<Int>) {
-      encodingContext.finishEncoder()
+    func submitBatch() {
       
-      // Force the memory allocations to stay alive until the command buffer finishes.
-      var retainClosure: () -> Void
-      if range == compiledOperations.indices {
-        // If `commandBufferID` is captured without doing anything else, it will register as
-        // something greater than we want inside the closure. To fix this, each closure captures the
-        // ID inside its explicit capture list.
-        retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID] = nil
-          _ = compiledOperations
-        }
-      } else {
-        let submittedOperations = Array(compiledOperations[range])
-        retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID] = nil
-          _ = submittedOperations
-        }
-      }
-      
-      // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
-      // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
-      // atomic.
-      commandBufferID += 1
-      numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
-      
-      // TODO: Look back into the latency here. If the CPU does a control flow operator depending
-      // on flushing the command stream, checking numCommitted == numCompleted here could halve
-      // total latency. I originally settled on using the completion handler because in the
-      // scheduled handler, it was so unreliable and often harmed performance or did nothing. I
-      // should revisit this once I confirm the delay for a total stop of the pipeline is 400 μs.
-      // If done right, I could sometimes reduce it to 200 μs here.
-      //
-      // "constant folding" on the CPU should reduce the overhead of scalar-wise operators after the
-      // read to near-zero, so maybe we don't need to wait for two command buffers to come through
-      // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
-      // pointless. The delay is 200 μs in every case.
-      //
-      // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
-      // to `flushStream(precomputedBackpressure:)`.
-      encodingContext.commandBuffer.addScheduledHandler { selfRef in
-        precondition(selfRef.status == .scheduled)
-        self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
-      }
-      
-      encodingContext.commandBuffer.addCompletedHandler { selfRef in
-        precondition(selfRef.status == .completed)
-        let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
-        let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
-          ordering: .sequentiallyConsistent)
-        
-        // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
-        // frontend never calls into the backend, leaving the GPU starved of work.
-        if numCommitted == numCompleted {
-          Context._dispatchQueue.async {
-            retainClosure()
-            Context.global.flushStream()
-          }
-        } else {
-          Context._dispatchQueue.async(execute: retainClosure)
-        }
-      }
-      encodingContext.commandBuffer.commit()
     }
     
+    precondition(compiledOperations.count == 1)
     var i = 0
     var rangeStart = 0
     repeat {
       let operation = compiledOperations[i]
-      var encounteredError = false
-      do {
-        try encodeCompiledOperation(operation, into: &encodingContext)
-      } catch AllocationError.exceededSystemRAM {
-        Context.global.permitExceedingSystemRAM = true
-        
-        // Retry the command that failed in the next command buffer.
-        i -= 1
-        encounteredError = true
-      } catch {
-        fatalError(error.localizedDescription)
-      }
+      try! encodeCompiledOperation(operation, into: &encodingContext)
       
       let nextIterator = i + 1
       let isLoopEnd = nextIterator == compiledOperations.count
-      if encounteredError || isLoopEnd {
-        if nextIterator > rangeStart {
-          // This function increments the command buffer ID.
-          submitBatch(range: rangeStart..<nextIterator)
-          rangeStart = nextIterator
-          if encounteredError {
-            encodingContext = EncodingContext(
-              commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
-            commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
-          }
-        }
-        if encounteredError {
-          if numCommittedBatches.load(ordering: .sequentiallyConsistent) == 0 {
-            if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
-              print("""
-                One of the first commands ever submitted was to interact with an exorbitant amount \
-                of memory. An allocation may have exceeded the size of your GPU's RAM.
-                """)
-            }
-          } else {
-            barrier()
-          }
-        }
+      if isLoopEnd {
+//        submitBatch(range: rangeStart..<nextIterator)
       }
       i = nextIterator
     }
     while i < compiledOperations.count
+            
+    encodingContext.finishEncoder()
+    
+    // Force the memory allocations to stay alive until the command buffer finishes.
+    let retainClosure = {
+      _ = compiledOperations
+    }
+    
+    // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
+    // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
+    // atomic.
+    commandBufferID += 1
+    numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
+    
+    encodingContext.commandBuffer.addScheduledHandler { selfRef in
+      precondition(selfRef.status == .scheduled)
+      self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+    }
+    
+    encodingContext.commandBuffer.addCompletedHandler { selfRef in
+      precondition(selfRef.status == .completed)
+      let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
+      let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
+        ordering: .sequentiallyConsistent)
+      
+      // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
+      // frontend never calls into the backend, leaving the GPU starved of work.
+      if numCommitted == numCompleted {
+        Context._dispatchQueue.async {
+          retainClosure()
+          Context.global.flushStream()
+        }
+      } else {
+        Context._dispatchQueue.async(execute: retainClosure)
+      }
+    }
+    encodingContext.commandBuffer.commit()
   }
 }
