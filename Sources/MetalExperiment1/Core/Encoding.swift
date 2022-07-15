@@ -11,7 +11,7 @@ extension Context {
   static func validate() {
     withDispatchQueue {
       let ctx = Context.global
-      ctx.barrier()
+      ctx._compilerBarrier()
       try! Context.read(id: ctx.allocation1) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         precondition(ptr[0] == Float(ctx.operationCount))
@@ -33,39 +33,39 @@ extension Context {
   
   static func barrier() {
     withDispatchQueue {
-      Context.global.barrier()
+      Context.global._compilerBarrier()
     }
   }
   
   @inline(__always)
-  internal func _compilerBarrier() {
-    let ctx = Context.global
-    ctx.flushStream()
-    if let commandBuffer = ctx.lastCommandBuffer {
-      commandBuffer.waitUntilCompleted()
-    }
+  internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
+    flushStream()
+    barrier(commandBufferID: chosenID)
   }
 }
 
 private extension Context {
-  func barrier() {
-    flushStream()
-    if let commandBuffer = lastCommandBuffer {
-      commandBuffer.waitUntilCompleted()
-    }
-  }
-  
+  @inline(__always)
   func queryQueueBackPressure() -> Int {
     let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
     let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
     return numCommitted - numScheduled
   }
+  
+  @inline(__always)
+  func barrier(commandBufferID chosenID: Int? = nil) {
+    // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
+    // never modified by threads other than the encapsulating dispatch queue.
+    let commandBufferID = chosenID ?? numCommittedBatches.load(ordering: .relaxed) - 1
+    if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
+      lastCommandBuffer.waitUntilCompleted()
+    }
+  }
 }
 
+// Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
+// allocation happens afterwards, during `flushStream`.
 private extension Context {
-  // Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
-  // allocation happens afterwards, during `flushStream`.
-  
   func commitStreamedCommand() {
     let inputID = allocation1
     let outputID = allocation2
@@ -81,6 +81,10 @@ private extension Context {
       type: .increment, input: inputID, output: outputID, size: Context.numBufferElements)
     eagerOperations.append(.unary(operation))
     
+    // This part of the function needs to be semantically separated from the part that processes
+    // unique instructions. If they are physically separated by a lack of inlining, that is fine.
+    // Especially if the second body tracks the real-time minimum command buffer latency, which
+    // produces a lot of assembly instructions.
     let backPressure = queryQueueBackPressure()
     if eagerOperations.count < Context.maxCommandsPerBatch,
        backPressure >= 1 {
@@ -143,9 +147,13 @@ private extension Context {
     if compiledOperations.count == 0 {
       return
     }
-    var commandBufferID = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    
+    // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
+    // never modified by threads other than the encapsulating dispatch queue.
+    var commandBufferID = numCommittedBatches.load(ordering: .relaxed)
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
+    commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
     
     // Only called in one location, the loop that iterates over each operation.
     func submitBatch(range: Range<Int>) {
@@ -154,18 +162,27 @@ private extension Context {
       // Force the memory allocations to stay alive until the command buffer finishes.
       var retainClosure: () -> Void
       if range == compiledOperations.indices {
-        retainClosure = { _ = compiledOperations }
+        // If `commandBufferID` is captured without doing anything else, it will register as
+        // something greater than we want inside the closure. To fix this, each closure captures the
+        // ID inside its explicit capture list.
+        retainClosure = { [commandBufferID = commandBufferID] in
+          Context.global.commandBufferDictionary[commandBufferID] = nil
+          _ = compiledOperations
+        }
       } else {
         let submittedOperations = Array(compiledOperations[range])
-        retainClosure = { _ = submittedOperations }
+        
+        retainClosure = { [commandBufferID = commandBufferID] in
+          Context.global.commandBufferDictionary[commandBufferID] = nil
+          _ = submittedOperations
+        }
       }
       
-      // This code will always execute on the same thread, so it's okay to increment in a way that
-      // isn't perfectly atomic.
-//      numCommittedBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+      // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
+      // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
+      // atomic.
       commandBufferID += 1
       numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
-      
       
       // TODO: Look back into the latency here. If the CPU does a control flow operator depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
@@ -202,7 +219,6 @@ private extension Context {
         }
       }
       encodingContext.commandBuffer.commit()
-      lastCommandBuffer = encodingContext.commandBuffer
     }
     
     var i = 0
@@ -232,6 +248,7 @@ private extension Context {
           if encounteredError {
             encodingContext = EncodingContext(
               commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
+            commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
           }
         }
         if encounteredError {
@@ -243,7 +260,7 @@ private extension Context {
                 """)
             }
           } else {
-            lastCommandBuffer!.waitUntilCompleted()
+            barrier()
           }
         }
       }

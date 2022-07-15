@@ -191,7 +191,7 @@ class Allocation {
   // TODO: Store the latest command buffer ID that references this. To make a conditional barrier
   // that waits until this specific command buffer completes, always store references to any command
   // buffers that are currently executing.
-  var referencedCommandBufferID: Int?
+  var lastReferencedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
     self.referenceCount = 1
@@ -283,6 +283,9 @@ class Allocation {
     }
   }
   
+  // Making a function like `read` that just modifies the underlying storage is technically possible
+  // and even more performant on a discrete GPU. However, it would be unused in the frontend.
+  
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
@@ -297,15 +300,19 @@ class Allocation {
       // a `MTLBuffer` as output but can have an unmaterialized allocation as input.
       fatalError("Haven't implemented reading memory from a discrete GPU.")
     }
-    // TODO: Special barrier, waits until the last command buffer referencing this finishes. If the
-    // last command referencing this hasn't yet been encoded, place a MTLEvent in the next command
-    // buffer. That way, you synchronize without dividing into two separate command buffers (more
-    // overhead). It would also reduce I/O bottlenecks if you have several calls to `read` in a row.
+    
+    // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
+    // next command buffer. That way, you synchronize without dividing into two separate command
+    // buffers (more overhead). It would also reduce I/O bottlenecks if you have several calls to
+    // `read` in a row. This `MTLEvent` should never cause glitches in the graph compilier, because
+    // the buffer here is not deallocated and not a placeholder. Keeping the entire pending command
+    // batch intact provides more opportunities for fusing non-adjacent nodes in the graph.
     //
-    // You can also prioritize the copying op, if on a discrete GPU. Prepend the copying op to the
-    // beginning of `bufferedOperations`, unless one of those operations references it. This
-    // violates sequential order of execution, but produces the same end result.
-    Context.global._compilerBarrier()
+    // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
+    // of `bufferedOperations`, unless one of those operations references it. This violates
+    // sequential order of execution, but produces the same end result.
+    Context.global._compilerBarrier(commandBufferID: lastReferencedCommandBufferID)
+    
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
     guard initialized else {
@@ -323,6 +330,16 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
+    // The command buffer must be released from the context before its referenced memory can
+    // deallocate. Avoiding this check in debug mode because it's very costly.
+    assert({
+      if let commandBufferID = lastReferencedCommandBufferID {
+        return Context.global.commandBufferDictionary[commandBufferID] == nil
+      } else {
+        return true
+      }
+    }())
+    
     // Catch memory management bugs.
     precondition(referenceCount == 0)
     guard materialized else {
