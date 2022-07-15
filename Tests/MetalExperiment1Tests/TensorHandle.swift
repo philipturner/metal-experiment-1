@@ -48,10 +48,8 @@ extension TensorHandle {
 
 enum _Raw {
   static func increment(_ input: TensorHandle) -> TensorHandle {
-    Context.withDispatchQueue {
-      let output = TensorHandle(unsafeUninitializedCount: input.count)
-      Context.commitIncrement(inputID: input.id, outputID: output.id)
-      return output
-    }
+    let output = TensorHandle(unsafeUninitializedCount: input.count)
+    Context.commitIncrement(inputID: input.id, outputID: output.id)
+    return output
   }
 }

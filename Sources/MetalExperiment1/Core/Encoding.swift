@@ -58,10 +58,7 @@ private extension Context {
     // never modified by threads other than the encapsulating dispatch queue.
     let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .sequentiallyConsistent) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
-      print("Waited on command buffer #\(commandBufferID)")
       lastCommandBuffer.waitUntilCompleted()
-    } else {
-      print("Failed to wait on command buffer #\(commandBufferID)")
     }
   }
 }
@@ -162,8 +159,6 @@ private extension Context {
     func submitBatch(range: Range<Int>) {
       encodingContext.finishEncoder()
       
-      let idCopy = commandBufferID
-      
       // Force the memory allocations to stay alive until the command buffer finishes.
       var retainClosure: () -> Void
       if range == compiledOperations.indices {
@@ -171,18 +166,13 @@ private extension Context {
         // something greater than we want inside the closure. To fix this, each closure captures the
         // ID inside its explicit capture list.
         retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
-          print("Removed command buffer #\(idCopy)")
           _ = compiledOperations
         }
       } else {
         let submittedOperations = Array(compiledOperations[range])
-        
         retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID]!.waitUntilCompleted()
           Context.global.commandBufferDictionary[commandBufferID] = nil
-          print("Removed command buffer #\(idCopy)")
           _ = submittedOperations
         }
       }

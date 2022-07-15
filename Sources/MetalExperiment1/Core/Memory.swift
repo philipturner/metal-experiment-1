@@ -192,10 +192,9 @@ class Allocation {
   
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int?
-  var lastModifiedCommandBuffer: MTLCommandBuffer?
   
   // Wait for this command buffer to complete so that you don't free it until it's safe to do so.
-  // There should be no need to store this.
+  // There should be no need to store this... or wait, maybe there is!
   var lastReferencedCommandBufferID: Int?
   
   init(id: UInt64, size: Int) {
@@ -324,20 +323,12 @@ class Allocation {
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
     
-    print("Read from #\(id) which was (materialized=\(mtlBuffer != nil)) (initialized=\(initialized))")
     // Prevent it from defaulting to the latest command buffer.
     let commandBufferID = lastModifiedCommandBufferID ?? -1
-    print("Attempting to wait on command buffer #\(commandBufferID)")
     Context.global._compilerBarrier(commandBufferID: commandBufferID)
-    
-    if let cmdbuf = lastModifiedCommandBuffer {
-      print("Waiting on modified command buffer at address \(withUnsafeAddress(of: cmdbuf) { $0 })")
-      cmdbuf.waitUntilCompleted()
-    }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
-    precondition(mtlBuffer != nil)
     guard initialized else {
       throw AllocationError.other("Cannot read from an uninitialized allocation.")
     }
@@ -353,13 +344,11 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
-    print("Deinitializing allocation #\(id)")
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in debug mode because it's very costly.
 //    assert({
     precondition({
       if let commandBufferID = lastReferencedCommandBufferID {
-        precondition(mtlBuffer != nil)
         return Context.global.commandBufferDictionary[commandBufferID] == nil
       } else {
         return true

@@ -107,35 +107,18 @@ private extension Context {
     try operation.input.materialize()
     try operation.output.materialize()
     operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
-    operation.output.lastModifiedCommandBuffer = ectx.commandBuffer
     
     operation.input.lastReferencedCommandBufferID = ectx.commandBufferID
     operation.input.lastModifiedCommandBufferID = ectx.commandBufferID
-    
-    print("Command buffer #\(operation.input.lastModifiedCommandBufferID as Any) marked as mutating #\(operation.input.id)")
-    print("Command buffer #\(operation.output.lastModifiedCommandBufferID as Any) marked as mutating #\(operation.output.id)")
-    print("Command buffer #\(ectx.commandBufferID) read from allocation #\(operation.input.id)")
-    print("Command buffer #\(ectx.commandBufferID) wrote to allocation #\(operation.output.id)")
-    
-    func queryMemory(of buffer: MTLBuffer) {
-      let ptr = buffer.contents().assumingMemoryBound(to: Float.self)
-      let val = ptr[0]
-      print("Float val: \(val)")
-    }
-    queryMemory(of: operation.input.mtlBuffer!)
-    queryMemory(of: operation.output.mtlBuffer!)
-    
+
     let encoder = ectx.makeEncoder()
-    encoder.memoryBarrier(scope: .buffers)
     ectx.setComputePipelineState(unaryComputePipeline)
     
     encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
     
     var bytes = Float(operation.types.count)
-    print("Increment size: \(bytes)")
     encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
-    encoder.memoryBarrier(scope: .buffers)
   }
 }

@@ -323,11 +323,7 @@ extension HeapAllocator {
   }
   
   func free(_ buffer: MTLBuffer) {
-    let pointer = buffer.contents()
-    pointer.initializeMemory(as: Float.self, repeating: -300, count: buffer.length / 4)
-    
     let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
-    print("Freed buffer at address \(bufferAddress)")
     guard let bufferBlock = allocatedBuffers[bufferAddress] else {
       // Catch memory management bugs.
       preconditionFailure("Cannot free a buffer twice.")
