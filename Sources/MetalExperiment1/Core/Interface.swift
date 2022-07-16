@@ -19,34 +19,11 @@ extension Context {
     }
   }
   
-  // Accepted attribute keys: UnsafePointer<Int8>
-  // Accepted attribute values: <= Int64, <= Double, UnsafePointer<Int8>
-  // Encode the raw 8 bytes of everything in the buffer, the backend will decide its type based on
-  // the string key. All pointers are padded to 8 bytes.
+  // Rule for encoding attributes:
   //
-  // Serialized into a buffer like OpenCL's properties arrays. Instead of being terminated by a zero
-  // key, it uses the "count" property of a Swift buffer pointer. The frontend should use
-  // `StaticString.utf8Start` for strings, but doesn't have to.
-  
-  // Atoms of data are padded to 16 bytes. For strings, encode the count followed by the raw C
-  // pointer. For arrays, encode the count followed by the pointer to its underlying data. This
-  // rule applies recursively. After the second level of recursion, store elements in their native
-  // layout size.
-  
-  // Atoms of data are padded to 8 bytes. For strings, encode the raw C pointer. Its length will be
-  // decoded using `strlen`. For arrays, encode a pointer to a second area of memory, which contains
-  // first the count and then the data pointer. For arrays of strings, the elements must be tuples
-  // of (count, C-style pointer).
-  //
-  // The rules above apply recursively, with one caveat. Upon entering the second level of
-  // recursion, the only data types are counts and pointers. Store these in the native integer
-  // width, instead of 64-bit. This convention improves performance and ease of implementation.
-  //
-  // This encoding allows for near zero-cost encoding on the frontend. It can be accomplished with
-  // generics and `withUnsafeTemporaryBuffer`. Using 8 bytes instead of 16
-  
-  // The reason for this encoding is --- so it can be synthesized with Swift generics and a Swift
-  // temporary buffer.
+  // Atoms of data are padded to 16 bytes. For strings, encode the count, then the raw C pointer.
+  // For arrays, encode the count, then the pointer to its underlying data. This rule applies
+  // recursively. After the first level of recursion, store elements in their native layout size.
   private func _executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
@@ -103,16 +80,10 @@ struct OperatorRegistry {
         .init(outputs.baseAddress.unsafelyUnwrapped), outputs.count)
     }
     
-    @inline(__always)
-    static func advanceScalar(_ ptr: inout UnsafeRawBufferPointer) {
-      let baseAddress = ptr.baseAddress.unsafelyUnwrapped
-      let start = baseAddress.advanced(by: 8)
-      let count = ptr.count - 8
-      ptr = UnsafeRawBufferPointer(start: start, count: count)
-    }
+    // Pointer advancing
     
     @inline(__always)
-    static func advanceString(_ ptr: inout UnsafeRawBufferPointer) {
+    static func advanceAtom(_ ptr: inout UnsafeRawBufferPointer) {
       let baseAddress = ptr.baseAddress.unsafelyUnwrapped
       let start = baseAddress.advanced(by: 16)
       let count = ptr.count - 16
@@ -135,22 +106,22 @@ struct OperatorRegistry {
       ptr = UnsafeMutableBufferPointer<UInt64>(start: start, count: count)
     }
     
+    // Data decoding
+    
     @inline(__always)
     static func acceptScalar<T: SIMDScalar>(_ ptr: inout UnsafeRawBufferPointer) -> T {
       let value = ptr.assumingMemoryBound(to: T.self)[0]
-      advanceScalar(&ptr)
+      advanceAtom(&ptr)
       return value
     }
     
     @inline(__always)
     static func acceptString(_ ptr: inout UnsafeRawBufferPointer) -> StringWrapper {
-      let cString = ptr.assumingMemoryBound(to: UnsafeRawPointer.self)[0]
-      
-      // Performance note: function call to `strlen`.
-      let count = strlen(cString.assumingMemoryBound(to: CChar.self))
-      let value = StringWrapper(wrapping: .init(start: cString, count: count))
-      advanceRaw(&ptr)
-      return value
+      let count = ptr.assumingMemoryBound(to: Int.self)[0]
+      advanceAtom(&ptr)
+      let start = ptr.assumingMemoryBound(to: UnsafeRawPointer.self)[0]
+      advanceAtom(&ptr)
+      return StringWrapper(wrapping: UnsafeRawBufferPointer(start: start, count: count))
     }
     
     @inline(__always)
