@@ -205,8 +205,8 @@ struct StringWrapper: Hashable {
   var ptr: UnsafeRawBufferPointer
   
   @inline(__always)
-  init(wrapping ptr: UnsafeRawBufferPointer) {
-    self.ptr = ptr
+  init(wrapping wrappedValue: UnsafeRawBufferPointer) {
+    self.ptr = wrappedValue
   }
   
   @inline(__always)

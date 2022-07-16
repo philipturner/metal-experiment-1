@@ -43,7 +43,7 @@ extension Context {
   
   @inline(never)
   private func _slowFail(id: UInt64) -> Never {
-    if id < nextAllocationID {
+    if id >= nextAllocationID {
       preconditionFailure("No memory has ever been allocated with ID #\(id).")
     } else {
       preconditionFailure("Allocation #\(id) has already been deallocated.")
@@ -51,12 +51,16 @@ extension Context {
   }
   
   @inline(__always)
-  func _compilerGenerateID(allocationSize: Int) -> UInt64 {
-    self.generateID(allocationSize: allocationSize)
+  func _internalGenerateID(allocationSize: Int) -> (UInt64, Allocation) {
+    let id = nextAllocationID
+    let allocation = Allocation(id: id, size: allocationSize)
+    nextAllocationID += 1
+    allocations[id] = allocation
+    return (id, allocation)
   }
   
   @inline(__always)
-  internal func _compilerFetchAllocation(id: UInt64) -> Allocation {
+  func _internalFetchAllocation(id: UInt64) -> Allocation {
     guard let allocation = allocations[id] else {
       _slowFail(id: id)
     }
@@ -64,18 +68,17 @@ extension Context {
   }
   
   @inline(__always)
-  internal func _compilerRetain(id: UInt64) {
-    guard let allocation = allocations[id] else {
-      _slowFail(id: id)
-    }
+  func _internalRetain(_ allocation: Allocation) {
     allocation.referenceCount &+= 1
     if _slowPath(Allocation.debugInfoEnabled) {
-      print("Allocation #\(id) jumped to a reference count of \(allocation.referenceCount).")
+      print("""
+        Allocation #\(allocation.id) jumped to a reference count of \(allocation.referenceCount).
+        """)
     }
   }
   
   @inline(__always)
-  internal func _compilerRelease(_ allocation: Allocation) {
+  func _internalRelease(_ allocation: Allocation) {
     let id = allocation.id
     let referenceCount = allocation.referenceCount &- 1
     allocation.referenceCount = referenceCount
@@ -311,11 +314,11 @@ class Allocation {
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
-    Context.global._compilerFlushStream()
+    Context.global._internalFlushStream()
     
     // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
     if let commandBufferID = lastModifiedCommandBufferID {
-      Context.global._compilerBarrier(commandBufferID: commandBufferID)
+      Context.global._internalBarrier(commandBufferID: commandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized

@@ -12,25 +12,34 @@ extension Context {
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<UInt64>,
-    _ outputs: UnsafeMutableBufferPointer<UInt64>
+    _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
   ) {
     _dispatchQueue.sync {
       Context.global._executeOperation(name, attributes, inputs, outputs)
     }
   }
   
-  // Rule for encoding attributes:
+  // The output is a buffer of interleaved (ID, size). This eliminates the need to send a virtual
+  // function call afterwards, just to ask "what was this output's size?" The returned size is the
+  // physical size in bytes, not the number of scalars.
   //
-  // Atoms of data are padded to 16 bytes. For strings, encode the count, then the raw C pointer.
-  // For arrays, encode the count, then the pointer to its underlying data. This rule applies
-  // recursively. After the first level of recursion, store elements in their native layout size.
+  // Rules for encoding attributes:
+  //
+  // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
+  // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
+  // After the first level of recursion, store elements in their native layout stride.
   private func _executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<UInt64>,
-    _ outputs: UnsafeMutableBufferPointer<UInt64>
+    _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
   ) {
-    precondition(StringWrapper(wrapping: name) == StringWrapper("increment"))
+    let string = StringWrapper(wrapping: name)
+    guard let function = OperatorRegistry.registry[string] else {
+      fatalError("Could not find operator '\(name)'")
+    }
+    function.call(attributes, inputs, outputs)
+    self.maybeFlushStream()
   }
 }
 
@@ -38,20 +47,20 @@ extension Context {
 
 struct OperatorRegistry {
   typealias FunctionSignature = @convention(c) (
-    OpaquePointer, Int, OpaquePointer, Int, OpaquePointer, Int) -> Void
+    OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int) -> Void
   
   struct Arguments {
     var attributes: UnsafeRawBufferPointer
     var inputs: UnsafeBufferPointer<UInt64>
-    var outputs: UnsafeMutableBufferPointer<UInt64>
+    var outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
     
     @inline(__always)
     init(
-      _ attributesPtr: OpaquePointer,
+      _ attributesPtr: OpaquePointer?,
       _ attributesCount: Int,
-      _ inputsPtr: OpaquePointer,
+      _ inputsPtr: OpaquePointer?,
       _ inputsCount: Int,
-      _ outputsPtr: OpaquePointer,
+      _ outputsPtr: OpaquePointer?,
       _ outputsCount: Int
     ) {
       attributes = .init(start: .init(attributesPtr), count: attributesCount)
@@ -72,70 +81,70 @@ struct OperatorRegistry {
     func call(
       _ attributes: UnsafeRawBufferPointer,
       _ inputs: UnsafeBufferPointer<UInt64>,
-      _ outputs: UnsafeMutableBufferPointer<UInt64>
+      _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
     ) {
       body(
-        .init(attributes.baseAddress.unsafelyUnwrapped), attributes.count,
-        .init(inputs.baseAddress.unsafelyUnwrapped), inputs.count,
-        .init(outputs.baseAddress.unsafelyUnwrapped), outputs.count)
+        .init(attributes.baseAddress), attributes.count,
+        .init(inputs.baseAddress), inputs.count,
+        .init(outputs.baseAddress), outputs.count)
     }
-    
-    // Pointer advancing
-    
-    @inline(__always)
-    static func advanceAtom(_ ptr: inout UnsafeRawBufferPointer) {
-      let baseAddress = ptr.baseAddress.unsafelyUnwrapped
-      let start = baseAddress.advanced(by: 16)
-      let count = ptr.count - 16
-      ptr = UnsafeRawBufferPointer(start: start, count: count)
-    }
-    
-    @inline(__always)
-    static func advanceUInt64(_ ptr: inout UnsafeBufferPointer<UInt64>) {
-      let baseAddress = ptr.baseAddress.unsafelyUnwrapped
-      let start = baseAddress.advanced(by: 1)
-      let count = ptr.count - 1
-      ptr = UnsafeBufferPointer<UInt64>(start: start, count: count)
-    }
-    
-    @inline(__always)
-    static func advanceUInt64(_ ptr: inout UnsafeMutableBufferPointer<UInt64>) {
-      let baseAddress = ptr.baseAddress.unsafelyUnwrapped
-      let start = baseAddress.advanced(by: 1)
-      let count = ptr.count - 1
-      ptr = UnsafeMutableBufferPointer<UInt64>(start: start, count: count)
-    }
-    
-    // Data decoding
-    
-    @inline(__always)
-    static func acceptScalar<T: SIMDScalar>(_ ptr: inout UnsafeRawBufferPointer) -> T {
-      let value = ptr.assumingMemoryBound(to: T.self)[0]
-      advanceAtom(&ptr)
-      return value
-    }
-    
-    @inline(__always)
-    static func acceptString(_ ptr: inout UnsafeRawBufferPointer) -> StringWrapper {
-      let count = ptr.assumingMemoryBound(to: Int.self)[0]
-      advanceAtom(&ptr)
-      let start = ptr.assumingMemoryBound(to: UnsafeRawPointer.self)[0]
-      advanceAtom(&ptr)
-      return StringWrapper(wrapping: UnsafeRawBufferPointer(start: start, count: count))
-    }
-    
-    @inline(__always)
-    static func acceptInput(_ ptr: inout UnsafeBufferPointer<UInt64>) -> UInt64 {
-      let value = ptr[0]
-      advanceUInt64(&ptr)
-      return value
-    }
-    
-    @inline(__always)
-    static func returnOutput(_ ptr: inout UnsafeMutableBufferPointer<UInt64>, _ output: UInt64) {
-      ptr[0] = output
-      advanceUInt64(&ptr)
-    }
+  }
+  
+  // Pointer mutation
+  
+  @inline(__always)
+  static func advanceAtom(_ ptr: inout UnsafeRawBufferPointer) {
+    let baseAddress = ptr.baseAddress.unsafelyUnwrapped
+    let start = baseAddress.advanced(by: 16)
+    let count = ptr.count - 16
+    ptr = UnsafeRawBufferPointer(start: start, count: count)
+  }
+  
+  @inline(__always)
+  static func advanceInput(_ ptr: inout UnsafeBufferPointer<UInt64>) {
+    let baseAddress = ptr.baseAddress.unsafelyUnwrapped
+    let start = baseAddress.advanced(by: 1)
+    let count = ptr.count - 1
+    ptr = UnsafeBufferPointer(start: start, count: count)
+  }
+  
+  @inline(__always)
+  static func advanceOutput(_ ptr: inout UnsafeMutableBufferPointer<(UInt64, Int)>) {
+    let baseAddress = ptr.baseAddress.unsafelyUnwrapped
+    let start = baseAddress.advanced(by: 1)
+    let count = ptr.count - 1
+    ptr = UnsafeMutableBufferPointer(start: start, count: count)
+  }
+  
+  // Data decoding
+  
+  @inline(__always)
+  static func decodeScalar<T: SIMDScalar>(_ ptr: inout UnsafeRawBufferPointer) -> T {
+    let value = ptr.assumingMemoryBound(to: T.self)[0]
+    advanceAtom(&ptr)
+    return value
+  }
+  
+  @inline(__always)
+  static func decodeString(_ ptr: inout UnsafeRawBufferPointer) -> StringWrapper {
+    let wrappedValue = ptr.assumingMemoryBound(to: UnsafeRawBufferPointer.self)[0]
+    advanceAtom(&ptr)
+    return StringWrapper(wrapping: wrappedValue)
+  }
+  
+  @inline(__always)
+  static func decodeInput(_ ptr: inout UnsafeBufferPointer<UInt64>) -> UInt64 {
+    let value = ptr[0]
+    advanceInput(&ptr)
+    return value
+  }
+  
+  @inline(__always)
+  static func encodeOutput(
+    _ ptr: inout UnsafeMutableBufferPointer<(UInt64, Int)>,
+    _ output: (UInt64, Int)) {
+    ptr[0] = output
+    advanceOutput(&ptr)
   }
 }
 
@@ -149,22 +158,26 @@ extension OperatorRegistry {
 
 extension OperatorRegistry {
   static let increment = Function {
-    let args = Arguments($0, $1, $2, $3, $4 ,$5)
-    // Encode the eager operator.
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let ctx = Context.global
+    precondition(args.inputs.count == 1)
+    precondition(args.outputs.count == 1)
     
-    precondition(inputs.count == 1)
-    precondition(outputs.count == 1)
+    // Fetch inputs
+    let input1_id = decodeInput(&args.inputs)
+    let input1_alloc = ctx._internalFetchAllocation(id: input1_id)
     
-    // TODO: Optimize this by only fetching from the dictionary once. Use the retrieved allocation
-    // for both extracting size and incrementing its reference count. Also, make a force-inlined
-    // internal function for generating IDs, which returns the newly generated `Allocation` without
-    // requiring that it be fetched from a dictionary later on.
-    let input1 = inputs[0]
-    let allocationSize = _compilerFetchAllocation(id: input1).size
-    let output1 = _compilerGenerateID(allocationSize: allocationSize)
+    // Generate outputs
+    let allocationSize = input1_alloc.size
+    let (output1_id, output1_alloc) = ctx._internalGenerateID(allocationSize: allocationSize)
+    
+    // Append operation
     let size = allocationSize / MemoryLayout<Float>.stride
-//    commitIncrement(inputID: input1, outputID: output1, size: size)
+    let operation = EagerOperation.Unary(
+      type: .increment, input: input1_id, output: output1_id, size: size)
+    ctx.eagerOperations.append(.unary(operation))
     
-    outputs[0] = output1 // return
+    // Return
+    encodeOutput(&args.outputs, (output1_id, allocationSize))
   }
 }

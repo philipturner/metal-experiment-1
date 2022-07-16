@@ -8,28 +8,22 @@
 import Metal
 
 extension Context {
-  public static func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
-    withDispatchQueue {
-      Context.global.commitIncrement(inputID: inputID, outputID: outputID, size: size)
-    }
-  }
-  
   static func barrier() {
     withDispatchQueue {
       let ctx = Context.global
-      ctx._compilerFlushStream()
-      ctx._compilerBarrier()
+      ctx._internalFlushStream()
+      ctx._internalBarrier()
     }
   }
   
   @inline(__always)
-  internal func _compilerFlushStream() {
+  func _internalFlushStream() {
     flushStream()
   }
   
   // Flush the command stream before calling this function.
   @inline(__always)
-  internal func _compilerBarrier(commandBufferID chosenID: Int? = nil) {
+  func _internalBarrier(commandBufferID chosenID: Int? = nil) {
     // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
     // never modified by threads other than the encapsulating dispatch queue.
     let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
@@ -37,31 +31,9 @@ extension Context {
       lastCommandBuffer.waitUntilCompleted()
     }
   }
-}
-
-// Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
-// allocation happens afterwards, during `flushStream`.
-private extension Context {
-  @inline(__always)
-  func queryQueueBackPressure() -> Int {
-    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
-    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
-    return numCommitted - numScheduled
-  }
   
-  func commitIncrement(inputID: UInt64, outputID: UInt64, size: Int) {
-    _compilerRetain(id: inputID)
-    _compilerRetain(id: outputID)
-    let operation = EagerOperation.Unary(
-      type: .increment, input: inputID, output: outputID, size: size)
-    eagerOperations.append(.unary(operation))
-    
-    // TODO: Extract this code into the top-level function that calls into `eagerOperations.append`.
-    
-    // This part of the function needs to be semantically separated from the part that processes
-    // unique instructions. If they are physically separated by a lack of inlining, that is fine.
-    // Especially if the second body tracks the real-time minimum command buffer latency, which
-    // produces a lot of assembly instructions.
+  // Only called in one location, so this automatically inlines.
+  func maybeFlushStream() {
     let backPressure = queryQueueBackPressure()
     if eagerOperations.count < Context.maxCommandsPerBatch,
        backPressure >= 1 {
@@ -83,6 +55,17 @@ private extension Context {
     // program startup. It should take longer than most because the system isn't fired up, but it
     // will at least be smaller than a supermassive batch with 128 unique commands in it.
     flushStream(precomputedBackPressure: backPressure)
+  }
+}
+
+// Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
+// allocation happens afterwards, during `flushStream`.
+private extension Context {
+  @inline(__always)
+  func queryQueueBackPressure() -> Int {
+    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
+    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
+    return numCommitted - numScheduled
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
@@ -174,8 +157,8 @@ private extension Context {
       // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
       // pointless. The delay is 200 μs in every case.
       //
-      // This comment relates to the comment in `commentIncrement(inputID:outputID:)` above the call
-      // to `flushStream(precomputedBackpressure:)`.
+      // This comment relates to the comment in `maybeFlushStream` above the call to
+      // `flushStream(precomputedBackpressure:)`.
       encodingContext.commandBuffer.addScheduledHandler { _ in
         self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
@@ -238,7 +221,7 @@ private extension Context {
                 """)
             }
           } else {
-            _compilerBarrier()
+            _internalBarrier()
           }
         }
       }

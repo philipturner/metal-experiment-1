@@ -90,17 +90,17 @@ extension Context {
             // fusions are implemented.
             appendFusionOperation()
           }
-          input = _compilerFetchAllocation(id: unary.input)
+          input = _internalFetchAllocation(id: unary.input)
           unaryFusionHead = input
           unaryFusionSize = unary.size
         }
         unaryFusionArray.append(unary.type)
         
-        let output = _compilerFetchAllocation(id: unary.output)
+        let output = _internalFetchAllocation(id: unary.output)
         unaryFusionTail = output
         unaryFusionTailID = unary.output
-        _compilerRelease(input)
-        _compilerRelease(output)
+        _internalRelease(input)
+        _internalRelease(output)
       }
     }
     if pendingFusionOperationExists() {

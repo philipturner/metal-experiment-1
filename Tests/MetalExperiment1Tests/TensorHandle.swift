@@ -11,22 +11,20 @@ class TensorHandle {
   private(set) var id: UInt64
   private(set) var count: Int
   
-  // Create this initializer.
-  // init(owning:count:)
-  
-  // Remove this initializer.
-  init(unsafeUninitializedCount count: Int) {
-    let allocationSize = count * MemoryLayout<Float>.stride
-    self.id = Context.generateID(allocationSize: allocationSize)
-    self.count = count
+  @inline(__always)
+  init(owning id: UInt64, byteCount: Int) {
+    self.id = id
+    self.count = byteCount / MemoryLayout<Float>.stride
   }
   
   convenience init(repeating repeatedValue: Float, count: Int) {
-    self.init(unsafeUninitializedCount: count)
+    let allocationSize = count * MemoryLayout<Float>.stride
+    let id = Context.generateID(allocationSize: allocationSize)
     try! Context.initialize(id: id) { bufferPointer in
       let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
       ptr.initialize(repeating: repeatedValue)
     }
+    self.init(owning: id, byteCount: allocationSize)
   }
   
   func copyScalars() -> [Float] {
@@ -50,17 +48,100 @@ extension TensorHandle {
   }
 }
 
+// MARK: - _Raw
+
 enum _Raw {
+  // TODO: Update comment about `withDispatchQueue` performance. It is no longer used for that
+  // purpose.
   static func increment(_ input: TensorHandle) -> TensorHandle {
-    // Update comment about `withDispatchQueue` performance, switch to the new _Raw interface.
-    Context.withDispatchQueue {
-      let output = TensorHandle(unsafeUninitializedCount: input.count)
-      Context.commitIncrement(inputID: input.id, outputID: output.id, size: input.count)
-      return output
+    return decodeOutputs { outputs in
+      encodeInputs(input) { inputs in
+        let name = encodeName("increment")
+        let attributes = encodeAttributes()
+        Context.executeOperation(name, attributes, inputs, outputs)
+      }
     }
   }
 }
 
-// Make an increment function with a `Float` TF type enumeration as an attribute's value.
+@inline(__always)
+fileprivate func encodeName(_ name: StaticString) -> UnsafeRawBufferPointer {
+  let start = name.utf8Start
+  let count = name.utf8CodeUnitCount
+  return UnsafeRawBufferPointer(start: start, count: count)
+}
+
+@inline(__always)
+fileprivate func encodeAttributes() -> UnsafeRawBufferPointer {
+  return UnsafeRawBufferPointer(start: nil, count: 0)
+}
+
+@inline(__always)
+fileprivate func encodeInputs(
+  _ input1: TensorHandle,
+  _ body: (UnsafeBufferPointer<UInt64>) -> Void
+) {
+  withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 1) { bufferPointer in
+    bufferPointer[0] = input1.id
+    body(UnsafeBufferPointer(bufferPointer))
+  }
+}
+
+@inline(__always)
+fileprivate func encodeInputs(
+  _ input1: TensorHandle,
+  _ input2: TensorHandle,
+  _ body: (UnsafeBufferPointer<UInt64>) -> Void
+) {
+  withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 2) { bufferPointer in
+    bufferPointer[0] = input1.id
+    bufferPointer[1] = input2.id
+    body(UnsafeBufferPointer(bufferPointer))
+  }
+}
+
+@inline(__always)
+fileprivate func decodeOutputAtom(
+  _ bufferPointer: UnsafeMutableBufferPointer<(UInt64, Int)>, _ index: Int
+) -> TensorHandle {
+  TensorHandle(owning: bufferPointer[index].0, byteCount: bufferPointer[index].1)
+}
+
+@inline(__always)
+fileprivate func decodeOutputs(
+  _ body: (UnsafeMutableBufferPointer<(UInt64, Int)>) -> Void
+) -> TensorHandle {
+  withUnsafeTemporaryAllocation(of: (UInt64, Int).self, capacity: 1) { bufferPointer in
+    body(bufferPointer)
+    return decodeOutputAtom(bufferPointer, 0)
+  }
+}
 
 
+@inline(__always)
+fileprivate func decodeOutputs(
+  _ body: (UnsafeMutableBufferPointer<(UInt64, Int)>) -> Void
+) -> (TensorHandle, TensorHandle) {
+  withUnsafeTemporaryAllocation(of: (UInt64, Int).self, capacity: 2) { bufferPointer in
+    body(bufferPointer)
+    return (
+      decodeOutputAtom(bufferPointer, 0),
+      decodeOutputAtom(bufferPointer, 1)
+    )
+  }
+}
+
+// MARK: - TFEncodable
+
+protocol TFEncodable {
+  func createAtom() -> (UInt64, UInt64)
+}
+
+// TODO: Set the `Float` TF type enumeration as an attribute's value.
+
+extension Int32: TFEncodable {
+  @inline(__always)
+  func createAtom() -> (UInt64, UInt64) {
+    (UInt64(truncatingIfNeeded: self), 0)
+  }
+}
