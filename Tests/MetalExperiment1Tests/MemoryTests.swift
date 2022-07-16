@@ -15,8 +15,8 @@ final class MemoryTests: XCTestCase {
     HeapAllocator.global._releaseCachedBufferBlocks()
     
     do {
-      let firstID = allocate(capacity: 1000)
-      let secondID = allocate(capacity: 1000)
+      let firstID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
+      let secondID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
       Context.deleteTensor(firstID)
       Context.deleteTensor(secondID)
     }
@@ -25,7 +25,7 @@ final class MemoryTests: XCTestCase {
       Profiler.checkpoint()
       let numIds = 100
       for _ in 0..<numIds {
-        let id = allocate(capacity: 1000)
+        let id = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
         Context.deleteTensor(id)
       }
       let totalTime = Profiler.checkpoint()
@@ -34,7 +34,7 @@ final class MemoryTests: XCTestCase {
     }
     
     do {
-      let id = allocate(capacity: 1000)
+      let id = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
       defer { Context.deleteTensor(id) }
       
       Context.initializeTensor(id) { bufferPointer in
@@ -95,14 +95,14 @@ final class MemoryTests: XCTestCase {
     func allocateDeallocate(bufferSize: Int, numBuffers: Int) {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
-        let id = allocate(capacity: bufferSize)
+        let id = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
         ids.append(id)
       }
       for id in ids {
-        try Context.initializeTensor(id) { _ in }
+        Context.initializeTensor(id) { _ in }
       }
       for id in ids {
-        try Context.deleteTensor(id)
+        Context.deleteTensor(id)
       }
     }
     func fakeAllocateDeallocate(numBuffers: Int) {
@@ -124,10 +124,10 @@ final class MemoryTests: XCTestCase {
         }
       }
     }
-    func emptyAllocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
+    func emptyAllocateDeallocate(bufferSize: Int, numBuffers: Int) {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
-        let id = allocate(capacity: bufferSize)
+        let id = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
         ids.append(id)
       }
       for id in ids {
@@ -145,7 +145,7 @@ final class MemoryTests: XCTestCase {
     allocateDeallocate(bufferSize: 1000, numBuffers: 5)
     allocateDeallocate(bufferSize: 2000, numBuffers: 5)
     allocateDeallocate(bufferSize: 3000, numBuffers: 5)
-    allocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    allocateDeallocate(bufferSize: 4092, numBuffers: 5)
     let totalTime = Profiler.checkpoint()
     
     Profiler.checkpoint()
@@ -159,7 +159,7 @@ final class MemoryTests: XCTestCase {
     emptyAllocateDeallocate(bufferSize: 1000, numBuffers: 5)
     emptyAllocateDeallocate(bufferSize: 2000, numBuffers: 5)
     emptyAllocateDeallocate(bufferSize: 3000, numBuffers: 5)
-    emptyAllocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    emptyAllocateDeallocate(bufferSize: 4092, numBuffers: 5)
     let idCycleTime = Profiler.checkpoint()
     
     let totalThroughput = Double(totalTime) / 20
@@ -174,46 +174,49 @@ final class MemoryTests: XCTestCase {
     testHeader("Complex memory allocation")
     HeapAllocator.global._releaseCachedBufferBlocks()
     
-    func allocate(size: Int) -> UInt64 {
-      let id = Context.generateID(allocationSize: size)
-      try! Context.initialize(id: id) { _ in }
+    
+    func allocate(byteCount: Int) -> UInt64 {
+      // The compiler mistakes this for `allocate(byteCount:)`.
+      let _avoidNameCollision = allocate(capacity:)
+      let id = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
+      Context.initializeTensor(id) { _ in }
       return id
     }
     func deallocate(id: UInt64) {
-      try! Context.release(id: id)
+      Context.deleteTensor(id)
     }
     
-    let id1 = allocate(size: 8_000_000)
-    let id2 = allocate(size: 12_000_000)
-    let id3 = allocate(size: 12_000_000)
+    let id1 = allocate(byteCount: 8_000_000)
+    let id2 = allocate(byteCount: 12_000_000)
+    let id3 = allocate(byteCount: 12_000_000)
     deallocate(id: id1)
     deallocate(id: id2)
     deallocate(id: id3)
     
-    let id4 = allocate(size: 999_000)
+    let id4 = allocate(byteCount: 999_000)
     deallocate(id: id4)
     
-    let id5 = allocate(size: 2_000_000)
+    let id5 = allocate(byteCount: 2_000_000)
     deallocate(id: id5)
     
     // Test mechanism for dealing with excessive memory allocation.
     
     do {
       HeapAllocator.global._releaseCachedBufferBlocks()
-      let smallBufferID1 = allocate(size: 1_000)
+      let smallBufferID1 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID1) }
       Context.withDispatchQueue {
         Context.global.permitExceedingSystemRAM = true
       }
       
       let largeBufferSize = Context.global.device.maxBufferLength
-      let largeBufferID1 = allocate(size: largeBufferSize)
+      let largeBufferID1 = allocate(byteCount: largeBufferSize)
       defer { deallocate(id: largeBufferID1) }
       Context.withDispatchQueue {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
-      let smallBufferID2 = allocate(size: 1_000)
+      let smallBufferID2 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID2) }
       Context.withDispatchQueue {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
@@ -224,14 +227,14 @@ final class MemoryTests: XCTestCase {
     }
     
     do {
-      let smallBufferID3 = allocate(size: 1_000)
+      let smallBufferID3 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID3) }
       Context.withDispatchQueue {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
       HeapAllocator.global._releaseCachedBufferBlocks()
-      let smallBufferID4 = allocate(size: 1_000)
+      let smallBufferID4 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID4) }
       Context.withDispatchQueue {
         XCTAssertFalse(Context.global.permitExceedingSystemRAM)
@@ -324,20 +327,20 @@ final class MemoryTests: XCTestCase {
     let bufferSize2 = (maxWorkingSize - maxBufferLength) + 16384
     let bufferCount3 = 16384 / MemoryLayout<Float>.stride
     
-    let bufferID1 = Context.generateID(allocationSize: bufferSize1)
-    let bufferID2 = Context.generateID(allocationSize: bufferSize2)
+    let bufferID1 = allocate(capacity: bufferSize1  / MemoryLayout<Float>.stride)
+    let bufferID2 = allocate(capacity: bufferSize2 / MemoryLayout<Float>.stride)
     defer {
-      try! Context.release(id: bufferID1)
-      try! Context.release(id: bufferID2)
+      Context.deleteTensor(bufferID1)
+      Context.deleteTensor(bufferID2)
     }
     
     var tensor3: TensorHandle?
     Context.withDispatchQueue {
       Context.global.permitExceedingSystemRAM = true
-      try! Context.initialize(id: bufferID1) { _ in }
+      Context.initializeTensor(bufferID1) { _ in }
       
       Context.global.permitExceedingSystemRAM = true
-      try! Context.initialize(id: bufferID2) { _ in }
+      Context.initializeTensor(bufferID2) { _ in }
       
       Context.global.permitExceedingSystemRAM = true
       tensor3 = TensorHandle(repeating: 0, count: bufferCount3)
