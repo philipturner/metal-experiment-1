@@ -9,14 +9,12 @@ import Darwin
 
 // MARK: - Memory Management
 
-// allocateTensor
-// initializeTensor
-// copyTensor
-// copyTensorShape
-// deleteTensor
-
 extension Context {
   // Returns (ID, rank) to match the style of other function calls.
+  //
+  // Avoids a possible second virtual function call by transforming the generic parameter into
+  // something statically typed. There is already massive overhead from calling into
+  // `withDispatchQueue`, but it should still be minimized.
   public static func allocateTensor<T>(
     _ type: T.Type,
     _ shape: UnsafeBufferPointer<Int>
@@ -62,52 +60,6 @@ extension Context {
     withDispatchQueue {
       Context.global._deleteTensor(id)
     }
-  }
-}
-
-extension Context {
-  
-  // Avoid a possible second virtual function call by transforming the generic parameter into
-  // something statically typed. There is already massive overhead from calling into
-  // `withDispatchQueue`, but it should still be minimized.
-  @inline(__always)
-  private func _allocateTensor(
-    _ dataType: DataType,
-    _ shape: UnsafeBufferPointer<Int>,
-    _ byteCount: Int
-  ) -> UInt64 {
-    fatalError()
-  }
-  
-  @inline(__always)
-  private func _initializeTensor(
-    _ id: UInt64,
-    _ body: (UnsafeMutableRawBufferPointer) -> Void
-  ) {
-    fatalError()
-  }
-  
-  @inline(__always)
-  private func _copyTensor(
-    _ id: UInt64,
-    _ body: (UnsafeRawBufferPointer) -> Void
-  ) {
-    fatalError()
-  }
-  
-  @inline(__always)
-  private func _copyTensorShape(
-    _ id: UInt64,
-    _ shape: UnsafeMutableBufferPointer<Int>
-  ) {
-    fatalError()
-  }
-  
-  @inline(__always)
-  private func _deleteTensor(
-    _ id: UInt64
-  ) {
-    fatalError()
   }
 }
 
@@ -276,7 +228,7 @@ extension OperatorRegistry {
     ctx._internalRetain(input1_alloc)
     
     // Generate outputs
-    let allocationSize = input1_alloc.size
+    let allocationSize = 2//input1_alloc.size
     let (output1_id, output1_alloc) = ctx._internalGenerateID(allocationSize: allocationSize)
     ctx._internalRetain(output1_alloc)
     

@@ -118,6 +118,48 @@ enum DataType: UInt16, CaseIterable {
 }
 
 extension Context {
+  @inline(__always)
+  func _allocateTensor(
+    _ dataType: DataType,
+    _ shape: UnsafeBufferPointer<Int>,
+    _ byteCount: Int
+  ) -> UInt64 {
+    fatalError()
+  }
+  
+  @inline(__always)
+  func _initializeTensor(
+    _ id: UInt64,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  func _copyTensor(
+    _ id: UInt64,
+    _ body: (UnsafeRawBufferPointer) -> Void
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  func _copyTensorShape(
+    _ id: UInt64,
+    _ shape: UnsafeMutableBufferPointer<Int>
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  func _deleteTensor(
+    _ id: UInt64
+  ) {
+    fatalError()
+  }
+}
+
+extension Context {
   public static func generateID(allocationSize: Int) -> UInt64 {
     withDispatchQueue {
       return Context.global.generateID(allocationSize: allocationSize)
@@ -272,12 +314,45 @@ enum AllocationError: Error {
 }
 
 class Allocation {
+  var id: UInt64
+  var referenceCount: Int
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
-  var referenceCount: Int
   
-  var id: UInt64
-  var size: Int
+  struct Metadata {
+    // Vector elements:
+    // 0..<5 - shape
+    // 5..<6 - data type, padded from `UInt16` to `Int`
+    // 6..<7 - physical size in bytes
+    // 7..<8 - rank
+    private var storage: SIMD8<Int>
+    
+    init(dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
+      storage = .zero
+      storage[5] = Int(truncatingIfNeeded: dataType.rawValue)
+      storage[6] = byteCount
+      storage[7] = shape.count
+      
+      let shapePtr = shape.baseAddress!
+      for i in 0..<rank {
+        storage[i] = shapePtr[i]
+      }
+    }
+    
+    @inline(__always)
+    func shapeEquals(_ other: Metadata) -> Bool {
+      storage.lowHalf == other.storage.lowHalf && storage[4] == other.storage[4]
+    }
+    @inline(__always)
+    var dataType: DataType { unsafeBitCast(storage[5], to: DataType.self) }
+    @inline(__always)
+    var byteCount: Int { storage[6] }
+    @inline(__always)
+    var rank: Int { storage[7] }
+  }
+  var metadata: Metadata
+  
+  // A copy of `Context.global.preferSharedStorage`.
   var isShared: Bool
   
   // TODO: Special storage mode for scalars or small chunks of constant memory. If `size` is under
@@ -297,20 +372,29 @@ class Allocation {
   // memory.
   var initialized = false
   
+  // TODO: Investigate a zero-cost reshape by transferring all resources over to another allocation.
   var mtlBuffer: MTLBuffer?
-  // var shape: SIMD8<Int> - mutable for zero-cost reshape op
-  // var dataType: DataType  - mutable but only to match style of other properties
   var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
   
   // The last command buffer that mutated this allocation's underlying memory.
-  var lastModifiedCommandBufferID: Int?
+  var lastModifiedCommandBufferID: Int = -1
   
-  init(id: UInt64, size: Int) {
-    self.referenceCount = 1
+  init(id: UInt64, metadata: Metadata) {
     self.id = id
-    self.size = size
-    self.isShared = true
+    self.referenceCount = 1
+    self.metadata = metadata
+    self.isShared = Context.global.preferSharedStorage
+  }
+  
+  convenience init(
+    id: UInt64,
+    dataType: DataType,
+    shape: UnsafeBufferPointer<Int>,
+    byteCount: Int
+  ) {
+    let metadata = Metadata(dataType: dataType, shape: shape, byteCount: byteCount)
+    self.init(id: id, metadata: metadata)
   }
   
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
@@ -339,7 +423,7 @@ class Allocation {
       // deallocate.
       //
       // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
-      if allocatedSize + size <= device.maxBufferLength {
+      if allocatedSize + metadata.byteCount <= device.maxBufferLength {
         if HeapAllocator.debugInfoEnabled {
           print("Memory allocation returned to something smaller than system RAM.")
         }
@@ -351,7 +435,7 @@ class Allocation {
       #else
       let maxWorkingSize = device.maxBufferLength
       #endif
-      if allocatedSize + size > maxWorkingSize {
+      if allocatedSize + metadata.byteCount > maxWorkingSize {
         if HeapAllocator.debugInfoEnabled {
           print("""
             Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
@@ -363,7 +447,8 @@ class Allocation {
       }
     }
     
-    guard let mtlBuffer = HeapAllocator.global.malloc(size: size, usingShared: true) else {
+    let mtlBuffer = HeapAllocator.global.malloc(size: metadata.byteCount, usingShared: isShared)
+    guard let mtlBuffer = mtlBuffer else {
       throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
     self.mtlBuffer = mtlBuffer
@@ -383,17 +468,15 @@ class Allocation {
     if initialized {
       throw AllocationError.other("Cannot initialize something twice.")
     }
-    defer {
-      initialized = true
-    }
     if isShared {
       let contents = mtlBuffer.contents()
-      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: size)
+      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: metadata.byteCount)
       body(ptr)
     } else {
       // TODO: Append a command that will copy the memory.
       fatalError("Haven't implemented copying memory to a discrete GPU.")
     }
+    self.initialized = true
   }
   
   // Making a function like `read` that just modifies the underlying storage is technically possible
@@ -406,7 +489,7 @@ class Allocation {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
     // compiler will then mark it as initialized and safe to read from.
-    var bufferToRead: MTLBuffer!
+    var dataBuffer: MTLBuffer?
     if !isShared {
       // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
       // TODO: Append a command that will copy the memory. This command is special, in that is takes
@@ -427,8 +510,8 @@ class Allocation {
     Context.global._internalFlushStream()
     
     // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
-    if let commandBufferID = lastModifiedCommandBufferID {
-      Context.global._internalBarrier(commandBufferID: commandBufferID)
+    if lastModifiedCommandBufferID != -1 {
+      Context.global._internalBarrier(commandBufferID: lastModifiedCommandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
@@ -438,10 +521,10 @@ class Allocation {
     }
     
     if isShared {
-      bufferToRead = self.mtlBuffer!
+      dataBuffer = mtlBuffer!
     }
-    let contents = bufferToRead.contents()
-    let ptr = UnsafeRawBufferPointer(start: contents, count: size)
+    let contents = dataBuffer!.contents()
+    let ptr = UnsafeRawBufferPointer(start: contents, count: metadata.byteCount)
     body(ptr)
   }
   

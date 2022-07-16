@@ -28,10 +28,12 @@ public class Context {
   var allocations: [UInt64: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
   var permitExceedingSystemRAM = false
+  var preferSharedStorage: Bool
   
   init() {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
+    self.preferSharedStorage = device.hasUnifiedMemory
     
     let bundleURL = Bundle.module.resourceURL!
     let shadersURL = bundleURL.appendingPathComponent("Shaders", isDirectory: true)
