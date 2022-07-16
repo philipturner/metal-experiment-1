@@ -1,76 +1,53 @@
 import XCTest
 @testable import MetalExperiment1
 
+fileprivate func allocate(capacity: Int) -> UInt64 {
+  withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
+    shape[0] = capacity
+    let (id, _) = Context.allocateTensor(Float.self, UnsafeBufferPointer(shape))
+    return id
+  }
+}
+
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")
     HeapAllocator.global._releaseCachedBufferBlocks()
     
     do {
-      let firstID = Context.generateID(allocationSize: 4000)
-      let secondID = Context.generateID(allocationSize: 4000)
-      
-      try! Context.release(id: firstID)
-      try! Context.release(id: secondID)
+      let firstID = allocate(capacity: 1000)
+      let secondID = allocate(capacity: 1000)
+      Context.deleteTensor(firstID)
+      Context.deleteTensor(secondID)
     }
     
     do {
       Profiler.checkpoint()
       let numIds = 100
       for _ in 0..<numIds {
-        let id = Context.generateID(allocationSize: 4000)
-        try! Context.release(id: id)
+        let id = allocate(capacity: 1000)
+        Context.deleteTensor(id)
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(numIds)
       print("Unused ID creation throughput: \(throughput) \(Profiler.timeUnit)")
     }
     
-    func assertErrorMessage(_ body: @autoclosure () throws -> Void, _ message: String) {
-      var threwError = false
-      do {
-        try body()
-      } catch AllocationError.other(let errorMessage) {
-        threwError = true
-        XCTAssertEqual(errorMessage, message)
-      } catch {
-        XCTFail(error.localizedDescription)
-      }
-      if !threwError {
-        XCTFail("Should have thrown an error here.")
-      }
-    }
-    
     do {
-      let id = Context.generateID(allocationSize: 4000)
-      defer { try! Context.release(id: id) }
-      assertErrorMessage(
-        try Context.read(id: id) { _ in }, "Cannot read from an uninitialized allocation.")
-    }
-    
-    do {
-      let id = Context.generateID(allocationSize: 4000)
-      try! Context.initialize(id: id) { mutableBufferPointer in
-        let ptr = mutableBufferPointer.assumingMemoryBound(to: Float.self)
+      let id = allocate(capacity: 1000)
+      defer { Context.deleteTensor(id) }
+      
+      Context.initializeTensor(id) { bufferPointer in
+        let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         ptr.initialize(repeating: 2.5)
       }
-      assertErrorMessage(
-        try Context.initialize(id: id) { _ in }, "Cannot initialize something twice.")
-      
       var wereEqual = false
-      try! Context.read(id: id) { bufferPointer in
+      Context.readTensor(id) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)
       }
-      XCTAssert(wereEqual)
-      
-      // Try accessing the buffer after it's deallocated.
-      try! Context.release(id: id)
-      assertErrorMessage(
-        try Context.initialize(id: id) { _ in }, "Tried to initialize memory that was deallocated.")
-      assertErrorMessage(
-        try Context.read(id: id) { _ in }, "Tried to read from memory that was deallocated.")
+      XCTAssertTrue(wereEqual)
     }
     
     func trunc_page(_ x: vm_size_t) -> vm_size_t {
@@ -115,20 +92,20 @@ final class MemoryTests: XCTestCase {
     testHeader("Memory recycling throughput")
     HeapAllocator.global._releaseCachedBufferBlocks()
     
-    func allocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
+    func allocateDeallocate(bufferSize: Int, numBuffers: Int) {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
-        let id = Context.generateID(allocationSize: bufferSize)
+        let id = allocate(capacity: bufferSize)
         ids.append(id)
       }
       for id in ids {
-        try Context.initialize(id: id) { _ in }
+        try Context.initializeTensor(id) { _ in }
       }
       for id in ids {
-        try Context.release(id: id)
+        try Context.deleteTensor(id)
       }
     }
-    func fakeAllocateDeallocate(numBuffers: Int) throws {
+    func fakeAllocateDeallocate(numBuffers: Int) {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
         let id = Context.withDispatchQueue {
@@ -150,7 +127,7 @@ final class MemoryTests: XCTestCase {
     func emptyAllocateDeallocate(bufferSize: Int, numBuffers: Int) throws {
       var ids: [UInt64] = []
       for _ in 0..<numBuffers {
-        let id = Context.generateID(allocationSize: bufferSize)
+        let id = allocate(capacity: bufferSize)
         ids.append(id)
       }
       for id in ids {
@@ -159,30 +136,30 @@ final class MemoryTests: XCTestCase {
         }
       }
       for id in ids {
-        try Context.release(id: id)
+        Context.deleteTensor(id)
       }
     }
     
-    try! allocateDeallocate(bufferSize: 4000, numBuffers: 5)
+    allocateDeallocate(bufferSize: 4000, numBuffers: 5)
     Profiler.checkpoint()
-    try! allocateDeallocate(bufferSize: 1000, numBuffers: 5)
-    try! allocateDeallocate(bufferSize: 2000, numBuffers: 5)
-    try! allocateDeallocate(bufferSize: 3000, numBuffers: 5)
-    try! allocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    allocateDeallocate(bufferSize: 1000, numBuffers: 5)
+    allocateDeallocate(bufferSize: 2000, numBuffers: 5)
+    allocateDeallocate(bufferSize: 3000, numBuffers: 5)
+    allocateDeallocate(bufferSize: 4095, numBuffers: 5)
     let totalTime = Profiler.checkpoint()
     
     Profiler.checkpoint()
-    try! fakeAllocateDeallocate(numBuffers: 5)
-    try! fakeAllocateDeallocate(numBuffers: 5)
-    try! fakeAllocateDeallocate(numBuffers: 5)
-    try! fakeAllocateDeallocate(numBuffers: 5)
+    fakeAllocateDeallocate(numBuffers: 5)
+    fakeAllocateDeallocate(numBuffers: 5)
+    fakeAllocateDeallocate(numBuffers: 5)
+    fakeAllocateDeallocate(numBuffers: 5)
     let gcdTime = Profiler.checkpoint()
     
     Profiler.checkpoint()
-    try! emptyAllocateDeallocate(bufferSize: 1000, numBuffers: 5)
-    try! emptyAllocateDeallocate(bufferSize: 2000, numBuffers: 5)
-    try! emptyAllocateDeallocate(bufferSize: 3000, numBuffers: 5)
-    try! emptyAllocateDeallocate(bufferSize: 4095, numBuffers: 5)
+    emptyAllocateDeallocate(bufferSize: 1000, numBuffers: 5)
+    emptyAllocateDeallocate(bufferSize: 2000, numBuffers: 5)
+    emptyAllocateDeallocate(bufferSize: 3000, numBuffers: 5)
+    emptyAllocateDeallocate(bufferSize: 4095, numBuffers: 5)
     let idCycleTime = Profiler.checkpoint()
     
     let totalThroughput = Double(totalTime) / 20
@@ -233,24 +210,24 @@ final class MemoryTests: XCTestCase {
       let largeBufferID1 = allocate(size: largeBufferSize)
       defer { deallocate(id: largeBufferID1) }
       Context.withDispatchQueue {
-        XCTAssert(Context.global.permitExceedingSystemRAM)
+        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
       let smallBufferID2 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID2) }
       Context.withDispatchQueue {
-        XCTAssert(Context.global.permitExceedingSystemRAM)
+        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
     }
     Context.withDispatchQueue {
-      XCTAssert(Context.global.permitExceedingSystemRAM)
+      XCTAssertTrue(Context.global.permitExceedingSystemRAM)
     }
     
     do {
       let smallBufferID3 = allocate(size: 1_000)
       defer { deallocate(id: smallBufferID3) }
       Context.withDispatchQueue {
-        XCTAssert(Context.global.permitExceedingSystemRAM)
+        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
       HeapAllocator.global._releaseCachedBufferBlocks()
