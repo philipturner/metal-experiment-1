@@ -166,23 +166,22 @@ extension OperatorRegistry {
     precondition(args.inputs.count == 1)
     precondition(args.outputs.count == 1)
     
-//    // Fetch inputs
-//    let input1_id = decodeInput(&args.inputs)
-//    let input1_alloc = ctx._internalFetchAllocation(id: input1_id)
-//    ctx._internalRetain(input1_alloc)
-//
-//    // Generate outputs
-//    let allocationSize = 2//input1_alloc.size
-//    let (output1_id, output1_alloc) = ctx._internalGenerateID(allocationSize: allocationSize)
-//    ctx._internalRetain(output1_alloc)
-//
-//    // Append operation
-//    let size = allocationSize / MemoryLayout<Float>.stride
-//    let operation = EagerOperation.Unary(
-//      type: .increment, input: input1_id, output: output1_id, size: size)
-//    ctx.eagerOperations.append(.unary(operation))
-//
-//    // Return
-//    encodeOutput(&args.outputs, (output1_id, allocationSize))
+    // Fetch inputs
+    let input1_id = decodeInput(&args.inputs)
+    let input1_alloc = ctx._internalFetch(input1_id)
+    ctx._internalRetain(input1_alloc)
+    
+    // Generate outputs
+    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc.metadata)
+    ctx._internalRetain(output1_alloc)
+    
+    // Append operation
+    let size = input1_alloc.metadata.byteCount / MemoryLayout<Float>.stride
+    let operation = EagerOperation.Unary(
+      type: .increment, input: input1_id, output: output1_id, size: size)
+    ctx.eagerOperations.append(.unary(operation))
+    
+    // Return
+    encodeOutput(&args.outputs, (output1_id, output1_alloc.metadata.rank))
   }
 }

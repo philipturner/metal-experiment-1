@@ -158,6 +158,17 @@ extension Context {
   }
   
   @inline(__always)
+  func _internalAllocate(
+    _ metadata: Allocation.Metadata
+  ) -> (UInt64, Allocation) {
+    let id = nextAllocationID
+    let allocation = Allocation(id: id, metadata: metadata)
+    nextAllocationID = id + 1
+    allocations[id] = allocation
+    return (id, allocation)
+  }
+  
+  @inline(__always)
   func _internalFetch(_ id: UInt64) -> Allocation {
     guard let allocation = allocations[id] else {
       _internalFetchSlowPath(id)
@@ -507,9 +518,9 @@ class Allocation {
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in release mode because it's very costly.
     assert({
-      if let commandBufferID = lastModifiedCommandBufferID {
+      if lastModifiedCommandBufferID != -1 {
         precondition(materialized)
-        return Context.global.commandBufferDictionary[commandBufferID] == nil
+        return Context.global.commandBufferDictionary[lastModifiedCommandBufferID] == nil
       } else {
         return true
       }
