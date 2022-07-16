@@ -7,6 +7,26 @@
 
 import Darwin
 
+// MARK: - Memory Management
+
+// allocateTensor
+// initializeTensor
+// copyTensor
+// copyTensorShape
+// deleteTensor
+
+extension Context {
+  public static func allocateTensor(
+    _ type: Any.Type
+  ) -> (UInt64, Int) {
+    return withDispatchQueue {
+      fatalError()
+    }
+  }
+}
+
+// MARK: - Operation Execution
+
 extension Context {
   public static func executeOperation(
     _ name: UnsafeRawBufferPointer,
