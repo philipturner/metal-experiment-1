@@ -298,8 +298,8 @@ class Allocation {
   var initialized = false
   
   var mtlBuffer: MTLBuffer?
-  // TODO: Shape - mutable for zero-cost reshape op
-  // TODO: Data Type - mutable but only to match style of other properties
+  // var shape: SIMD8<Int> - mutable for zero-cost reshape op
+  // var dataType: DataType  - mutable but only to match style of other properties
   var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
   

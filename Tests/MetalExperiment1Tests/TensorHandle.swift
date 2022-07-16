@@ -51,8 +51,6 @@ extension TensorHandle {
 // MARK: - _Raw
 
 enum _Raw {
-  // TODO: Update comment about `withDispatchQueue` performance. It is no longer used for that
-  // purpose.
   static func increment(_ input: TensorHandle) -> TensorHandle {
     return decodeOutputs { outputs in
       encodeInputs(input) { inputs in

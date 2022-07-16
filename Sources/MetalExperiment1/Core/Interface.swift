@@ -16,12 +16,28 @@ import Darwin
 // deleteTensor
 
 extension Context {
-  public static func allocateTensor(
-    _ type: Any.Type
+  // Returns (ID, rank) to match the style of other function calls.
+  public static func allocateTensor<T>(
+    _ type: T.Type,
+    _ shape: UnsafeBufferPointer<Int>
   ) -> (UInt64, Int) {
-    return withDispatchQueue {
-      fatalError()
+    let dataType = DataType(type)
+    let byteCount = shape.reduce(MemoryLayout<T>.stride, *)
+    let id = withDispatchQueue {
+      Context.global._allocateTensor(dataType, shape, byteCount)
     }
+    return (id, shape.count)
+  }
+  
+  // Avoid a possible second virtual function call by transforming the generic parameter into
+  // something statically typed. There is already massive overhead from calling into
+  // `withDispatchQueue`, but it should still be minimized.
+  private func _allocateTensor(
+    _ dataType: DataType,
+    _ shape: UnsafeBufferPointer<Int>,
+    _ byteCount: Int
+  ) -> UInt64 {
+    fatalError()
   }
 }
 
