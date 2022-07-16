@@ -32,7 +32,8 @@ extension Context {
     }
   }
   
-  // Only called in one location, so this automatically inlines.
+  // Only called in one location, but force-inlining anyway.
+  @inline(__always)
   func maybeFlushStream() {
     let backPressure = queryQueueBackPressure()
     if eagerOperations.count < Context.maxCommandsPerBatch,

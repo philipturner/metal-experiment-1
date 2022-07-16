@@ -7,124 +7,69 @@
 
 import MetalPerformanceShadersGraph
 
-// Use a custom enumeration instead of `MPSDataType`. GPU shaders read the raw value for dynamic
-// typing. This has less cases than `MPSDataType` and is smaller (`UInt16` vs. `UInt32`), reducing
-// GPU register usage and enabling other optimizations.
-enum DataType: UInt16, CaseIterable {
-  // Floating-point types
-  case float16 = 0
-  case float32 = 1
-  
-  // Integral types
-  case bool = 2
-  case int8 = 3
-  case int16 = 4
-  case int32 = 5
-  case int64 = 6
-  case uint8 = 7
-  case uint16 = 8
-  case uint32 = 9
-  case uint64 = 10
-  
-  init(_ type: Any.Type) {
-    // Check floating-point types first because they're the most common. This should reduce the
-    // average number of comparisons performed.
-    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-    if type == Float16.self {
-      self = .float16
-      return
+extension Context {
+  // Returns (ID, rank) to match the style of other function calls.
+  //
+  // Avoids a possible second virtual function call by transforming the generic parameter into
+  // something statically typed. There is already massive overhead from calling into
+  // `withDispatchQueue`, but it should still be minimized.
+  public static func allocateTensor<T>(
+    _ type: T.Type,
+    _ shape: UnsafeBufferPointer<Int>
+  ) -> (UInt64, Int) {
+    let dataType = DataType(type)
+    let byteCount = shape.reduce(MemoryLayout<T>.stride, *)
+    let id = withDispatchQueue {
+      Context.global._allocateTensor(dataType, shape, byteCount)
     }
-    #endif
-    if type == Float.self {
-      self = .float32
-      return
-    }
-    
-    // Check integral types next.
-    if type == Bool.self {
-      self = .bool
-      return
-    }
-    if type == Int8.self {
-      self = .int8
-      return
-    }
-    if type == Int16.self {
-      self = .int16
-      return
-    }
-    if type == Int32.self {
-      self = .int32
-      return
-    }
-    if type == Int64.self {
-      self = .int64
-      return
-    }
-    if type == UInt8.self {
-      self = .uint8
-      return
-    }
-    if type == UInt16.self {
-      self = .uint16
-      return
-    }
-    if type == UInt32.self {
-      self = .uint32
-      return
-    }
-    if type == UInt64.self {
-      self = .uint64
-      return
-    }
-    
-    // Check `Float16` on Intel Macs last because the comparison is very costly. It creates and
-    // deallocates a `String` object.
-    #if (os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64)
-    if String(describing: type) == "Float16" {
-      self = .float16
-      return
-    }
-    #endif
-    fatalError("Did not recognize data type '\(type)'.")
+    return (id, shape.count)
   }
   
-  var mpsDataType: MPSDataType {
-    switch self {
-    case .float16:
-      return .float16
-    case .float32:
-      return .float32
-    case .bool:
-      return .bool
-    case .int8:
-      return .int8
-    case .int16:
-      return .int16
-    case .int32:
-      return .int32
-    case .int64:
-      return .int64
-    case .uint8:
-      return .uInt8
-    case .uint16:
-      return .uInt16
-    case .uint32:
-      return .uInt32
-    case .uint64:
-      return .uInt64
+  public static func initializeTensor(
+    _ id: UInt64,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    withDispatchQueue {
+      Context.global._initializeTensor(id, body)
+    }
+  }
+  
+  public static func readTensor(
+    _ id: UInt64,
+    _ body: (UnsafeRawBufferPointer) -> Void
+  ) {
+    withDispatchQueue {
+      Context.global._copyTensor(id, body)
+    }
+  }
+  
+  public static func copyTensorShape(
+    _ id: UInt64,
+    _ shape: UnsafeMutableBufferPointer<Int>
+  ) {
+    withDispatchQueue {
+      Context.global._copyTensorShape(id, shape)
+    }
+  }
+  
+  public static func deleteTensor(
+    _ id: UInt64
+  ) {
+    withDispatchQueue {
+      Context.global._deleteTensor(id)
     }
   }
 }
 
-extension Context {
+private extension Context {
   @inline(__always)
   func _allocateTensor(
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
   ) -> UInt64 {
-    fatalError()
+    let (id, _) = _internalAllocate(dataType, shape, byteCount)
+    return id
   }
   
   @inline(__always)
@@ -132,15 +77,18 @@ extension Context {
     _ id: UInt64,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
-    fatalError()
+    let allocation = _internalFetch(id)
+    try! allocation.materialize()
+    try! allocation.initialize(body)
   }
   
   @inline(__always)
-  func _copyTensor(
+  func _readTensor(
     _ id: UInt64,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
-    fatalError()
+    let allocation = _internalFetch(id)
+    try! allocation.read(body)
   }
   
   @inline(__always)
@@ -148,14 +96,17 @@ extension Context {
     _ id: UInt64,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
-    fatalError()
+    let allocation = _internalFetch(id)
+    let metadata = allocation.metadata
+    metadata.copyShape(to: shape)
   }
   
   @inline(__always)
   func _deleteTensor(
     _ id: UInt64
   ) {
-    fatalError()
+    let allocation = _internalFetch(id)
+    _internalRelease(allocation)
   }
 }
 
@@ -193,8 +144,29 @@ extension Context {
     }
   }
   
+  @inline(__always)
+  func _internalAllocate(
+    _ dataType: DataType,
+    _ shape: UnsafeBufferPointer<Int>,
+    _ byteCount: Int
+  ) -> (UInt64, Allocation) {
+    let id = nextAllocationID
+    let allocation = Allocation(id: id, dataType: dataType, shape: shape, byteCount: byteCount)
+    nextAllocationID = id + 1
+    allocations[id] = allocation
+    return (id, allocation)
+  }
+  
+  @inline(__always)
+  func _internalFetch(_ id: UInt64) -> Allocation {
+    guard let allocation = allocations[id] else {
+      _internalFetchSlowPath(id)
+    }
+    return allocation
+  }
+  
   @inline(never)
-  private func _slowFail(id: UInt64) -> Never {
+  func _internalFetchSlowPath(_ id: UInt64) -> Never {
     if id >= nextAllocationID {
       preconditionFailure("No memory has ever been allocated with ID #\(id).")
     } else {
@@ -203,60 +175,49 @@ extension Context {
   }
   
   @inline(__always)
-  func _internalGenerateID(allocationSize: Int) -> (UInt64, Allocation) {
-    let id = nextAllocationID
-    let allocation = Allocation(id: id, size: allocationSize)
-    nextAllocationID += 1
-    allocations[id] = allocation
-    return (id, allocation)
-  }
-  
-  @inline(__always)
-  func _internalFetchAllocation(id: UInt64) -> Allocation {
-    guard let allocation = allocations[id] else {
-      _slowFail(id: id)
-    }
-    return allocation
-  }
-  
-  @inline(__always)
   func _internalRetain(_ allocation: Allocation) {
     allocation.referenceCount &+= 1
-    if _slowPath(Allocation.debugInfoEnabled) {
-      print("""
-        Allocation #\(allocation.id) jumped to a reference count of \(allocation.referenceCount).
-        """)
+    if Allocation.debugInfoEnabled {
+      _internalRetainSlowPath(allocation)
     }
+  }
+  
+  @inline(never)
+  private func _internalRetainSlowPath(_ allocation: Allocation) {
+    let id = allocation.id
+    let referenceCount = allocation.referenceCount
+    print("Allocation #\(id) jumped to a reference count of \(referenceCount).")
   }
   
   @inline(__always)
   func _internalRelease(_ allocation: Allocation) {
-    let id = allocation.id
     let referenceCount = allocation.referenceCount &- 1
     allocation.referenceCount = referenceCount
     if referenceCount == 0 {
-      allocations[id] = nil
-      if _slowPath(Allocation.debugInfoEnabled) {
-        if allocation.initialized {
-          print("Allocation #\(id) was deallocated after being initialized.")
-        } else {
-          print("Allocation #\(id) was deallocated.")
-        }
+      allocations[allocation.id] = nil
+    }
+    if Allocation.debugInfoEnabled {
+      _internalReleaseSlowPath(allocation)
+    }
+  }
+  
+  @inline(never)
+  private func _internalReleaseSlowPath(_ allocation: Allocation) {
+    let id = allocation.id
+    let referenceCount = allocation.referenceCount
+    if referenceCount == 0 {
+      if allocation.initialized {
+        print("Allocation #\(id) was deallocated after being initialized.")
+      } else {
+        print("Allocation #\(id) was deallocated.")
       }
-    } else if _slowPath(Allocation.debugInfoEnabled) {
+    } else {
       print("Allocation #\(id) dropped to a reference count of \(referenceCount).")
     }
   }
 }
 
 private extension Context {
-  func generateID(allocationSize: Int) -> UInt64 {
-    let id = nextAllocationID
-    nextAllocationID += 1
-    allocations[id] = Allocation(id: id, size: allocationSize)
-    return id
-  }
-  
   // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
   // crashes because that's probably erroneous behavior on the frontend. Never retain the allocation
   // because that messes with ARC for deallocation. Instead, retain just the ID.
@@ -326,6 +287,12 @@ class Allocation {
     // 6..<7 - physical size in bytes
     // 7..<8 - rank
     private var storage: SIMD8<Int>
+    @inline(__always)
+    var dataType: DataType { unsafeBitCast(storage[5], to: DataType.self) }
+    @inline(__always)
+    var byteCount: Int { storage[6] }
+    @inline(__always)
+    var rank: Int { storage[7] }
     
     init(dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
       storage = .zero
@@ -344,11 +311,13 @@ class Allocation {
       storage.lowHalf == other.storage.lowHalf && storage[4] == other.storage[4]
     }
     @inline(__always)
-    var dataType: DataType { unsafeBitCast(storage[5], to: DataType.self) }
-    @inline(__always)
-    var byteCount: Int { storage[6] }
-    @inline(__always)
-    var rank: Int { storage[7] }
+    func copyShape(to shape: UnsafeMutableBufferPointer<Int>) {
+      precondition(shape.count == rank)
+      let shapePtr = shape.baseAddress!
+      for i in 0..<rank {
+        shapePtr[i] = storage[i]
+      }
+    }
   }
   var metadata: Metadata
   
