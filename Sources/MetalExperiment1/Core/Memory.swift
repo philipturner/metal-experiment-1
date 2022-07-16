@@ -39,7 +39,7 @@ extension Context {
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._copyTensor(id, body)
+      Context.global._readTensor(id, body)
     }
   }
   
@@ -111,38 +111,38 @@ private extension Context {
 }
 
 extension Context {
-  public static func generateID(allocationSize: Int) -> UInt64 {
-    withDispatchQueue {
-      return Context.global.generateID(allocationSize: allocationSize)
-    }
-  }
-  
-  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    try withDispatchQueue {
-      let ctx = Context.global
-      guard let allocation = try ctx.fetchAllocation(id: id) else {
-        throw AllocationError.other("Tried to initialize memory that was deallocated.")
-      }
-      try allocation.materialize()
-      try allocation.initialize(body)
-    }
-  }
-  
-  public static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
-    try withDispatchQueue {
-      let ctx = Context.global
-      guard let allocation = try ctx.fetchAllocation(id: id) else {
-        throw AllocationError.other("Tried to read from memory that was deallocated.")
-      }
-      try allocation.read(body)
-    }
-  }
-  
-  public static func release(id: UInt64) throws {
-    try withDispatchQueue {
-      try Context.global.release(id: id)
-    }
-  }
+//  public static func generateID(allocationSize: Int) -> UInt64 {
+//    withDispatchQueue {
+//      return Context.global.generateID(allocationSize: allocationSize)
+//    }
+//  }
+//
+//  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
+//    try withDispatchQueue {
+//      let ctx = Context.global
+//      guard let allocation = try ctx.fetchAllocation(id: id) else {
+//        throw AllocationError.other("Tried to initialize memory that was deallocated.")
+//      }
+//      try allocation.materialize()
+//      try allocation.initialize(body)
+//    }
+//  }
+//
+//  public static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
+//    try withDispatchQueue {
+//      let ctx = Context.global
+//      guard let allocation = try ctx.fetchAllocation(id: id) else {
+//        throw AllocationError.other("Tried to read from memory that was deallocated.")
+//      }
+//      try allocation.read(body)
+//    }
+//  }
+//
+//  public static func release(id: UInt64) throws {
+//    try withDispatchQueue {
+//      try Context.global.release(id: id)
+//    }
+//  }
   
   @inline(__always)
   func _internalAllocate(
@@ -275,7 +275,7 @@ enum AllocationError: Error {
 }
 
 class Allocation {
-  var id: UInt64
+  let id: UInt64
   var referenceCount: Int
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
@@ -287,6 +287,7 @@ class Allocation {
     // 6..<7 - physical size in bytes
     // 7..<8 - rank
     private var storage: SIMD8<Int>
+    
     @inline(__always)
     var dataType: DataType { unsafeBitCast(storage[5], to: DataType.self) }
     @inline(__always)
@@ -319,10 +320,10 @@ class Allocation {
       }
     }
   }
-  var metadata: Metadata
+  let metadata: Metadata
   
   // A copy of `Context.global.preferSharedStorage`.
-  var isShared: Bool
+  let isShared: Bool
   
   // TODO: Special storage mode for scalars or small chunks of constant memory. If `size` is under
   // 4 KB and memory is never mutated, it can be initialized on the CPU and passed into

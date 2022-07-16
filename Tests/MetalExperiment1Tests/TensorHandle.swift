@@ -7,38 +7,81 @@
 
 import MetalExperiment1
 
-class TensorHandle {
-  private(set) var id: UInt64
-  private(set) var count: Int
+// Mirrors the functionality of `TFETensorHandle`.
+//
+// TODO: Rename to `PluggableDeviceTensorHandle` and wrap in `TensorHandle<Scalar>`, allowing more
+// data types than just `Float`.
+public class TensorHandle {
+  // Vector elements:
+  // 0..<1 - id
+  // 1..<2 - rank
+  // 2..<3 - shape exists
+  // 4..<8 - shape
+  @usableFromInline
+  var storage: SIMD8<UInt64>
   
-  @inline(__always)
-  init(owning id: UInt64, byteCount: Int) {
-    self.id = id
-    self.count = byteCount / MemoryLayout<Float>.stride
-  }
+  @inlinable
+  public var _cTensorHandle: UInt64 { storage[0] }
   
-  convenience init(repeating repeatedValue: Float, count: Int) {
-    let allocationSize = count * MemoryLayout<Float>.stride
-    let id = Context.generateID(allocationSize: allocationSize)
-    try! Context.initialize(id: id) { bufferPointer in
-      let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
-      ptr.initialize(repeating: repeatedValue)
-    }
-    self.init(owning: id, byteCount: allocationSize)
-  }
-  
-  func copyScalars() -> [Float] {
-    Array<Float>(unsafeUninitializedCapacity: count) { destination, count in
-      count = self.count
-      try! Context.read(id: id) { bufferPointer in
-        let source = bufferPointer.assumingMemoryBound(to: Float.self)
-        _ = destination.initialize(from: source)
-      }
-    }
+  public init(_owning base: UInt64, rank: Int) {
+    storage = .zero
+    storage[0] = base
+    storage[1] = UInt64(truncatingIfNeeded: rank)
   }
   
   deinit {
-    try! Context.release(id: id)
+    Context.deleteTensor(_cTensorHandle)
+  }
+  
+  @inlinable
+  public var rank: Int {
+    @_semantics("autodiff.nonvarying")
+    get {
+      Int(truncatingIfNeeded: storage[1])
+    }
+  }
+  
+  // TODO: Implement `shape` in a performant way, using SIMD storage until an array is requested.
+//  @inlinable
+//  public var shape: TensorShape {
+//    @_semantics("autodiff.nonvarying")
+//    get {
+//      fatalError("`TensorShape` not yet implemented.")
+//    }
+//  }
+  
+}
+
+extension TensorHandle {
+  // This code will become part of `TensorHandle<Scalar>`, which wraps the future incarnation of
+  // the current `TensorHandle`.
+  @inlinable
+  convenience init(repeating repeatedValue: Float, count: Int) {
+    let (cTensorHandle, rank) = withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
+      shape[0] = count
+      return Context.allocateTensor(Float.self, UnsafeBufferPointer(shape))
+    }
+    self.init(_owning: cTensorHandle, rank: rank)
+    
+    Context.initializeTensor(cTensorHandle) { buffer in
+      let pointer = buffer.assumingMemoryBound(to: Float.self)
+      pointer.initialize(repeating: repeatedValue)
+    }
+  }
+  
+  // TODO: Rename to `makeHostCopy()` and update tests.
+  @usableFromInline
+  @inline(never)
+  func copyScalars() -> [Float] {
+    var output: [Float]?
+    Context.readTensor(_cTensorHandle) { tensorBuffer in
+      let tensorPointer = tensorBuffer.assumingMemoryBound(to: Float.self)
+      output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
+        _ = arrayPointer.initialize(from: tensorPointer)
+        count = tensorPointer.count
+      }
+    }
+    return output!
   }
 }
 
@@ -80,7 +123,7 @@ fileprivate func encodeInputs(
   _ body: (UnsafeBufferPointer<UInt64>) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 1) { bufferPointer in
-    bufferPointer[0] = input1.id
+    bufferPointer[0] = input1._cTensorHandle
     body(UnsafeBufferPointer(bufferPointer))
   }
 }
@@ -92,8 +135,8 @@ fileprivate func encodeInputs(
   _ body: (UnsafeBufferPointer<UInt64>) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 2) { bufferPointer in
-    bufferPointer[0] = input1.id
-    bufferPointer[1] = input2.id
+    bufferPointer[0] = input1._cTensorHandle
+    bufferPointer[1] = input2._cTensorHandle
     body(UnsafeBufferPointer(bufferPointer))
   }
 }
@@ -102,7 +145,7 @@ fileprivate func encodeInputs(
 fileprivate func decodeOutputAtom(
   _ bufferPointer: UnsafeMutableBufferPointer<(UInt64, Int)>, _ index: Int
 ) -> TensorHandle {
-  TensorHandle(owning: bufferPointer[index].0, byteCount: bufferPointer[index].1)
+  TensorHandle(_owning: bufferPointer[index].0, rank: bufferPointer[index].1)
 }
 
 @inline(__always)
@@ -129,15 +172,16 @@ fileprivate func decodeOutputs(
   }
 }
 
-// MARK: - TFEncodable
+// MARK: - PluggableDeviceEncodable
 
-protocol TFEncodable {
+protocol PluggableDeviceEncodable {
   func createAtom() -> (UInt64, UInt64)
 }
 
-// TODO: Set the `Float` TF type enumeration as an attribute's value.
+// TODO: Set the `Float` TF_DataType enumeration as an attribute's value. The raw value of this
+// enumeration is `Int32`.
 
-extension Int32: TFEncodable {
+extension Int32: PluggableDeviceEncodable {
   @inline(__always)
   func createAtom() -> (UInt64, UInt64) {
     (UInt64(truncatingIfNeeded: self), 0)

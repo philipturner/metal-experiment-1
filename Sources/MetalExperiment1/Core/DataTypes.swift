@@ -89,6 +89,8 @@ enum DataType: UInt16, CaseIterable {
     fatalError("Did not recognize data type '\(type)'.")
   }
   
+  // TODO: A way to initialize from `TF_DataType` raw values.
+  
   var mpsDataType: MPSDataType {
     switch self {
     case .float16:

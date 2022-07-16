@@ -90,13 +90,13 @@ extension Context {
             // fusions are implemented.
             appendFusionOperation()
           }
-          input = _internalFetchAllocation(id: unary.input)
+          input = _internalFetch(unary.input)
           unaryFusionHead = input
           unaryFusionSize = unary.size
         }
         unaryFusionArray.append(unary.type)
         
-        let output = _internalFetchAllocation(id: unary.output)
+        let output = _internalFetch(unary.output)
         unaryFusionTail = output
         unaryFusionTailID = unary.output
         _internalRelease(input)
