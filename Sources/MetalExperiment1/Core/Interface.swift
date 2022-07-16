@@ -14,7 +14,7 @@ extension Context {
     _ inputs: UnsafeBufferPointer<UInt64>,
     _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
   ) {
-    _dispatchQueue.sync {
+    withDispatchQueue {
       Context.global._executeOperation(name, attributes, inputs, outputs)
     }
   }
@@ -166,10 +166,12 @@ extension OperatorRegistry {
     // Fetch inputs
     let input1_id = decodeInput(&args.inputs)
     let input1_alloc = ctx._internalFetchAllocation(id: input1_id)
+    ctx._internalRetain(input1_alloc)
     
     // Generate outputs
     let allocationSize = input1_alloc.size
     let (output1_id, output1_alloc) = ctx._internalGenerateID(allocationSize: allocationSize)
+    ctx._internalRetain(output1_alloc)
     
     // Append operation
     let size = allocationSize / MemoryLayout<Float>.stride
