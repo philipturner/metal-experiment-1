@@ -197,3 +197,40 @@ where Element.RawValue: FixedWidthInteger & SIMDScalar {
   typealias Vector = SIMD64<Element.RawValue>
   var storage: OperationTypeListStorage<Vector> = .init()
 }
+
+// MARK: - StringWrapper
+
+// From the Swift standard library's conformance of `String` to `Hashable`.
+struct StringWrapper: Hashable {
+  var ptr: UnsafeRawBufferPointer
+  
+  @inline(__always)
+  init(wrapping ptr: UnsafeRawBufferPointer) {
+    self.ptr = ptr
+  }
+  
+  @inline(__always)
+  init(_ string: StaticString) {
+    let start = string.utf8Start
+    let count = string.utf8CodeUnitCount
+    self.ptr = UnsafeRawBufferPointer(start: start, count: count)
+  }
+  
+  @inline(__always)
+  static func == (lhs: StringWrapper, rhs: StringWrapper) -> Bool {
+    lhs.ptr.elementsEqual(rhs.ptr)
+  }
+  
+  @inline(__always)
+  func hash(into hasher: inout Hasher) {
+    hasher.combine(bytes: ptr)
+    hasher.combine(0xFF as UInt8) // terminator
+  }
+}
+
+extension StringWrapper: ExpressibleByStringLiteral {
+  @inline(__always)
+  init(stringLiteral value: StaticString) {
+    self.init(value)
+  }
+}

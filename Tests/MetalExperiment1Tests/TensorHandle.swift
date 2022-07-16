@@ -60,3 +60,7 @@ enum _Raw {
     }
   }
 }
+
+// Make an increment function with a `Float` TF type enumeration as an attribute's value.
+
+
