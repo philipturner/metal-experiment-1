@@ -29,9 +29,48 @@ extension Context {
     return (id, shape.count)
   }
   
+  public static func initializeTensor(
+    _ id: UInt64,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    withDispatchQueue {
+      Context.global._initializeTensor(id, body)
+    }
+  }
+  
+  public static func copyTensor(
+    _ id: UInt64,
+    _ body: (UnsafeRawBufferPointer) -> Void
+  ) {
+    withDispatchQueue {
+      Context.global._copyTensor(id, body)
+    }
+  }
+  
+  public static func copyTensorShape(
+    _ id: UInt64,
+    _ shape: UnsafeMutableBufferPointer<Int>
+  ) {
+    withDispatchQueue {
+      Context.global._copyTensorShape(id, shape)
+    }
+  }
+  
+  public static func deleteTensor(
+    _ id: UInt64
+  ) {
+    withDispatchQueue {
+      Context.global._deleteTensor(id)
+    }
+  }
+}
+
+extension Context {
+  
   // Avoid a possible second virtual function call by transforming the generic parameter into
   // something statically typed. There is already massive overhead from calling into
   // `withDispatchQueue`, but it should still be minimized.
+  @inline(__always)
   private func _allocateTensor(
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
@@ -39,11 +78,51 @@ extension Context {
   ) -> UInt64 {
     fatalError()
   }
+  
+  @inline(__always)
+  private func _initializeTensor(
+    _ id: UInt64,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  private func _copyTensor(
+    _ id: UInt64,
+    _ body: (UnsafeRawBufferPointer) -> Void
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  private func _copyTensorShape(
+    _ id: UInt64,
+    _ shape: UnsafeMutableBufferPointer<Int>
+  ) {
+    fatalError()
+  }
+  
+  @inline(__always)
+  private func _deleteTensor(
+    _ id: UInt64
+  ) {
+    fatalError()
+  }
 }
 
 // MARK: - Operation Execution
 
 extension Context {
+  // The output is a buffer of interleaved (ID, size). This eliminates the need to send a virtual
+  // function call afterwards, just to ask "what was this output's size?" The returned size is the
+  // physical size in bytes, not the number of scalars.
+  //
+  // Rules for encoding attributes:
+  //
+  // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
+  // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
+  // After the first level of recursion, store elements in their native layout stride.
   public static func executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
@@ -55,15 +134,7 @@ extension Context {
     }
   }
   
-  // The output is a buffer of interleaved (ID, size). This eliminates the need to send a virtual
-  // function call afterwards, just to ask "what was this output's size?" The returned size is the
-  // physical size in bytes, not the number of scalars.
-  //
-  // Rules for encoding attributes:
-  //
-  // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
-  // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
-  // After the first level of recursion, store elements in their native layout stride.
+  @inline(__always)
   private func _executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
