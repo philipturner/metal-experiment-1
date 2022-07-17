@@ -250,6 +250,10 @@ class HeapAllocator {
     let device = Context.global.device
     let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
     let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
+    precondition(sizeAlign.align >= 16, """
+      Custom shaders assume heap alignment is at least 16 bytes. Instead, got \(sizeAlign.align)
+      bytes.
+      """)
     return BufferBlock.alignUp(size: sizeAlign.size, alignment: sizeAlign.align)
   }
   
