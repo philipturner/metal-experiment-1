@@ -169,6 +169,7 @@ extension OperatorRegistry {
     // Fetch inputs
     let input1_id = decodeInput(&args.inputs)
     let input1_alloc = ctx._internalFetch(input1_id)
+    precondition(input1_alloc.metadata.dataType == .float32)
     ctx._internalRetain(input1_alloc)
     
     // Generate outputs

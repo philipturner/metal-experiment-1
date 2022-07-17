@@ -118,3 +118,28 @@ enum DataType: UInt16, CaseIterable {
     }
   }
 }
+
+let TF_FLOAT: Int32 = 1
+let TF_DOUBLE: Int32 = 2
+let TF_INT32: Int32 = 3
+let TF_UINT8: Int32 = 4
+let TF_INT16: Int32 = 5
+let TF_INT8: Int32 = 6
+let TF_STRING: Int32 = 7
+let TF_COMPLEX64: Int32 = 8
+let TF_COMPLEX: Int32 = 8
+let TF_INT64: Int32 = 9
+let TF_BOOL: Int32 = 10
+let TF_QINT8: Int32 = 11
+let TF_QUINT8: Int32 = 12
+let TF_QINT32: Int32 = 13
+let TF_BFLOAT16: Int32 = 14
+let TF_QINT16: Int32 = 15
+let TF_QUINT16: Int32 = 16
+let TF_UINT16: Int32 = 17
+let TF_COMPLEX128: Int32 = 18
+let TF_HALF: Int32 = 19
+let TF_RESOURCE: Int32 = 20
+let TF_VARIANT: Int32 = 21
+let TF_UINT32: Int32 = 22
+let TF_UINT64: Int32 = 23

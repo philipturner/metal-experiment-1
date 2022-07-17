@@ -111,39 +111,6 @@ private extension Context {
 }
 
 extension Context {
-//  public static func generateID(allocationSize: Int) -> UInt64 {
-//    withDispatchQueue {
-//      return Context.global.generateID(allocationSize: allocationSize)
-//    }
-//  }
-//
-//  public static func initialize(id: UInt64, _ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-//    try withDispatchQueue {
-//      let ctx = Context.global
-//      guard let allocation = try ctx.fetchAllocation(id: id) else {
-//        throw AllocationError.other("Tried to initialize memory that was deallocated.")
-//      }
-//      try allocation.materialize()
-//      try allocation.initialize(body)
-//    }
-//  }
-//
-//  public static func read(id: UInt64, _ body: (UnsafeRawBufferPointer) -> Void) throws {
-//    try withDispatchQueue {
-//      let ctx = Context.global
-//      guard let allocation = try ctx.fetchAllocation(id: id) else {
-//        throw AllocationError.other("Tried to read from memory that was deallocated.")
-//      }
-//      try allocation.read(body)
-//    }
-//  }
-//
-//  public static func release(id: UInt64) throws {
-//    try withDispatchQueue {
-//      try Context.global.release(id: id)
-//    }
-//  }
-  
   @inline(__always)
   func _internalAllocate(
     _ dataType: DataType,
@@ -228,61 +195,8 @@ extension Context {
   }
 }
 
-private extension Context {
-  // Returns `nil` if the memory was deallocated. If the memory never existed in the first place, it
-  // crashes because that's probably erroneous behavior on the frontend. Never retain the allocation
-  // because that messes with ARC for deallocation. Instead, retain just the ID.
-  func fetchAllocation(id: UInt64) throws -> Allocation? {
-    guard id < nextAllocationID else {
-      throw AllocationError.other("No memory has ever been allocated with ID #\(id).")
-    }
-    // Dictionary subscript returns an optional.
-    return allocations[id]
-  }
-  
-  func retain(id: UInt64) throws {
-    guard id < nextAllocationID else {
-      throw AllocationError.other("No memory has ever been allocated with ID #\(id).")
-    }
-    guard let allocation = allocations[id] else {
-      // Catch memory management bugs.
-      throw AllocationError.other("Allocation #\(id) has already been deallocated.")
-    }
-    allocation.referenceCount += 1
-    if Allocation.debugInfoEnabled {
-      print("Allocation #\(id) jumped to a reference count of \(allocation.referenceCount).")
-    }
-  }
-  
-  func release(id: UInt64) throws {
-    // Catch memory management bugs.
-    guard let allocation = allocations[id] else {
-      throw AllocationError.other("Cannot deallocate something twice.")
-    }
-    allocation.referenceCount -= 1
-    if allocation.referenceCount == 0 {
-      if Allocation.debugInfoEnabled {
-        if allocation.initialized {
-          print("Allocation #\(id) was deallocated after being initialized.")
-        } else {
-          print("Allocation #\(id) was deallocated.")
-        }
-      }
-      allocations[id] = nil
-    } else {
-      if Allocation.debugInfoEnabled {
-        print("Allocation #\(id) dropped to a reference count of \(allocation.referenceCount).")
-      }
-    }
-  }
-}
-
-// Throw an error instead of crashing so that unit tests can check what happens when you do
-// something invalid. TODO: In the final product, prevent these errors from reaching the frontend.
-// The only error the frontend can accept is something conforming to `PluggableDeviceError`.
 enum AllocationError: Error {
   case exceededSystemRAM
-  case other(String)
 }
 
 class Allocation {
@@ -430,7 +344,7 @@ class Allocation {
     
     let mtlBuffer = HeapAllocator.global.malloc(size: metadata.byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
-      throw AllocationError.other("An attempt to allocate a `MTLBuffer` returned `nil`.")
+      fatalError("An attempt to allocate a `MTLBuffer` returned `nil`.")
     }
     self.mtlBuffer = mtlBuffer
     self.materialized = true
@@ -443,11 +357,11 @@ class Allocation {
   // Does not automatically materialize because doing so should be made explicit.
   func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
     guard let mtlBuffer = mtlBuffer else {
-      throw AllocationError.other("Initialized memory with a null underlying `MTLBuffer`.")
+      fatalError("Initialized memory with a null underlying `MTLBuffer`.")
     }
     // Catch memory management bugs.
     if initialized {
-      throw AllocationError.other("Cannot initialize something twice.")
+      fatalError("Cannot initialize something twice.")
     }
     if isShared {
       let contents = mtlBuffer.contents()
@@ -498,7 +412,7 @@ class Allocation {
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
     guard initialized else {
-      throw AllocationError.other("Cannot read from an uninitialized allocation.")
+      fatalError("Cannot read from an uninitialized allocation.")
     }
     
     if isShared {

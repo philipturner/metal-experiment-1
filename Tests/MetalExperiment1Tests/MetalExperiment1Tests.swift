@@ -1,7 +1,7 @@
 import XCTest
 @testable import MetalExperiment1
 
-func testHeader(_ message: String) {
+func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()
   Context.withDispatchQueue {
     _ = Context.global
@@ -12,8 +12,10 @@ func testHeader(_ message: String) {
     print("Initialization time: \(startupTime) \(Profiler.timeUnit)")
   }
   
-  print()
-  print("=== \(message) ===")
+  if let message = message {
+    print()
+    print("=== \(message) ===")
+  }
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
@@ -65,7 +67,7 @@ final class MetalExperiment1Tests: XCTestCase {
     testHeader("Streamed command buffer throughput")
     
     func validate(_ tensorHandle: TensorHandle, value: Float) {
-      XCTAssertEqual(tensorHandle.copyScalars()[0], value)
+      XCTAssertEqual(tensorHandle.makeHostCopy()[0], value)
     }
     
     func testWarmup(name: String) {

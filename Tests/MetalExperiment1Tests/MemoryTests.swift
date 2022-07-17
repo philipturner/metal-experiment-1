@@ -258,27 +258,27 @@ final class MemoryTests: XCTestCase {
       print()
       print("Handle 1")
       let handle1 = TensorHandle(repeating: 5, count: 2)
-      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      XCTAssertEqual(handle1.makeHostCopy(), [5.0, 5.0])
       
       print()
       print("Handle 2")
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+      XCTAssertEqual(handle2.makeHostCopy(), [6.0, 6.0])
       
       print()
       print("Handle 3")
       let handle3 = handle1.incremented().incremented()
-      XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
+      XCTAssertEqual(handle3.makeHostCopy(), [7.0, 7.0])
       
       print()
       print("Handle 4")
       let handle4 = handle2.incremented().incremented()
-      XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
+      XCTAssertEqual(handle4.makeHostCopy(), [8.0, 8.0])
       
       print()
       print("Handle 5")
       let handle5 = handle4.incremented().incremented().incremented()
-      XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
+      XCTAssertEqual(handle5.makeHostCopy(), [11.0, 11.0])
       
       print()
       print("End of function")
@@ -292,19 +292,19 @@ final class MemoryTests: XCTestCase {
     // regression test, but suppressing its print output.
     do {
       let handle1 = TensorHandle(repeating: 5, count: 2)
-      XCTAssertEqual(handle1.copyScalars(), [5.0, 5.0])
+      XCTAssertEqual(handle1.makeHostCopy(), [5.0, 5.0])
       
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.copyScalars(), [6.0, 6.0])
+      XCTAssertEqual(handle2.makeHostCopy(), [6.0, 6.0])
       
       let handle3 = handle1.incremented().incremented()
-      XCTAssertEqual(handle3.copyScalars(), [7.0, 7.0])
+      XCTAssertEqual(handle3.makeHostCopy(), [7.0, 7.0])
       
       let handle4 = handle2.incremented().incremented()
-      XCTAssertEqual(handle4.copyScalars(), [8.0, 8.0])
+      XCTAssertEqual(handle4.makeHostCopy(), [8.0, 8.0])
       
       let handle5 = handle4.incremented().incremented().incremented()
-      XCTAssertEqual(handle5.copyScalars(), [11.0, 11.0])
+      XCTAssertEqual(handle5.makeHostCopy(), [11.0, 11.0])
     }
   }
   
@@ -353,8 +353,8 @@ final class MemoryTests: XCTestCase {
     withExtendedLifetime(tensor3) {
       let tensor4 = tensor3.incremented()
       
-      let scalars3 = tensor3.copyScalars()
-      let scalars4 = tensor4.copyScalars()
+      let scalars3 = tensor3.makeHostCopy()
+      let scalars4 = tensor4.makeHostCopy()
       print("Tensor 3: [\(scalars3[0]), ...]")
       print("Tensor 4: [\(scalars4[0]), ...]")
     }
@@ -372,24 +372,24 @@ final class MemoryTests: XCTestCase {
       
       Profiler.checkpoint()
       let handle1 = TensorHandle(repeating: 5 + loopOffset, count: 2)
-      XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
+      XCTAssertEqual(handle1.makeHostCopy(), [5.0 + loopOffset, 5.0 + loopOffset])
       Profiler.log("Read handle 1 (fast)")
       
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
+      XCTAssertEqual(handle2.makeHostCopy(), [6.0 + loopOffset, 6.0 + loopOffset])
       Profiler.log("Read handle 2 (slow)")
       
       // This should be fast, but isn't.
       let handle3 = handle1.incremented()
-      XCTAssertEqual(handle1.copyScalars(), [5.0 + loopOffset, 5.0 + loopOffset])
+      XCTAssertEqual(handle1.makeHostCopy(), [5.0 + loopOffset, 5.0 + loopOffset])
       Profiler.log("Read handle 1 again (fast)")
       
       // This should be medium, but isn't.
-      XCTAssertEqual(handle3.copyScalars(), [6.0 + loopOffset, 6.0 + loopOffset])
+      XCTAssertEqual(handle3.makeHostCopy(), [6.0 + loopOffset, 6.0 + loopOffset])
       Profiler.log("Read handle 3 after execution (slow)")
       
       let handle4 = handle3.incremented()
-      XCTAssertEqual(handle4.copyScalars(), [7.0 + loopOffset, 7.0 + loopOffset])
+      XCTAssertEqual(handle4.makeHostCopy(), [7.0 + loopOffset, 7.0 + loopOffset])
       Profiler.log("Read handle 4 (slow)")
     }
   }
@@ -425,8 +425,8 @@ final class MemoryTests: XCTestCase {
       let fusion1_part5 = fusion1_part4.incremented()
       let fusion1_part6 = fusion1_part5.incremented()
       let fusion1_part7 = fusion1_part6.incremented()
-      XCTAssertEqual(fusion1_part7.copyScalars(), [107, 107])
-      XCTAssertEqual(fusion2_part4.copyScalars(), [204, 204])
+      XCTAssertEqual(fusion1_part7.makeHostCopy(), [107, 107])
+      XCTAssertEqual(fusion2_part4.makeHostCopy(), [204, 204])
     }
     
     Profiler.log("Interrupted unary fusion")
