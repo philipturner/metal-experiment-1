@@ -30,7 +30,7 @@ public class PluggableDeviceTensorHandle {
   }
   
   deinit {
-    Context.deleteTensor(_cTensorHandle)
+    Context.releaseBuffer(_cTensorHandle)
   }
   
   @inlinable
@@ -40,7 +40,7 @@ public class PluggableDeviceTensorHandle {
       if _shape == nil {
         _shape = Array(unsafeUninitializedCapacity: rank) { bufferPointer, count in
           count = rank
-          Context.copyTensorShape(_cTensorHandle, bufferPointer)
+          Context.copyBufferShape(_cTensorHandle, bufferPointer)
         }
       }
       return TensorShape(_shape.unsafelyUnwrapped)
@@ -73,9 +73,9 @@ public struct TensorHandle<Scalar> {
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
     let (cTensorHandle, rank) = shape.withUnsafeBufferPointer {
-      Context.allocateTensor(Scalar.self, $0)
+      Context.allocateBuffer(Scalar.self, $0)
     }
-    Context.initializeTensor(cTensorHandle) { buffer in
+    Context.initializeBuffer(cTensorHandle) { buffer in
       let pointer = buffer.assumingMemoryBound(to: Scalar.self)
       scalarsInitializer(pointer.baseAddress!)
     }
@@ -99,7 +99,7 @@ public struct TensorHandle<Scalar> {
   @inline(never)
   func makeHostCopy() -> [Scalar] {
     var output: [Scalar]?
-    Context.readTensor(_cTensorHandle) { tensorBuffer in
+    Context.readBuffer(_cTensorHandle) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)

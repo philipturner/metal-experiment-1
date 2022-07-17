@@ -4,7 +4,7 @@ import XCTest
 fileprivate func allocate(capacity: Int) -> UInt64 {
   withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
     shape[0] = capacity
-    let (id, _) = Context.allocateTensor(Float.self, UnsafeBufferPointer(shape))
+    let (id, _) = Context.allocateBuffer(Float.self, UnsafeBufferPointer(shape))
     return id
   }
 }
@@ -17,8 +17,8 @@ final class MemoryTests: XCTestCase {
     do {
       let firstID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
       let secondID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-      Context.deleteTensor(firstID)
-      Context.deleteTensor(secondID)
+      Context.releaseBuffer(firstID)
+      Context.releaseBuffer(secondID)
     }
     
     do {
@@ -26,7 +26,7 @@ final class MemoryTests: XCTestCase {
       let numIds = 100
       for _ in 0..<numIds {
         let id = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-        Context.deleteTensor(id)
+        Context.releaseBuffer(id)
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(numIds)
@@ -35,14 +35,14 @@ final class MemoryTests: XCTestCase {
     
     do {
       let id = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
-      defer { Context.deleteTensor(id) }
+      defer { Context.releaseBuffer(id) }
       
-      Context.initializeTensor(id) { bufferPointer in
+      Context.initializeBuffer(id) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      Context.readTensor(id) { bufferPointer in
+      Context.readBuffer(id) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)
@@ -99,10 +99,10 @@ final class MemoryTests: XCTestCase {
         ids.append(id)
       }
       for id in ids {
-        Context.initializeTensor(id) { _ in }
+        Context.initializeBuffer(id) { _ in }
       }
       for id in ids {
-        Context.deleteTensor(id)
+        Context.releaseBuffer(id)
       }
     }
     func fakeAllocateDeallocate(numBuffers: Int) {
@@ -136,7 +136,7 @@ final class MemoryTests: XCTestCase {
         }
       }
       for id in ids {
-        Context.deleteTensor(id)
+        Context.releaseBuffer(id)
       }
     }
     
@@ -179,11 +179,11 @@ final class MemoryTests: XCTestCase {
       // The compiler mistakes this for `allocate(byteCount:)`.
       let _avoidNameCollision = allocate(capacity:)
       let id = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
-      Context.initializeTensor(id) { _ in }
+      Context.initializeBuffer(id) { _ in }
       return id
     }
     func deallocate(id: UInt64) {
-      Context.deleteTensor(id)
+      Context.releaseBuffer(id)
     }
     
     let id1 = allocate(byteCount: 8_000_000)
@@ -330,17 +330,17 @@ final class MemoryTests: XCTestCase {
     let bufferID1 = allocate(capacity: bufferSize1  / MemoryLayout<Float>.stride)
     let bufferID2 = allocate(capacity: bufferSize2 / MemoryLayout<Float>.stride)
     defer {
-      Context.deleteTensor(bufferID1)
-      Context.deleteTensor(bufferID2)
+      Context.releaseBuffer(bufferID1)
+      Context.releaseBuffer(bufferID2)
     }
     
     var tensor3: Tensor<Float>?
     Context.withDispatchQueue {
       Context.global.permitExceedingSystemRAM = true
-      Context.initializeTensor(bufferID1) { _ in }
+      Context.initializeBuffer(bufferID1) { _ in }
       
       Context.global.permitExceedingSystemRAM = true
-      Context.initializeTensor(bufferID2) { _ in }
+      Context.initializeBuffer(bufferID2) { _ in }
       
       Context.global.permitExceedingSystemRAM = true
       tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])

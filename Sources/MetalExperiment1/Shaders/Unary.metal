@@ -8,6 +8,21 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Copying performance of multiple elements per shader:
+// 1B - 1700
+// 2B - 1100
+// 4B - 700
+// 8B - 400 (half4)
+// 16B - 400 (float4)
+// 32B - 400 (long4)
+// 64B - ???
+// 128B - starts to take longer
+
+// Limit write alignment to 16B, taking a slight performance hit on the u32/i64/u64 ubershader. Use
+// vectors of 2 scalars there. 64-bit operations are already ALU heavy, giving the performance
+// characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
+// special number.
+
 kernel void unaryOperation(
   device float *input [[buffer(0)]],
   device float *output [[buffer(1)]],

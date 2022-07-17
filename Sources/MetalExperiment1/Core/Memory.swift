@@ -13,57 +13,57 @@ extension Context {
   // Avoids a possible second virtual function call by transforming the generic parameter into
   // something statically typed. There is already massive overhead from calling into
   // `withDispatchQueue`, but it should still be minimized.
-  public static func allocateTensor<T>(
+  public static func allocateBuffer<T>(
     _ type: T.Type,
     _ shape: UnsafeBufferPointer<Int>
   ) -> (UInt64, Int) {
     let dataType = DataType(type)
     let byteCount = shape.reduce(MemoryLayout<T>.stride, *)
     let id = withDispatchQueue {
-      Context.global._allocateTensor(dataType, shape, byteCount)
+      Context.global._allocateBuffer(dataType, shape, byteCount)
     }
     return (id, shape.count)
   }
   
-  public static func initializeTensor(
+  public static func initializeBuffer(
     _ id: UInt64,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._initializeTensor(id, body)
+      Context.global._initializeBuffer(id, body)
     }
   }
   
-  public static func readTensor(
+  public static func readBuffer(
     _ id: UInt64,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._readTensor(id, body)
+      Context.global._readBuffer(id, body)
     }
   }
   
-  public static func copyTensorShape(
+  public static func copyBufferShape(
     _ id: UInt64,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
     withDispatchQueue {
-      Context.global._copyTensorShape(id, shape)
+      Context.global._copyBufferShape(id, shape)
     }
   }
   
-  public static func deleteTensor(
+  public static func releaseBuffer(
     _ id: UInt64
   ) {
     withDispatchQueue {
-      Context.global._deleteTensor(id)
+      Context.global._releaseBuffer(id)
     }
   }
 }
 
 private extension Context {
   @inline(__always)
-  func _allocateTensor(
+  func _allocateBuffer(
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
@@ -73,7 +73,7 @@ private extension Context {
   }
   
   @inline(__always)
-  func _initializeTensor(
+  func _initializeBuffer(
     _ id: UInt64,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
@@ -83,7 +83,7 @@ private extension Context {
   }
   
   @inline(__always)
-  func _readTensor(
+  func _readBuffer(
     _ id: UInt64,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
@@ -92,7 +92,7 @@ private extension Context {
   }
   
   @inline(__always)
-  func _copyTensorShape(
+  func _copyBufferShape(
     _ id: UInt64,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
@@ -102,7 +102,7 @@ private extension Context {
   }
   
   @inline(__always)
-  func _deleteTensor(
+  func _releaseBuffer(
     _ id: UInt64
   ) {
     let allocation = _internalFetch(id)
