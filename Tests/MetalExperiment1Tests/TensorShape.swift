@@ -8,106 +8,41 @@
 import MetalExperiment1
 
 public struct TensorShape: ExpressibleByArrayLiteral {
-  @usableFromInline
-  internal var storage: SIMD8<Int>
-  
-  // Accessing the dimensions this way brings seriously degraded performance.
-  @inlinable
-  public var dimensions: [Int] {
-    get {
-      let rank = storage[1]
-      return Array(unsafeUninitializedCapacity: rank) { bufferPointer, count in
-        count = rank
-        let baseAddress = bufferPointer.baseAddress!
-        for i in 0..<rank {
-          baseAddress[i] = storage[3 + i]
-        }
-      }
-    }
-    set {
-      let rank = newValue.count
-      precondition(rank <= 5, "Tensor cannot have a rank greater than 5.")
-      storage[1] = rank
-      for i in 0..<rank {
-        storage[3 + i] = newValue[i]
-      }
-      for i in rank + 3..<8 {
-        storage[i] = 0
-      }
-    }
-  }
-  
-  @inlinable @inline(__always)
-  internal mutating func initializeDimensions<C: Collection>(
-    _ dimensions: C
-  ) where C.Element == Int, C.Index == Int {
-    let rank = dimensions.count
-    precondition(rank <= 5, "Tensor cannot have a rank greater than 5.")
-    storage[1] = rank
-    for i in 0..<rank {
-      storage[3 + i] = dimensions[i]
-    }
-  }
-  
-  // Zero-cost wrapper over the internal storage of a tensor handle.
-  @inlinable @inline(__always)
-  internal init(tensorHandleStorage: SIMD8<Int>) {
-    storage = tensorHandleStorage
-  }
-  
+  public var dimensions: [Int]
+
   @inlinable
   public init(_ dimensions: [Int]) {
-    self.storage = .zero
-    initializeDimensions(dimensions)
+    self.dimensions = dimensions
   }
-  
+
   @inlinable
   public init<C: Collection>(_ dimensions: C) where C.Element == Int {
-    self.storage = .zero
-    let rank = dimensions.count
-    precondition(rank <= 5, "Tensor cannot have a rank greater than 5.")
-    storage[1] = rank
-    var selfIndex = 3
-    for dimIndex in dimensions.indices {
-      storage[selfIndex] = dimensions[dimIndex]
-      selfIndex += 1
-    }
+    self.dimensions = Array(dimensions)
   }
-  
+
   @inlinable
   public init(arrayLiteral elements: Int...) {
-    self.storage = .zero
-    initializeDimensions(elements)
+    self.init(elements)
   }
-  
+
   @inlinable
   public init(_ elements: Int...) {
-    self.storage = .zero
-    initializeDimensions(elements)
+    self.init(elements)
   }
-  
+
   @inlinable
   public init(repeating repeatedValue: Int, count: Int) {
-    precondition(count <= 5, "Tensor cannot have a rank greater than 5.")
-    self.storage = .zero
-    storage[1] = count
-    for i in 0..<count {
-      storage[3 + i] = repeatedValue
-    }
+    self.init(Array(repeating: repeatedValue, count: count))
   }
-  
+
   @inlinable
   public var rank: Int {
-    return storage[1]
+    return dimensions.count
   }
-  
+
   @inlinable
   public var contiguousSize: Int {
-    var output = 1
-    for i in 3..<(3 + rank) {
-      output *= storage[i]
-    }
-    return output
+    return dimensions.reduce(1, *)
   }
 }
 
@@ -115,45 +50,38 @@ extension TensorShape: Collection, MutableCollection {
   public typealias Element = Int
   public typealias Index = Int
   public typealias Indices = Range<Int>
-  
+
   @inlinable
   public var count: Int {
-    return rank
+    return dimensions.count
   }
-  
+
   @inlinable
   public var indices: Indices {
-    return 0..<rank
+    return dimensions.indices.lowerBound..<dimensions.indices.upperBound
   }
-  
+
   @inlinable
   public var startIndex: Index {
-    return indices.startIndex
+    return dimensions.startIndex
   }
-  
+
   @inlinable
   public var endIndex: Index {
-    return indices.endIndex
+    return dimensions.endIndex
   }
-  
+
   @inlinable
   public func index(after i: Index) -> Index {
-    return i + 1
+    return dimensions.index(after: i)
   }
-  
+
   @inlinable
   public subscript(position: Index) -> Element {
-    _read {
-      precondition(position < rank)
-      yield storage[3 + position]
-    }
-    _modify {
-      precondition(position < rank)
-      yield &storage[3 + position]
-    }
+    _read { yield dimensions[position] }
+    _modify { yield &dimensions[position] }
   }
-  
-  // This should be extremely slow.
+
   @inlinable
   public subscript(bounds: Range<Int>) -> TensorShape {
     get { return TensorShape(dimensions[bounds]) }
@@ -164,12 +92,12 @@ extension TensorShape: Collection, MutableCollection {
 extension TensorShape: RandomAccessCollection {
   @inlinable
   public func index(_ i: Int, offsetBy distance: Int) -> Int {
-    i + distance
+    dimensions.index(i, offsetBy: distance)
   }
-  
+
   @inlinable
   public func distance(from start: Int, to end: Int) -> Int {
-    end - start
+    dimensions.distance(from: start, to: end)
   }
 }
 
@@ -178,28 +106,24 @@ extension TensorShape: RangeReplaceableCollection {
 
   @inlinable
   public init() {
-    self.storage = .zero
+    self.init([])
   }
 
-  // This should be extremely slow.
   @inlinable
   public mutating func append(_ newElement: Element) {
     dimensions.append(newElement)
   }
 
-  // This should be extremely slow.
   @inlinable
   public mutating func append(contentsOf newElements: TensorShape) {
     dimensions.append(contentsOf: newElements.dimensions)
   }
 
-  // This should be extremely slow.
   @inlinable
   public mutating func append<S: Sequence>(contentsOf newElements: S) where Element == S.Element {
     dimensions.append(contentsOf: newElements)
   }
 
-  // This should be extremely slow.
   @inlinable
   public mutating func replaceSubrange<C>(
     _ subrange: Range<Index>, with newElements: C
@@ -211,7 +135,7 @@ extension TensorShape: RangeReplaceableCollection {
 extension TensorShape: Equatable {
   @inlinable
   public static func == (lhs: TensorShape, rhs: TensorShape) -> Bool {
-    lhs.storage.highHalf == rhs.storage.highHalf && lhs.storage[3] == rhs.storage[3]
+    return lhs.dimensions == rhs.dimensions
   }
 }
 

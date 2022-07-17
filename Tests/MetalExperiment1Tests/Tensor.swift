@@ -11,21 +11,22 @@ import MetalExperiment1
 
 // Mirrors the functionality of `TFETensorHandle`.
 public class PluggableDeviceTensorHandle {
-  // Vector elements:
-  // 0..<1 - id
-  // 1..<2 - rank
-  // 2..<3 - shape exists
-  // 3..<8 - shape
-  @usableFromInline
-  internal var storage: SIMD8<UInt64>
+  public let _cTensorHandle: UInt64
   
-  @inlinable
-  public var _cTensorHandle: UInt64 { storage[0] }
+  public let rank: Int
+  
+  @usableFromInline
+  internal var _shape: [Int]?
   
   public init(_owning base: UInt64, rank: Int) {
-    storage = .zero
-    storage[0] = base
-    storage[1] = UInt64(truncatingIfNeeded: rank)
+    self._cTensorHandle = base
+    self.rank = rank
+  }
+  
+  public init(_owning base: UInt64, rank: Int, shape: [Int]) {
+    self._cTensorHandle = base
+    self.rank = rank
+    self._shape = shape
   }
   
   deinit {
@@ -33,33 +34,16 @@ public class PluggableDeviceTensorHandle {
   }
   
   @inlinable
-  public var rank: Int {
-    @_semantics("autodiff.nonvarying")
-    get {
-      Int(truncatingIfNeeded: storage[1])
-    }
-  }
-  
-  @usableFromInline @inline(never)
-  internal func _fetchStorage() {
-    withUnsafeTemporaryAllocation(of: Int.self, capacity: rank) { bufferPointer in
-      Context.copyTensorShape(_cTensorHandle, bufferPointer)
-      for i in bufferPointer.indices {
-        storage[3 + i] = UInt64(truncatingIfNeeded: bufferPointer[i])
-      }
-    }
-    storage[2] = 1
-  }
-  
-  @inlinable
   public var shape: TensorShape {
     @_semantics("autodiff.nonvarying")
     get {
-      if storage[2] == 0 {
-        _fetchStorage()
+      if _shape == nil {
+        _shape = Array(unsafeUninitializedCapacity: rank) { bufferPointer, count in
+          count = rank
+          Context.copyTensorShape(_cTensorHandle, bufferPointer)
+        }
       }
-      let castedStorage = SIMD8<Int>(truncatingIfNeeded: storage)
-      return TensorShape(tensorHandleStorage: castedStorage)
+      return TensorShape(_shape.unsafelyUnwrapped)
     }
   }
 }
@@ -73,6 +57,10 @@ public struct TensorHandle<Scalar> {
   
   public init(_owning cTensorHandle: UInt64, rank: Int) {
     self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank)
+  }
+  
+  public init(_owning cTensorHandle: UInt64, rank: Int, shape: [Int]) {
+    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank, shape: shape)
   }
   
   public init(handle: PluggableDeviceTensorHandle) {
@@ -91,7 +79,7 @@ public struct TensorHandle<Scalar> {
       let pointer = buffer.assumingMemoryBound(to: Scalar.self)
       scalarsInitializer(pointer.baseAddress!)
     }
-    self.init(_owning: cTensorHandle, rank: rank)
+    self.init(_owning: cTensorHandle, rank: rank, shape: shape)
   }
   
   @inlinable
@@ -171,30 +159,6 @@ public struct Tensor<Scalar> {
     return _Raw.increment(self)
   }
 }
-
-//extension TensorHandle {
-//  // This code will become part of `TensorHandle<Scalar>`, which wraps the future incarnation of
-//  // the current `TensorHandle`.
-//  @inlinable
-//  convenience init(repeating repeatedValue: Float, count: Int) {
-//    let (cTensorHandle, rank) = withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
-//      shape[0] = count
-//      return Context.allocateTensor(Float.self, UnsafeBufferPointer(shape))
-//    }
-//    self.init(_owning: cTensorHandle, rank: rank)
-//
-//    Context.initializeTensor(cTensorHandle) { buffer in
-//      let pointer = buffer.assumingMemoryBound(to: Float.self)
-//      pointer.initialize(repeating: repeatedValue)
-//    }
-//  }
-//}
-//
-//extension TensorHandle {
-//  func incremented() -> TensorHandle {
-//    _Raw.increment(self)
-//  }
-//}
 
 // MARK: - _Raw
 
