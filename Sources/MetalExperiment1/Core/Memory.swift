@@ -390,7 +390,7 @@ class Allocation {
     var dataBuffer: MTLBuffer?
     if !isShared {
       // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
-      // TODO: Append a command that will copy the memory. This command is special, in that is takes
+      // TODO: Append a command that will copy the memory. This command is special, in that it takes
       // a `MTLBuffer` as output but can have an unmaterialized allocation as input.
       fatalError("Haven't implemented reading memory from a discrete GPU.")
     }
@@ -400,7 +400,10 @@ class Allocation {
     // buffers (more overhead). It would also reduce I/O bottlenecks if you have several calls to
     // `read` in a row. This `MTLEvent` should never cause glitches in the graph compilier, because
     // the buffer here is not deallocated and not a placeholder. Keeping the entire pending command
-    // batch intact provides more opportunities for fusing non-adjacent nodes in the graph.
+    // batch intact provides more opportunities for fusing non-adjacent nodes in the graph. This
+    // could be implemented by creating an `event` property on the allocation and materializing it
+    // inside the compiler. No `MTLBuffer` should be created if this is the last operation in the
+    // graph.
     //
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
