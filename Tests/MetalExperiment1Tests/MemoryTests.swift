@@ -251,34 +251,34 @@ final class MemoryTests: XCTestCase {
     
     print("Start of function")
     do {
-      _ = TensorHandle(repeating: 5, count: 2)
+      _ = Tensor<Float>(repeating: 5, shape: [2])
     }
     
     do {
       print()
       print("Handle 1")
-      let handle1 = TensorHandle(repeating: 5, count: 2)
-      XCTAssertEqual(handle1.makeHostCopy(), [5.0, 5.0])
+      let handle1 = Tensor<Float>(repeating: 5, shape: [2])
+      XCTAssertEqual(handle1.scalars, [5.0, 5.0])
       
       print()
       print("Handle 2")
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.makeHostCopy(), [6.0, 6.0])
+      XCTAssertEqual(handle2.scalars, [6.0, 6.0])
       
       print()
       print("Handle 3")
       let handle3 = handle1.incremented().incremented()
-      XCTAssertEqual(handle3.makeHostCopy(), [7.0, 7.0])
+      XCTAssertEqual(handle3.scalars, [7.0, 7.0])
       
       print()
       print("Handle 4")
       let handle4 = handle2.incremented().incremented()
-      XCTAssertEqual(handle4.makeHostCopy(), [8.0, 8.0])
+      XCTAssertEqual(handle4.scalars, [8.0, 8.0])
       
       print()
       print("Handle 5")
       let handle5 = handle4.incremented().incremented().incremented()
-      XCTAssertEqual(handle5.makeHostCopy(), [11.0, 11.0])
+      XCTAssertEqual(handle5.scalars, [11.0, 11.0])
       
       print()
       print("End of function")
@@ -291,20 +291,20 @@ final class MemoryTests: XCTestCase {
     // This is one of the reproducers for a memory management bug I encountered. Retaining it as a
     // regression test, but suppressing its print output.
     do {
-      let handle1 = TensorHandle(repeating: 5, count: 2)
-      XCTAssertEqual(handle1.makeHostCopy(), [5.0, 5.0])
+      let handle1 = Tensor<Float>(repeating: 5, shape: [2])
+      XCTAssertEqual(handle1.scalars, [5.0, 5.0])
       
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.makeHostCopy(), [6.0, 6.0])
+      XCTAssertEqual(handle2.scalars, [6.0, 6.0])
       
       let handle3 = handle1.incremented().incremented()
-      XCTAssertEqual(handle3.makeHostCopy(), [7.0, 7.0])
+      XCTAssertEqual(handle3.scalars, [7.0, 7.0])
       
       let handle4 = handle2.incremented().incremented()
-      XCTAssertEqual(handle4.makeHostCopy(), [8.0, 8.0])
+      XCTAssertEqual(handle4.scalars, [8.0, 8.0])
       
       let handle5 = handle4.incremented().incremented().incremented()
-      XCTAssertEqual(handle5.makeHostCopy(), [11.0, 11.0])
+      XCTAssertEqual(handle5.scalars, [11.0, 11.0])
     }
   }
   
@@ -334,7 +334,7 @@ final class MemoryTests: XCTestCase {
       Context.deleteTensor(bufferID2)
     }
     
-    var tensor3: TensorHandle?
+    var tensor3: Tensor<Float>?
     Context.withDispatchQueue {
       Context.global.permitExceedingSystemRAM = true
       Context.initializeTensor(bufferID1) { _ in }
@@ -343,7 +343,7 @@ final class MemoryTests: XCTestCase {
       Context.initializeTensor(bufferID2) { _ in }
       
       Context.global.permitExceedingSystemRAM = true
-      tensor3 = TensorHandle(repeating: 0, count: bufferCount3)
+      tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
       Context.global.permitExceedingSystemRAM = false
     }
     guard let tensor3 = tensor3 else {
@@ -353,8 +353,8 @@ final class MemoryTests: XCTestCase {
     withExtendedLifetime(tensor3) {
       let tensor4 = tensor3.incremented()
       
-      let scalars3 = tensor3.makeHostCopy()
-      let scalars4 = tensor4.makeHostCopy()
+      let scalars3 = tensor3.scalars
+      let scalars4 = tensor4.scalars
       print("Tensor 3: [\(scalars3[0]), ...]")
       print("Tensor 4: [\(scalars4[0]), ...]")
     }
@@ -363,7 +363,7 @@ final class MemoryTests: XCTestCase {
   func testReadPerformance() {
     testHeader("Buffer read performance")
     do {
-      _ = TensorHandle(repeating: 4, count: 2)
+      _ = Tensor<Float>(repeating: 4, shape: [2])
     }
     
     for i in 0..<2 {
@@ -371,25 +371,25 @@ final class MemoryTests: XCTestCase {
       let loopOffset: Float = (i == 0) ? 0.0 : 0.1
       
       Profiler.checkpoint()
-      let handle1 = TensorHandle(repeating: 5 + loopOffset, count: 2)
-      XCTAssertEqual(handle1.makeHostCopy(), [5.0 + loopOffset, 5.0 + loopOffset])
+      let handle1 = Tensor<Float>(repeating: 5 + loopOffset, shape: [2])
+      XCTAssertEqual(handle1.scalars, [5.0 + loopOffset, 5.0 + loopOffset])
       Profiler.log("Read handle 1 (fast)")
       
       let handle2 = handle1.incremented()
-      XCTAssertEqual(handle2.makeHostCopy(), [6.0 + loopOffset, 6.0 + loopOffset])
+      XCTAssertEqual(handle2.scalars, [6.0 + loopOffset, 6.0 + loopOffset])
       Profiler.log("Read handle 2 (slow)")
       
       // This should be fast, but isn't.
       let handle3 = handle1.incremented()
-      XCTAssertEqual(handle1.makeHostCopy(), [5.0 + loopOffset, 5.0 + loopOffset])
+      XCTAssertEqual(handle1.scalars, [5.0 + loopOffset, 5.0 + loopOffset])
       Profiler.log("Read handle 1 again (fast)")
       
       // This should be medium, but isn't.
-      XCTAssertEqual(handle3.makeHostCopy(), [6.0 + loopOffset, 6.0 + loopOffset])
+      XCTAssertEqual(handle3.scalars, [6.0 + loopOffset, 6.0 + loopOffset])
       Profiler.log("Read handle 3 after execution (slow)")
       
       let handle4 = handle3.incremented()
-      XCTAssertEqual(handle4.makeHostCopy(), [7.0 + loopOffset, 7.0 + loopOffset])
+      XCTAssertEqual(handle4.scalars, [7.0 + loopOffset, 7.0 + loopOffset])
       Profiler.log("Read handle 4 (slow)")
     }
   }
@@ -412,12 +412,12 @@ final class MemoryTests: XCTestCase {
     }
     
     for _ in 0..<2 {
-      let fusion1_part1 = TensorHandle(repeating: 101, count: 2)
+      let fusion1_part1 = Tensor<Float>(repeating: 101, shape: [2])
       let fusion1_part2 = fusion1_part1.incremented()
       let fusion1_part3 = fusion1_part2.incremented()
       let fusion1_part4 = fusion1_part3.incremented()
       
-      let fusion2_part1 = TensorHandle(repeating: 201, count: 2)
+      let fusion2_part1 = Tensor<Float>(repeating: 201, shape: [2])
       let fusion2_part2 = fusion2_part1.incremented()
       let fusion2_part3 = fusion2_part2.incremented()
       let fusion2_part4 = fusion2_part3.incremented()
@@ -425,8 +425,8 @@ final class MemoryTests: XCTestCase {
       let fusion1_part5 = fusion1_part4.incremented()
       let fusion1_part6 = fusion1_part5.incremented()
       let fusion1_part7 = fusion1_part6.incremented()
-      XCTAssertEqual(fusion1_part7.makeHostCopy(), [107, 107])
-      XCTAssertEqual(fusion2_part4.makeHostCopy(), [204, 204])
+      XCTAssertEqual(fusion1_part7.scalars, [107, 107])
+      XCTAssertEqual(fusion2_part4.scalars, [204, 204])
     }
     
     Profiler.log("Interrupted unary fusion")

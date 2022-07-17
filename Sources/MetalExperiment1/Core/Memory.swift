@@ -214,7 +214,10 @@ class Allocation {
     private var storage: SIMD8<Int>
     
     @inline(__always)
-    var dataType: DataType { unsafeBitCast(storage[5], to: DataType.self) }
+    var dataType: DataType {
+      let rawValue = UInt16(truncatingIfNeeded: storage[5])
+      return DataType(rawValue: rawValue)!
+    }
     @inline(__always)
     var byteCount: Int { storage[6] }
     @inline(__always)

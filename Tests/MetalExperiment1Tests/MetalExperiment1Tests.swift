@@ -60,20 +60,19 @@ final class MetalExperiment1Tests: XCTestCase {
       let throughput = Double(totalTime) / Double(iterations)
       print("Synchronization throughput: \(throughput) \(Profiler.timeUnit)")
     }
-    
   }
   
   func testStreamedBatchThroughput() throws {
     testHeader("Streamed command buffer throughput")
     
-    func validate(_ tensorHandle: TensorHandle, value: Float) {
-      XCTAssertEqual(tensorHandle.makeHostCopy()[0], value)
+    func validate(_ tensorHandle: Tensor<Float>, value: Float) {
+      XCTAssertEqual(tensorHandle.scalars[0], value)
     }
     
     func testWarmup(name: String) {
       print("--- Stream size: 1")
       Profiler.checkpoint()
-      let handle1 = TensorHandle(repeating: 0, count: 10)
+      let handle1 = Tensor<Float>(repeating: 0, shape: [10])
       let creationTime = Profiler.checkpoint()
       
       let handle2 = handle1.incremented()
@@ -94,7 +93,7 @@ final class MetalExperiment1Tests: XCTestCase {
       print("--- Stream size: \(length)")
       Profiler.checkpoint()
       let handle = Context.withDispatchQueue {
-        var handle = TensorHandle(repeating: 0, count: 10)
+        var handle = Tensor<Float>(repeating: 0, shape: [10])
         for _ in 0..<length {
           handle = handle.incremented()
         }
