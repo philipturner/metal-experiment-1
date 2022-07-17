@@ -10,9 +10,9 @@ import Darwin
 // MARK: - Operation Execution
 
 extension Context {
-  // The output is a buffer of interleaved (ID, size). This eliminates the need to send a virtual
-  // function call afterwards, just to ask "what was this output's size?" The returned size is the
-  // physical size in bytes, not the number of scalars.
+  // The output is a buffer of interleaved (ID, rank). This eliminates the need to send a virtual
+  // function call afterwards, just to ask "what was this output's rank?" For the shape or size in
+  // bytes you need one virtual function call to materialize them on the frontend.
   //
   // Rules for encoding attributes:
   //
