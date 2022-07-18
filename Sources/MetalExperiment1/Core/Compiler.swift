@@ -6,6 +6,8 @@
 //
 
 extension Context {
+  // TODO's #1 and #2 have the same purpose. #1 might be the heuristic required for #2.
+  //
   // TODO: Make specialized execution paths for having either 1 or 2 eager operations queued up.
   // These paths will have lower CPU-side latency.
   //
