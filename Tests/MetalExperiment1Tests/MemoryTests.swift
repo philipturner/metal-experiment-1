@@ -208,11 +208,14 @@ final class MemoryTests: XCTestCase {
         Context.global.permitExceedingSystemRAM = true
       }
       
-      let largeBufferSize = Context.global.device.maxBufferLength
-      let largeBufferID1 = allocate(byteCount: largeBufferSize)
-      defer { deallocate(id: largeBufferID1) }
-      Context.withDispatchQueue {
-        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+      // This part of the test causes a massive bottleneck on discrete GPUs.
+      if Context.global.preferSharedStorage {
+        let largeBufferSize = Context.global.device.maxBufferLength
+        let largeBufferID1 = allocate(byteCount: largeBufferSize)
+        defer { deallocate(id: largeBufferID1) }
+        Context.withDispatchQueue {
+          XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+        }
       }
       
       let smallBufferID2 = allocate(byteCount: 1_000)
@@ -232,14 +235,17 @@ final class MemoryTests: XCTestCase {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
-      HeapAllocator.global._releaseCachedBufferBlocks()
+      if Context.global.preferSharedStorage {
+        HeapAllocator.global._releaseCachedBufferBlocks()
+      } else {
+        // Without making a barrier, the `XCTAssertFalse` below fails on discrete GPUs.
+        Context.barrier()
+      }
+      
       let smallBufferID4 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID4) }
       Context.withDispatchQueue {
-        // This part of the test fails on discrete GPUs.
-        if Context.global.preferSharedStorage {
-          XCTAssertFalse(Context.global.permitExceedingSystemRAM)
-        }
+        XCTAssertFalse(Context.global.permitExceedingSystemRAM)
       }
     }
   }
@@ -316,18 +322,21 @@ final class MemoryTests: XCTestCase {
     defer {
       HeapAllocator.global._releaseCachedBufferBlocks()
     }
-    // This test fails on discrete GPUs.
-    guard Context.global.preferSharedStorage else {
-      return
-    }
     
     let device = Context.global.device
     #if os(macOS)
-    let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+    var maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
     #else
-    let maxWorkingSize = device.maxBufferLength
+    var maxWorkingSize = device.maxBufferLength
     #endif
-    let maxBufferLength = device.maxBufferLength
+    var maxBufferLength = device.maxBufferLength
+    
+    // If most of the device's memory is allocated, this causes a command buffer abortion on
+    // discrete GPUs.
+    if !Context.global.preferSharedStorage {
+      maxWorkingSize = 2 * 1024 * 1024
+      maxBufferLength = 1 * 1024 * 1024
+    }
     
     let bufferSize1 = maxBufferLength - 16384
     let bufferSize2 = (maxWorkingSize - maxBufferLength) + 16384
@@ -361,6 +370,8 @@ final class MemoryTests: XCTestCase {
 
       let scalars3 = tensor3.scalars
       let scalars4 = tensor4.scalars
+      XCTAssertEqual(scalars3[0], 0.0)
+      XCTAssertEqual(scalars4[0], 1.0)
       print("Tensor 3: [\(scalars3[0]), ...]")
       print("Tensor 4: [\(scalars4[0]), ...]")
     }
@@ -417,7 +428,6 @@ final class MemoryTests: XCTestCase {
       }
     }
     
-    // TODO: Why is this taking so long on discrete GPUs?
     for _ in 0..<2 {
       let fusion1_part1 = Tensor<Float>(repeating: 101, shape: [2])
       let fusion1_part2 = fusion1_part1.incremented()

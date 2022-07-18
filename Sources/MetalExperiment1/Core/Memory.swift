@@ -338,8 +338,14 @@ class Allocation {
         // the threshold because my backend queued up too many commands, most of the memory would
         // quickly deallocate.
         //
-        // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
-        if allocatedSize + byteCount <= device.maxBufferLength {
+        // On iOS, the threshold is different because `MTLDevice.recommendedMaxWorkingSetSize` does
+        // not exist.
+        #if os(macOS)
+        let threshold = device.maxBufferLength
+        #else
+        let threshold = (device.maxBufferLength * 7) / 8
+        #endif
+        if allocatedSize + byteCount <= threshold {
           if HeapAllocator.debugInfoEnabled {
             print("Memory allocation returned to something smaller than system RAM.")
           }
@@ -413,12 +419,14 @@ class Allocation {
     sourceAllocation.initialized = true
   }
   
+  // Making a function like `read` that just modifies the underlying storage is technically
+  // possible. It takes less time than a separate `read` + `initialize` on a discrete GPU, and is
+  // relatively instantaneous on an integrated GPU. However, it would be unused in the frontend.
+//  func modify(_ body: (UnsafeRawBufferPointer) -> Void) {}
+  
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  //
-  // Making a function like `read` that just modifies the underlying storage is technically possible
-  // and even more performant on a discrete GPU. However, it would be unused in the frontend.
   func read(_ body: (UnsafeRawBufferPointer) -> Void) {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
