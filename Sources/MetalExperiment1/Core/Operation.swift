@@ -12,9 +12,11 @@ enum UnaryOperationType: UInt8, CaseIterable {
 }
 
 enum EagerOperation {
-//  struct ExplicitCopy {
-//    var input:
-//  }
+  struct ExplicitCopy {
+    var input: UInt64
+    var output: UInt64
+  }
+  case explicitCopy(ExplicitCopy)
   
   struct Unary {
     var type: UnaryOperationType
@@ -28,6 +30,13 @@ enum EagerOperation {
 // compiled operations until finishing. It indirectly stores references to the buffers, making it
 // easier to implement and more performant.
 enum CompiledOperation {
+  struct ExplicitCopy {
+    var input: Allocation
+    var output: Allocation
+    var size: Int
+  }
+  case explicitCopy(ExplicitCopy)
+  
   struct MultiUnary {
     // `dataTypes` has half the vector capacity of `types`. It doesn't need as much storage because
     // it's serialized efficiently. A new type is only recorded after each cast operation. When
@@ -91,6 +100,10 @@ extension Context {
     into ectx: inout EncodingContext
   ) throws {
     switch operation {
+    case .explicitCopy(let explicitCopy):
+      // TODO: A debug print after making the explicit copy operation, proving the function is being
+      // called.
+      fatalError("Explicit copy not yet implemented.")
     case .multiUnary(let multiUnary):
       try encodeMultiUnary(multiUnary, into: &ectx)
     }

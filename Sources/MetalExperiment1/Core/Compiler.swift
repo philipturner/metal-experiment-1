@@ -75,6 +75,15 @@ extension Context {
     for i in eagerOperations.indices {
       let eagerOperation = eagerOperations[i]
       switch eagerOperation {
+      case .explicitCopy(let explicitCopy):
+        if pendingFusionOperationExists() {
+          appendFusionOperation()
+        }
+        let input = _internalFetch(explicitCopy.input)
+        let output = _internalFetch(explicitCopy.output)
+        precondition(input.dataType == output.dataType)
+        // TODO: Finish implementing this.
+        
       case .unary(let unary):
         var input: Allocation
         var inputDataType: DataType
@@ -97,11 +106,11 @@ extension Context {
           }
           input = _internalFetch(unary.input)
           inputDataType = input.dataType
+          precondition(inputDataType == .float32, "Execution currently limited to 'Float'")
           fusionDataTypes.append(inputDataType)
           fusionHead = input
           fusionSize = inputDataType.contiguousSize(byteCount: input.byteCount)
         }
-        precondition(inputDataType == .float32, "Execution currently limited to 'Float'")
         fusionTypes.append(unary.type)
         
         let output = _internalFetch(unary.output)
