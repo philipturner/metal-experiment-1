@@ -33,7 +33,7 @@ public class Context {
   init() {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
-    self.preferSharedStorage = device.hasUnifiedMemory
+    self.preferSharedStorage = false//device.hasUnifiedMemory
     
     let bundleURL = Bundle.module.resourceURL!
     let shadersURL = bundleURL.appendingPathComponent("Shaders", isDirectory: true)

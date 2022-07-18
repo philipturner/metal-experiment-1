@@ -87,6 +87,8 @@ private extension Context {
     into ectx: inout EncodingContext
   ) throws {
     print("started explicit copy")
+    print("ExplicitCopy, input: \(operation.input.id) output: \(operation.output.id)")
+    print("input: \(operation.input.isShared) output: \(operation.output.isShared)")
     try operation.input.materialize()
     try operation.output.materialize()
     operation.output.lastModifiedCommandBufferID = ectx.commandBufferID

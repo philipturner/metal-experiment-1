@@ -167,7 +167,7 @@ class HeapBlock: AllocatorBlockProtocol {
   }
   
   func makeBuffer(length: Int) -> MTLBuffer? {
-    let buffer = heap.makeBuffer(length: length)
+    let buffer = heap.makeBuffer(length: length, options: heap.resourceOptions)
     guard let buffer = buffer else {
       return nil
     }
