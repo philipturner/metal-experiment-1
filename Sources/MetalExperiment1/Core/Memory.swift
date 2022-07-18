@@ -78,8 +78,7 @@ private extension Context {
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     let allocation = _internalFetch(id)
-    try! allocation.materialize()
-    try! allocation.initialize(body)
+    allocation.initialize(body)
   }
   
   @inline(__always)
@@ -88,7 +87,7 @@ private extension Context {
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     let allocation = _internalFetch(id)
-    try! allocation.read(body)
+    allocation.read(body)
   }
   
   @inline(__always)
@@ -126,7 +125,7 @@ extension Context {
   @inline(__always)
   func _internalAllocate(
     _ metadata: Allocation.Metadata,
-    _ isShared: Bool? = nil
+    isShared: Bool? = nil
   ) -> (UInt64, Allocation) {
     let id = nextAllocationID
     let allocation = Allocation(id: id, metadata: metadata, isShared: isShared)
@@ -326,40 +325,42 @@ class Allocation {
   }
   
   @inline(never)
-  private func actuallyMaterialize() throws {
-    let device = Context.global.device
-    let allocatedSize = HeapAllocator.global.totalAllocatedMemory
-    if Context.global.permitExceedingSystemRAM {
-      // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
-      // length should be >50% system memory size. If it's hovering above the system RAM size
-      // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
-      // command stream. In that case, flushing the command stream constantly as is oscillates above
-      // and below a certain threshold would seriously degrade performance. But if it jumped the
-      // threshold because my backend queued up too many commands, most of the memory would quickly
-      // deallocate.
-      //
-      // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
-      if allocatedSize + byteCount <= device.maxBufferLength {
-        if HeapAllocator.debugInfoEnabled {
-          print("Memory allocation returned to something smaller than system RAM.")
+  private func actuallyMaterialize(checkingMemoryBounds: Bool = true) throws {
+    if checkingMemoryBounds {
+      let device = Context.global.device
+      let allocatedSize = HeapAllocator.global.totalAllocatedMemory
+      if Context.global.permitExceedingSystemRAM {
+        // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
+        // length should be >50% system memory size. If it's hovering above the system RAM size
+        // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
+        // command stream. In that case, flushing the command stream constantly as is oscillates
+        // above and below a certain threshold would seriously degrade performance. But if it jumped
+        // the threshold because my backend queued up too many commands, most of the memory would
+        // quickly deallocate.
+        //
+        // This optimization is not possible on iOS because I can't query the `maxWorkingSize`.
+        if allocatedSize + byteCount <= device.maxBufferLength {
+          if HeapAllocator.debugInfoEnabled {
+            print("Memory allocation returned to something smaller than system RAM.")
+          }
+          Context.global.permitExceedingSystemRAM = false
         }
-        Context.global.permitExceedingSystemRAM = false
-      }
-    } else {
-      #if os(macOS)
-      let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
-      #else
-      let maxWorkingSize = device.maxBufferLength
-      #endif
-      if allocatedSize + byteCount > maxWorkingSize {
-        if HeapAllocator.debugInfoEnabled {
-          print("""
-            Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
-            memory.
-            """)
+      } else {
+        #if os(macOS)
+        let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+        #else
+        let maxWorkingSize = device.maxBufferLength
+        #endif
+        if allocatedSize + byteCount > maxWorkingSize {
+          if HeapAllocator.debugInfoEnabled {
+            print("""
+              Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
+              memory.
+              """)
+          }
+          // In the caller, set `permitExceedingSystemRAM` to true.
+          throw AllocationError.exceededSystemRAM
         }
-        // In the caller, set `permitExceedingSystemRAM` to true.
-        throw AllocationError.exceededSystemRAM
       }
     }
     
@@ -374,49 +375,62 @@ class Allocation {
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
   // undefined. On a discrete GPU, this calls `malloc` on CPU memory and enqueues a command to copy
   // it to device memory.
-  //
-  // Does not automatically materialize because doing so should be made explicit.
-  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) throws {
-    guard let mtlBuffer = mtlBuffer else {
-      fatalError("Initialized memory with a null underlying 'MTLBuffer'.")
-    }
+  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
     // Catch memory management bugs.
-    if initialized {
-      fatalError("Cannot initialize something twice.")
-    }
+    precondition(!initialized, "Cannot initialize something twice.")
+    
+    let ctx = Context.global
     if isShared {
-      let contents = mtlBuffer.contents()
+      do {
+        try materialize()
+      } catch AllocationError.exceededSystemRAM {
+        ctx.permitExceedingSystemRAM = true
+        ctx._internalBarrier()
+      } catch {
+        fatalError(error.localizedDescription)
+      }
+      
+      let contents = mtlBuffer!.contents()
       let ptr = UnsafeMutableRawBufferPointer(start: contents, count: byteCount)
       body(ptr)
     } else {
-      // TODO: Append a command that will copy the memory.
-      fatalError("Haven't implemented copying memory to a discrete GPU.")
+      let (sourceID, sourceAllocation) = ctx._internalAllocate(metadata, isShared: true)
+      try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
+      let contents = sourceAllocation.mtlBuffer!.contents()
+      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: byteCount)
+      body(ptr)
+      
+      ctx._internalRetain(self)
+      let explicitCopy = EagerOperation.ExplicitCopy(input: sourceID, output: id)
+      Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
+    
+    precondition(materialized)
     self.initialized = true
   }
-  
-  // Making a function like `read` that just modifies the underlying storage is technically possible
-  // and even more performant on a discrete GPU. However, it would be unused in the frontend.
   
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeRawBufferPointer) -> Void) throws {
+  //
+  // Making a function like `read` that just modifies the underlying storage is technically possible
+  // and even more performant on a discrete GPU. However, it would be unused in the frontend.
+  func read(_ body: (UnsafeRawBufferPointer) -> Void) {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
     // compiler will then mark it as initialized and safe to read from.
+    let ctx = Context.global
     var sourceAllocation: Allocation
     if isShared {
       sourceAllocation = self
     } else {
-      // The allocation should materialize while encoding the copy operation, so don't explicitly
-      // materialize it here.
-      (_, sourceAllocation) = Context.global._internalAllocate(metadata, true)
+      var sourceID: UInt64
+      (sourceID, sourceAllocation) = Context.global._internalAllocate(metadata, isShared: true)
+      try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
-      // TODO: Allocate a shared buffer, using a special heap reserved for shared memory.
-      // TODO: Append a command that will copy the memory. This command is special, in that it takes
-      // a `MTLBuffer` as output but can have an unmaterialized allocation as input.
-      fatalError("Haven't implemented reading memory from a discrete GPU.")
+      ctx._internalRetain(self)
+      let explicitCopy = EagerOperation.ExplicitCopy(input: id, output: sourceID)
+      Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
@@ -432,19 +446,17 @@ class Allocation {
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
-    Context.global._internalFlushStream()
+    ctx._internalFlushStream()
     
     // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
     let commandBufferID = sourceAllocation.lastModifiedCommandBufferID
     if commandBufferID != -1 {
-      Context.global._internalBarrier(commandBufferID: commandBufferID)
+      ctx._internalBarrier(commandBufferID: commandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
     // during compilation.
-    guard initialized else {
-      fatalError("Cannot read from an uninitialized allocation.")
-    }
+    precondition(initialized, "Cannot read from an uninitialized allocation.")
     
     let contents = sourceAllocation.mtlBuffer!.contents()
     let ptr = UnsafeRawBufferPointer(start: contents, count: byteCount)

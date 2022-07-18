@@ -5,7 +5,7 @@
 //  Created by Philip Turner on 7/18/22.
 //
 
-import Metal
+import MetalPerformanceShaders
 
 struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
@@ -54,20 +54,39 @@ extension Context {
     into ectx: inout EncodingContext
   ) throws {
     switch operation {
-    case .explicitCopy(let explicitCopy):
-      print("started explicit copy")
-      try encodeExplicitCopy(explicitCopy, into: &ectx)
     case .multiUnary(let multiUnary):
       try encodeMultiUnary(multiUnary, into: &ectx)
+    case .explicitCopy(let explicitCopy):
+      try encodeExplicitCopy(explicitCopy, into: &ectx)
     }
   }
 }
 
 private extension Context {
+  func encodeMultiUnary(
+    _ operation: CompiledOperation.MultiUnary,
+    into ectx: inout EncodingContext
+  ) throws {
+    try operation.input.materialize()
+    try operation.output.materialize()
+    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
+    
+    let encoder = ectx.makeEncoder()
+    ectx.setComputePipelineState(unaryComputePipeline)
+    
+    encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
+    encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
+    
+    var bytes = Float(operation.types.count)
+    encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
+    encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
+  }
+  
   func encodeExplicitCopy(
     _ operation: CompiledOperation.ExplicitCopy,
     into ectx: inout EncodingContext
   ) throws {
+    print("started explicit copy")
     try operation.input.materialize()
     try operation.output.materialize()
     operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
@@ -91,24 +110,5 @@ private extension Context {
       from: operation.input.mtlBuffer!, sourceOffset: 0, to: operation.output.mtlBuffer!,
       destinationOffset: 0, size: operation.byteCount)
     print("finished explicit copy")
-  }
-  
-  func encodeMultiUnary(
-    _ operation: CompiledOperation.MultiUnary,
-    into ectx: inout EncodingContext
-  ) throws {
-    try operation.input.materialize()
-    try operation.output.materialize()
-    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
-    
-    let encoder = ectx.makeEncoder()
-    ectx.setComputePipelineState(unaryComputePipeline)
-    
-    encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
-    encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
-    
-    var bytes = Float(operation.types.count)
-    encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
-    encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
   }
 }

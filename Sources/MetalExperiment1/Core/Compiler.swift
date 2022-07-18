@@ -87,21 +87,6 @@ extension Context {
     for i in eagerOperations.indices {
       let eagerOperation = eagerOperations[i]
       switch eagerOperation {
-      case .explicitCopy(let explicitCopy):
-        if pendingFusionOperationExists() {
-          appendFusionOperation()
-        }
-        
-        let input = _internalFetch(explicitCopy.input)
-        let output = _internalFetch(explicitCopy.output)
-        precondition(input.dataType == output.dataType)
-        let byteCount = input.byteCount
-        precondition(byteCount == output.byteCount)
-        
-        let explicitCopy = CompiledOperation.ExplicitCopy(
-          input: input, output: output, byteCount: byteCount)
-        compiledOperations.append(.explicitCopy(explicitCopy))
-        
       case .unary(let unary):
         var input: Allocation
         var inputDataType: DataType
@@ -139,6 +124,24 @@ extension Context {
         fusionTailID = unary.output
         _internalRelease(input)
         _internalRelease(output)
+        
+      case .explicitCopy(let explicitCopy):
+        if pendingFusionOperationExists() {
+          appendFusionOperation()
+        }
+        
+        let input = _internalFetch(explicitCopy.input)
+        let output = _internalFetch(explicitCopy.output)
+        precondition(input.dataType == output.dataType)
+        let byteCount = input.byteCount
+        precondition(byteCount == output.byteCount)
+        
+        output.initialized = true
+        _internalRelease(input)
+        _internalRelease(output)
+        let explicitCopy = CompiledOperation.ExplicitCopy(
+          input: input, output: output, byteCount: byteCount)
+        compiledOperations.append(.explicitCopy(explicitCopy))
       }
     }
     

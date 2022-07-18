@@ -9,32 +9,27 @@ enum UnaryOperationType: UInt8, CaseIterable {
   case increment
 }
 
+// Ordered by relative frequency, minimizing the number of conditional checks during compilation and
+// encoding.
 enum EagerOperation {
-  struct ExplicitCopy {
-    var input: UInt64
-    var output: UInt64
-  }
-  case explicitCopy(ExplicitCopy)
-  
   struct Unary {
     var type: UnaryOperationType
     var input: UInt64
     var output: UInt64
   }
   case unary(Unary)
+  
+  struct ExplicitCopy {
+    var input: UInt64
+    var output: UInt64
+  }
+  case explicitCopy(ExplicitCopy)
 }
 
 // Instead of manually extracting references to the individual buffers, this keeps references to the
 // compiled operations until finishing. It indirectly stores references to the buffers, making it
 // easier to implement and more performant.
 enum CompiledOperation {
-  struct ExplicitCopy {
-    var input: Allocation
-    var output: Allocation
-    var byteCount: Int
-  }
-  case explicitCopy(ExplicitCopy)
-  
   struct MultiUnary {
     // `dataTypes` has half the vector capacity of `types`. It doesn't need as much storage because
     // it's serialized efficiently. A new type is only recorded after each cast operation. When
@@ -47,4 +42,11 @@ enum CompiledOperation {
     var size: Int
   }
   case multiUnary(MultiUnary)
+  
+  struct ExplicitCopy {
+    var input: Allocation
+    var output: Allocation
+    var byteCount: Int
+  }
+  case explicitCopy(ExplicitCopy)
 }
