@@ -8,7 +8,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Copying performance of multiple elements per shader:
+// Relative execution time of bytes read/written per GPU thread:
 // 1B - 1700
 // 2B - 1100
 // 4B - 700
