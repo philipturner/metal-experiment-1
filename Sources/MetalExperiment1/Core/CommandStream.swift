@@ -224,7 +224,6 @@ private extension Context {
                 """)
             }
           } else {
-            print("i had to barrier")
             _internalBarrier()
           }
         }
