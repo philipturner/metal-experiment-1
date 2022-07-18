@@ -32,3 +32,6 @@ kernel void unaryOperation(
   float value = input[tid];
   output[tid] = value + increment;
 }
+
+// u32/i64/u64 shader includes any casts that involve u32/i64/u64. The shader's start and end are
+// more complex than f32-i32; it can read and write from more data types.

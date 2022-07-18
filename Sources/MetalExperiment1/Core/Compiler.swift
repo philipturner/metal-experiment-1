@@ -26,43 +26,46 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var unaryFusionArray: OperationTypeList16<UnaryOperationType> = .init()
-    var unaryFusionHead: Allocation?
-    var unaryFusionTail: Allocation?
-    var unaryFusionTailID: UInt64 = .max
-    var unaryFusionSize = -1
+    var fusionTypes: OperationTypeList16<UnaryOperationType> = .init()
+    var fusionDataTypes: OperationTypeList4<DataType> = .init()
+    var fusionHead: Allocation?
+    var fusionTail: Allocation?
+    var fusionTailID: UInt64 = .max
+    var fusionSize = -1
     @inline(__always)
     func pendingFusionOperationExists() -> Bool {
-      unaryFusionSize != -1
+      fusionSize != -1
     }
     
-    // Call this before encoding non-unary operations.
+    // Call this before encoding operations that can't be fused.
     @inline(never)
     func appendFusionOperation() {
       defer {
-        unaryFusionArray = .init()
-        unaryFusionHead = nil
-        unaryFusionTail = nil
-        unaryFusionTailID = .max
-        unaryFusionSize = -1
+        fusionTypes = .init()
+        fusionDataTypes = .init()
+        fusionHead = nil
+        fusionTail = nil
+        fusionTailID = .max
+        fusionSize = -1
       }
-      guard let unaryFusionHead = unaryFusionHead,
-            let unaryFusionTail = unaryFusionTail,
-            unaryFusionArray.count > 0,
-            unaryFusionSize >= 0 else {
-        fatalError("This should never happen.")
+      guard let fusionHead = fusionHead,
+            let fusionTail = fusionTail,
+            fusionTypes.count > 0,
+            fusionDataTypes.count > 0,
+            fusionSize >= 0 else {
+        fatalError("Something went wrong while fusing operators")
       }
       
-      // Make the unary fusion tail valid to read from.
-      unaryFusionTail.initialized = true
+      // Make the fusion tail valid to read from.
+      fusionTail.initialized = true
       
       let multiUnary = CompiledOperation.MultiUnary(
-        types: unaryFusionArray, input: unaryFusionHead, output: unaryFusionTail,
-        size: unaryFusionSize)
+        types: fusionTypes, dataTypes: fusionDataTypes, input: fusionHead, output: fusionTail,
+        size: fusionSize)
       compiledOperations.append(.multiUnary(multiUnary))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
-        if unaryFusionArray.count >= 2 {
-          print("*** Fused \(unaryFusionArray.count) unary operators ***")
+        if fusionTypes.count >= 2 {
+          print("*** Fused \(fusionTypes.count) unary operators ***")
         } else {
           print("Appended single unary operation")
         }
@@ -74,31 +77,39 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         var input: Allocation
-        if unary.input == unaryFusionTailID {
-          // In the middle of a unary fusion.
-          input = unaryFusionTail!
+        var inputDataType: DataType
+        if unary.input == fusionTailID {
+          // In the middle of an operator fusion.
+          input = fusionTail!
+          inputDataType = input.dataType
           
           // The tail was the output of previous operation. Something that's initialized by the
           // frontend can't be the output of an operation, only the input.
           precondition(!input.initialized)
         } else {
-          // At the start of a unary fusion.
+          // At the start of an operator fusion.
           if pendingFusionOperationExists() {
-            // Finish the previous unary fusion. When fusing non-adjacent operators, don't check
+            // Finish the previous operator fusion. When fusing non-adjacent operators, don't check
             // whether the output needs to be computed. It might make the JIT graph compiler take
             // longer, or make benchmarks difficult. TODO: Revisit this decision after more complex
             // fusions are implemented.
             appendFusionOperation()
           }
           input = _internalFetch(unary.input)
-          unaryFusionHead = input
-          unaryFusionSize = unary.size
+          inputDataType = input.dataType
+          fusionDataTypes.append(inputDataType)
+          fusionHead = input
+          fusionSize = inputDataType.contiguousSize(byteCount: input.byteCount)
         }
-        unaryFusionArray.append(unary.type)
+        precondition(inputDataType == .float32, "Execution currently limited to 'Float'")
+        fusionTypes.append(unary.type)
         
         let output = _internalFetch(unary.output)
-        unaryFusionTail = output
-        unaryFusionTailID = unary.output
+        let outputDataType = output.dataType
+        precondition(inputDataType == outputDataType, "Casting not yet supported")
+        precondition(input.byteCount == output.byteCount)
+        fusionTail = output
+        fusionTailID = unary.output
         _internalRelease(input)
         _internalRelease(output)
       }

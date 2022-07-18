@@ -12,13 +12,15 @@ enum UnaryOperationType: UInt8, CaseIterable {
 }
 
 enum EagerOperation {
+//  struct ExplicitCopy {
+//    var input:
+//  }
+  
   struct Unary {
     var type: UnaryOperationType
     var input: UInt64
     var output: UInt64
-    var size: Int
   }
-  
   case unary(Unary)
 }
 
@@ -27,12 +29,16 @@ enum EagerOperation {
 // easier to implement and more performant.
 enum CompiledOperation {
   struct MultiUnary {
+    // `dataTypes` has half the vector capacity of `types`. It doesn't need as much storage because
+    // it's serialized efficiently. A new type is only recorded after each cast operation. When
+    // encoding Metal commands, both lists expand to 2 bytes/element, mapping one-to-one with shader
+    // loop iterations.
     var types: OperationTypeList16<UnaryOperationType>
+    var dataTypes: OperationTypeList4<DataType>
     var input: Allocation
     var output: Allocation
     var size: Int
   }
-  
   case multiUnary(MultiUnary)
 }
 

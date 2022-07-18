@@ -117,6 +117,45 @@ enum DataType: UInt16, CaseIterable {
       return .uInt64
     }
   }
+  
+  // Used in multiple places; the getter is likely a function call. Inlining optimizations for some
+  // other members of `DataType` assume `stride` is a function call.
+  var stride: Int {
+    switch self {
+    case .float16:
+      #if (os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64)
+      return 2
+      #else
+      return MemoryLayout<Float16>.stride
+      #endif
+    case .float32:
+      return MemoryLayout<Float>.stride
+    case .bool:
+      return MemoryLayout<Bool>.stride
+    case .int8:
+      return MemoryLayout<Int8>.stride
+    case .int16:
+      return MemoryLayout<Int16>.stride
+    case .int32:
+      return MemoryLayout<Int32>.stride
+    case .int64:
+      return MemoryLayout<Int64>.stride
+    case .uint8:
+      return MemoryLayout<UInt8>.stride
+    case .uint16:
+      return MemoryLayout<UInt16>.stride
+    case .uint32:
+      return MemoryLayout<UInt32>.stride
+    case .uint64:
+      return MemoryLayout<UInt64>.stride
+    }
+  }
+  
+  @inline(__always)
+  func contiguousSize(byteCount: Int) -> Int {
+    let stridePowerOf2 = self.stride.trailingZeroBitCount
+    return byteCount >> stridePowerOf2
+  }
 }
 
 let TF_FLOAT: Int32 = 1
