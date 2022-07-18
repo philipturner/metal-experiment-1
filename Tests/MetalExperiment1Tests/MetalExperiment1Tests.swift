@@ -81,8 +81,8 @@ final class MetalExperiment1Tests: XCTestCase {
       
       let totalTime = latency + Profiler.checkpoint()
       print("""
-        Creation time: \(creationTime) \(Profiler.timeUnit)
-        First batch latency: \(latency) \(Profiler.timeUnit)
+        Creation time: \(creationTime) \(Profiler.timeUnit) \
+        First batch latency: \(latency) \(Profiler.timeUnit) \
         Total time: \(totalTime) \(Profiler.timeUnit)
         """)
     }

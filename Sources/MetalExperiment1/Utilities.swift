@@ -74,6 +74,58 @@ extension MTLSize: ExpressibleByIntegerLiteral, ExpressibleByArrayLiteral {
   }
 }
 
+extension MTLCommandBuffer {
+  @inline(never)
+  var errorMessage: String {
+    guard let error = error as NSError? else {
+      fatalError("Tried to retrieve 'MTLCommandBuffer' error message when there was no error")
+    }
+    
+    var output: [String] = []
+    for log in logs {
+      output.append(log.description)
+      
+      let encoderLabel = log.encoderLabel ?? "Unknown label"
+      output.append("Faulting encoder: \"\(encoderLabel)\"")
+      
+      guard let debugLocation = log.debugLocation,
+            let functionName = debugLocation.functionName else {
+        fatalError("'MTLCommandBuffer' log should have debug info")
+      }
+      output.append("""
+        Faulting function: \(functionName) (line \(debugLocation.line), column \
+        \(debugLocation.column))"
+        """)
+    }
+    
+    switch status {
+    case .notEnqueued: output.append("Status: not enqueued")
+    case .enqueued:    output.append("Status: enqueued")
+    case .committed:   output.append("Status: committed")
+    case .scheduled:   output.append("Status: scheduled")
+    case .completed:   output.append("Status: completed")
+    case .error:       output.append("Status: error")
+    @unknown default: fatalError("This status is not possible!")
+    }
+    
+    output.append("Error code: \(error.code)")
+    output.append("Description: \(error.localizedDescription)")
+    if let reason = error.localizedFailureReason {
+      output.append("Failure reason: \(reason)")
+    }
+    if let options = error.localizedRecoveryOptions {
+      for i in 0..<options.count {
+        output.append("Recovery option \(i): \(options[i])")
+      }
+    }
+    if let suggestion = error.localizedRecoverySuggestion {
+      output.append("Recovery suggestion: \(suggestion)")
+    }
+    
+    return output.joined(separator: "\n")
+  }
+}
+
 @inline(__always)
 func withUnsafeAddress<T: AnyObject, U>(
   of object: T,

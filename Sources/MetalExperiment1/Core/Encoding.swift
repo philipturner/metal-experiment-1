@@ -34,6 +34,7 @@ struct EncodingContext {
     if let encoder = encoder {
       encoder.endEncoding()
       self.encoder = nil
+      self.state = nil
     }
   }
   
@@ -86,9 +87,6 @@ private extension Context {
     _ operation: CompiledOperation.ExplicitCopy,
     into ectx: inout EncodingContext
   ) throws {
-    print("started explicit copy")
-    print("ExplicitCopy, input: \(operation.input.id) output: \(operation.output.id)")
-    print("input: \(operation.input.isShared) output: \(operation.output.isShared)")
     try operation.input.materialize()
     try operation.output.materialize()
     operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
@@ -111,6 +109,5 @@ private extension Context {
     blitEncoder.copy(
       from: operation.input.mtlBuffer!, sourceOffset: 0, to: operation.output.mtlBuffer!,
       destinationOffset: 0, size: operation.byteCount)
-    print("finished explicit copy")
   }
 }

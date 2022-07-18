@@ -364,7 +364,6 @@ class Allocation {
       }
     }
     
-    print("Allocating. isShared: \(isShared)")
     let mtlBuffer = HeapAllocator.global.malloc(size: byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
       fatalError("An attempt to allocate a 'MTLBuffer' returned 'nil'.")
@@ -400,8 +399,6 @@ class Allocation {
       var sourceID: UInt64
       (sourceID, sourceAllocation) = ctx._internalAllocate(metadata, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
-      print("Initializing, source: \(sourceID) self: \(id) ")
-      print("source: \(sourceAllocation.isShared) self: \(isShared)")
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
@@ -434,8 +431,6 @@ class Allocation {
       var sourceID: UInt64
       (sourceID, sourceAllocation) = Context.global._internalAllocate(metadata, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
-      print("Reading, self: \(id) source: \(sourceID)")
-      print("self: \(isShared) source: \(sourceAllocation.isShared)")
       
       ctx._internalRetain(self)
       let explicitCopy = EagerOperation.ExplicitCopy(input: id, output: sourceID)

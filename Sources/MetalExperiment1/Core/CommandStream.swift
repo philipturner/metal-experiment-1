@@ -160,11 +160,13 @@ private extension Context {
       //
       // This comment relates to the comment in `maybeFlushStream` above the call to
       // `flushStream(precomputedBackpressure:)`.
-      encodingContext.commandBuffer.addScheduledHandler { _ in
+      encodingContext.commandBuffer.addScheduledHandler { commandBuffer in
+        precondition(commandBuffer.status == .scheduled, commandBuffer.errorMessage)
         self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
       }
       
-      encodingContext.commandBuffer.addCompletedHandler { _ in
+      encodingContext.commandBuffer.addCompletedHandler { commandBuffer in
+        precondition(commandBuffer.status == .completed, commandBuffer.errorMessage)
         let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
         let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
           ordering: .sequentiallyConsistent)
