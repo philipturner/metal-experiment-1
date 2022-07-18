@@ -278,6 +278,13 @@ struct StringWrapper: Hashable {
     hasher.combine(bytes: ptr)
     hasher.combine(0xFF as UInt8) // terminator
   }
+  
+  func makeString() -> String {
+    String(unsafeUninitializedCapacity: ptr.count) { bufferPointer in
+      _ = bufferPointer.initialize(from: ptr)
+      return ptr.count
+    }
+  }
 }
 
 extension StringWrapper: ExpressibleByStringLiteral {

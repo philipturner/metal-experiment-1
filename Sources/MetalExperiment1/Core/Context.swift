@@ -35,14 +35,19 @@ public class Context {
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
     self.preferSharedStorage = device.hasUnifiedMemory
     
-    let bundleURL = Bundle.module.resourceURL!
-    let shadersURL = bundleURL.appendingPathComponent("Shaders", isDirectory: true)
-    let unaryURL = shadersURL.appendingPathComponent("Unary.metal", isDirectory: false)
-    let unaryData = FileManager.default.contents(atPath: unaryURL.path)!
-    let unaryString = String(data: unaryData, encoding: .utf8)!
-    
-    let unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
-    let unaryFunction = unaryLibrary.makeFunction(name: "unaryOperation")!
+    var unaryLibrary: MTLLibrary
+    if let defaultLibrary = try? device.makeDefaultLibrary(bundle: .module) {
+      unaryLibrary = defaultLibrary
+    } else {
+      let bundleURL = Bundle.module.resourceURL!
+      let unaryURL = bundleURL.appendingPathComponent("unary_f32_i32.metal", isDirectory: false)
+      let unaryData = FileManager.default.contents(atPath: unaryURL.path)!
+      let unaryString = String(data: unaryData, encoding: .utf8)! 
+      unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
+    }
+    let unaryFunction = unaryLibrary.makeFunction(name: "unary_f32_i32")!
     self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
+    
+    ShaderCache.load(device: device)
   }
 }

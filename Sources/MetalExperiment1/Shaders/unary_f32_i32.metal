@@ -1,5 +1,5 @@
 //
-//  Unary.metal
+//  unary_f32_i32.metal
 //  
 //
 //  Created by Philip Turner on 7/8/22.
@@ -23,7 +23,7 @@ using namespace metal;
 // characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
 // special number.
 
-kernel void unaryOperation(
+kernel void unary_f32_i32(
   device float *input [[buffer(0)]],
   device float *output [[buffer(1)]],
   constant float &increment [[buffer(2)]],
@@ -32,6 +32,3 @@ kernel void unaryOperation(
   float value = input[tid];
   output[tid] = value + increment;
 }
-
-// u32/i64/u64 shader includes any casts that involve u32/i64/u64. The shader's start and end are
-// more complex than f32-i32; it can read and write from more data types.

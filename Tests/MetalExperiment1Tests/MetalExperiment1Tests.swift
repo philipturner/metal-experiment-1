@@ -60,6 +60,21 @@ final class MetalExperiment1Tests: XCTestCase {
       let throughput = Double(totalTime) / Double(iterations)
       print("Synchronization throughput: \(throughput) \(Profiler.timeUnit)")
     }
+    
+    do {
+      let iterations = 1000
+      _ = DispatchSemaphore(value: 0)
+      var semaphores: [DispatchSemaphore] = []
+      semaphores.reserveCapacity(iterations)
+      
+      Profiler.checkpoint()
+      for _ in 0..<iterations {
+        semaphores.append(DispatchSemaphore(value: 0))
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("Dispatch semaphore creation throughput: \(throughput) \(Profiler.timeUnit)")
+    }
   }
   
   func testStreamedBatchThroughput() throws {

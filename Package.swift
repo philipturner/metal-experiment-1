@@ -29,7 +29,8 @@ let package = Package(
               .product(name: "Atomics", package: "swift-atomics")
             ],
             resources: [
-              .copy("Shaders")
+              .process("Shaders"),
+//              .copy("Shaders")
             ]),
         .testTarget(
             name: "MetalExperiment1Tests",
