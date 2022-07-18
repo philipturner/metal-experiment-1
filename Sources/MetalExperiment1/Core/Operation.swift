@@ -33,7 +33,7 @@ enum CompiledOperation {
   struct ExplicitCopy {
     var input: Allocation
     var output: Allocation
-    var size: Int
+    var byteCount: Int
   }
   case explicitCopy(ExplicitCopy)
   
@@ -101,9 +101,8 @@ extension Context {
   ) throws {
     switch operation {
     case .explicitCopy(let explicitCopy):
-      // TODO: A debug print after making the explicit copy operation, proving the function is being
-      // called.
-      fatalError("Explicit copy not yet implemented.")
+      print("entering explicit copy")
+      try encodeExplicitCopy(explicitCopy, into: &ectx)
     case .multiUnary(let multiUnary):
       try encodeMultiUnary(multiUnary, into: &ectx)
     }
@@ -111,6 +110,35 @@ extension Context {
 }
 
 private extension Context {
+  func encodeExplicitCopy(
+    _ operation: CompiledOperation.ExplicitCopy,
+    into ectx: inout EncodingContext
+  ) throws {
+    try operation.input.materialize()
+    try operation.output.materialize()
+    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
+    
+    // Use a blit encoder because this command's dominant use case is marshalling data over PCIe. I
+    // don't know the performance characteristics of PCIe, so it's best to delegate that to Apple's
+    // optimized blit commands. If it were just copying between GPU memory regions, a specialized
+    // compute shader would be just as fast and have less CPU-side overhead.
+    //
+    // I'm also not (yet) making optimized encoding utilities like `makeBlitEncoder` and
+    // `finishBlitEncoder` just for this command. There is a very low chance that two explicit copy
+    // operations appear next to each other. This is a viable optimization that I could pursue down
+    // the road, alongside other enhancements to reading data from the GPU.
+    ectx.finishEncoder()
+    let blitEncoder = ectx.commandBuffer.makeBlitCommandEncoder()!
+    defer {
+      blitEncoder.endEncoding()
+    }
+    
+    blitEncoder.copy(
+      from: operation.input.mtlBuffer!, sourceOffset: 0, to: operation.output.mtlBuffer!,
+      destinationOffset: 0, size: operation.byteCount)
+    print("finished explicit copy")
+  }
+  
   func encodeMultiUnary(
     _ operation: CompiledOperation.MultiUnary,
     into ectx: inout EncodingContext

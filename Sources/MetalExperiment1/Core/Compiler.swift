@@ -5,11 +5,19 @@
 //  Created by Philip Turner on 7/13/22.
 //
 
-import Metal
-
 extension Context {
-  // Make specialized execution paths for having either 1 or 2 eager operations queued up. These
-  // paths will have lower CPU-side latency.
+  // TODO: Make specialized execution paths for having either 1 or 2 eager operations queued up.
+  // These paths will have lower CPU-side latency.
+  //
+  // TODO: Make an option that encourages longer compile time when there's modest encoding
+  // backpressure. This would enable complex fusions like non-adjacent unary operators, which
+  // require either peeking ahead or running a second pass on the IR. When running two passes, it
+  // won't mark allocations as `initialized` until after the non-adjacent fusions.
+  //
+  // TODO: Add a property to certain operations, which tells the encoder to perform them on the CPU.
+  // This is how I will achieve "constant folding". Alternatively, the encoder can make that
+  // decision by querying the allocations' size and whether they're in the special CPU-side storage
+  // mode.
   func compileEagerOperations() -> [CompiledOperation] {
     if _slowPath(Allocation.debugInfoEnabled) {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
@@ -37,7 +45,8 @@ extension Context {
       fusionSize != -1
     }
     
-    // Call this before encoding operations that can't be fused.
+    // Call this before encoding operations that can't be fused. Avoid proactively peeking at the
+    // next operator and seeing whether the fusion ends, because that's costly (0.03 - 0.04 µs).
     @inline(never)
     func appendFusionOperation() {
       defer {
@@ -72,6 +81,7 @@ extension Context {
       }
     }
     
+    // Separating each case with a newline to make this much easier to read.
     for i in eagerOperations.indices {
       let eagerOperation = eagerOperations[i]
       switch eagerOperation {
@@ -79,10 +89,16 @@ extension Context {
         if pendingFusionOperationExists() {
           appendFusionOperation()
         }
+        
         let input = _internalFetch(explicitCopy.input)
         let output = _internalFetch(explicitCopy.output)
         precondition(input.dataType == output.dataType)
-        // TODO: Finish implementing this.
+        let byteCount = input.byteCount
+        precondition(byteCount == output.byteCount)
+        
+        let explicitCopy = CompiledOperation.ExplicitCopy(
+          input: input, output: output, byteCount: byteCount)
+        compiledOperations.append(.explicitCopy(explicitCopy))
         
       case .unary(let unary):
         var input: Allocation
@@ -123,10 +139,11 @@ extension Context {
         _internalRelease(output)
       }
     }
+    
+    // Finish compilation and return the compiled instructions.
     if pendingFusionOperationExists() {
       appendFusionOperation()
     }
-    
     return compiledOperations
   }
 }

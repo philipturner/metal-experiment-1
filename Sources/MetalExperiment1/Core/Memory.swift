@@ -435,8 +435,9 @@ class Allocation {
     Context.global._internalFlushStream()
     
     // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
-    if lastModifiedCommandBufferID != -1 {
-      Context.global._internalBarrier(commandBufferID: lastModifiedCommandBufferID)
+    let commandBufferID = sourceAllocation.lastModifiedCommandBufferID
+    if commandBufferID != -1 {
+      Context.global._internalBarrier(commandBufferID: commandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
