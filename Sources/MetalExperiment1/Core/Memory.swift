@@ -328,7 +328,7 @@ class Allocation {
   private func actuallyMaterialize(checkingMemoryBounds: Bool = true) throws {
     if checkingMemoryBounds {
       let device = Context.global.device
-      let allocatedSize = HeapAllocator.global.totalAllocatedMemory
+      let allocatedSize = HeapAllocator.totalAllocatedMemory
       if Context.global.permitExceedingSystemRAM {
         // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
         // length should be >50% system memory size. If it's hovering above the system RAM size
@@ -370,7 +370,7 @@ class Allocation {
       }
     }
     
-    let mtlBuffer = HeapAllocator.global.malloc(size: byteCount, usingShared: isShared)
+    let mtlBuffer = HeapAllocator.malloc(size: byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
       fatalError("An attempt to allocate a 'MTLBuffer' returned 'nil'.")
     }
@@ -495,6 +495,6 @@ class Allocation {
     guard materialized else {
       return
     }
-    HeapAllocator.global.free(self.mtlBuffer!)
+    HeapAllocator.free(self.mtlBuffer!)
   }
 }

@@ -12,7 +12,7 @@ fileprivate func allocate(capacity: Int) -> UInt64 {
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")
-    HeapAllocator.global._releaseCachedBufferBlocks()
+    HeapAllocator._releaseCachedBufferBlocks()
     
     do {
       let firstID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
@@ -90,7 +90,7 @@ final class MemoryTests: XCTestCase {
   
   func testRecyclingThroughput() throws {
     testHeader("Memory recycling throughput")
-    HeapAllocator.global._releaseCachedBufferBlocks()
+    HeapAllocator._releaseCachedBufferBlocks()
     
     func allocateDeallocate(bufferSize: Int, numBuffers: Int) {
       var ids: [UInt64] = []
@@ -172,7 +172,7 @@ final class MemoryTests: XCTestCase {
   
   func testComplexAllocation() throws {
     testHeader("Complex memory allocation")
-    HeapAllocator.global._releaseCachedBufferBlocks()
+    HeapAllocator._releaseCachedBufferBlocks()
     
     func allocate(byteCount: Int) -> UInt64 {
       // The compiler mistakes this for `allocate(byteCount:)`.
@@ -201,7 +201,7 @@ final class MemoryTests: XCTestCase {
     // Test mechanism for dealing with excessive memory allocation.
     
     do {
-      HeapAllocator.global._releaseCachedBufferBlocks()
+      HeapAllocator._releaseCachedBufferBlocks()
       let smallBufferID1 = allocate(byteCount: 1_000)
       defer { deallocate(id: smallBufferID1) }
       Context.withDispatchQueue {
@@ -236,7 +236,7 @@ final class MemoryTests: XCTestCase {
       }
       
       if Context.global.preferSharedStorage {
-        HeapAllocator.global._releaseCachedBufferBlocks()
+        HeapAllocator._releaseCachedBufferBlocks()
       } else {
         // Without making a barrier, the `XCTAssertFalse` below fails on discrete GPUs.
         Context.barrier()
@@ -318,9 +318,9 @@ final class MemoryTests: XCTestCase {
   
   func testMassiveAllocation() throws {
     testHeader("Massive memory allocation")
-    HeapAllocator.global._releaseCachedBufferBlocks()
+    HeapAllocator._releaseCachedBufferBlocks()
     defer {
-      HeapAllocator.global._releaseCachedBufferBlocks()
+      HeapAllocator._releaseCachedBufferBlocks()
     }
     
     let device = Context.global.device

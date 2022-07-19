@@ -42,7 +42,7 @@ public class Context {
       let bundleURL = Bundle.module.resourceURL!
       let unaryURL = bundleURL.appendingPathComponent("unary_f32_i32.metal", isDirectory: false)
       let unaryData = FileManager.default.contents(atPath: unaryURL.path)!
-      let unaryString = String(data: unaryData, encoding: .utf8)! 
+      let unaryString = String(data: unaryData, encoding: .utf8)!
       unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
     }
     let unaryFunction = unaryLibrary.makeFunction(name: "unary_f32_i32")!

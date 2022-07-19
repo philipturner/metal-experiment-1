@@ -214,26 +214,24 @@ class BufferPool {
 
 // MARK: - Declaration of HeapAllocator
 
-class HeapAllocator {
-  static let global = HeapAllocator()
-  
+enum HeapAllocator {
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_ALLOCATOR")
   
-  private var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
+  private static var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
   
   // Unallocated cached buffers larger than 1 MB.
-  private var largePoolShared = BufferPool(isSmall: false, isShared: true)
-  private var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
+  private static var largePoolShared = BufferPool(isSmall: false, isShared: true)
+  private static var largePoolPrivate = BufferPool(isSmall: false, isShared: false)
   
   // Unallocated cached buffers 1 MB or smaller.
-  private var smallPoolShared = BufferPool(isSmall: true, isShared: true)
-  private var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
+  private static var smallPoolShared = BufferPool(isSmall: true, isShared: true)
+  private static var smallPoolPrivate = BufferPool(isSmall: true, isShared: false)
   
-  private(set) var totalAllocatedMemory = 0
+  private(set) static var totalAllocatedMemory = 0
   
-  private func pool(size: Int, usingShared: Bool) -> BufferPool {
+  private static func pool(size: Int, usingShared: Bool) -> BufferPool {
     if size <= kMaxSmallAlloc {
       return usingShared ? smallPoolShared : smallPoolPrivate
     } else {
@@ -293,7 +291,7 @@ class HeapAllocator {
 }
 
 extension HeapAllocator {
-  func malloc(size: Int, usingShared: Bool) -> MTLBuffer? {
+  static func malloc(size: Int, usingShared: Bool) -> MTLBuffer? {
     // Important that this is `<=`, not `<` like in PyTorch.
     precondition(size <= Self.maxBufferLength, "Invalid buffer size: \(Self.formatSize(size))")
     let allocationSize = Self.allocationSize(length: size, usingShared: usingShared)
@@ -314,7 +312,7 @@ extension HeapAllocator {
     return bufferBlock.buffer
   }
   
-  func free(_ buffer: MTLBuffer) {
+  static func free(_ buffer: MTLBuffer) {
     let bufferAddress = withUnsafeAddress(of: buffer) { $0 }
     guard let bufferBlock = allocatedBuffers[bufferAddress] else {
       // Catch memory management bugs.
@@ -324,7 +322,7 @@ extension HeapAllocator {
   }
   
   // Allow clearing of cached buffers in tests
-  internal func _releaseCachedBufferBlocks() {
+  internal static func _releaseCachedBufferBlocks() {
     self.releaseCachedBufferBlocks()
   }
 }
@@ -334,7 +332,7 @@ extension HeapAllocator {
 fileprivate var debugInfoHeapCounter = 0
 
 private extension HeapAllocator {
-  func removeHeapBlock(from pool: BufferPool, size: Int) -> HeapBlock? {
+  static func removeHeapBlock(from pool: BufferPool, size: Int) -> HeapBlock? {
     if let index = pool.heapBlocks.firstIndex(minimumSize: size) {
       let heapBlock = pool.heapBlocks.remove(at: index)
       
@@ -360,7 +358,11 @@ private extension HeapAllocator {
     }
   }
   
-  func makeBufferBlock(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+  static func makeBufferBlock(
+    from pool: BufferPool,
+    size: Int,
+    requestedSize: Int
+  ) -> BufferBlock? {
     guard let heapBlock = removeHeapBlock(from: pool, size: size) else {
       return nil
     }
@@ -385,14 +387,18 @@ private extension HeapAllocator {
     return bufferBlock
   }
   
-  func freeBufferBlock(_ bufferBlock: BufferBlock) {
+  static func freeBufferBlock(_ bufferBlock: BufferBlock) {
     precondition(bufferBlock.inUse)
     bufferBlock.inUse = false
     let pool = bufferBlock.heapBlock.bufferPool
     pool.bufferBlocks.insert(bufferBlock)
   }
   
-  func removeBufferBlock(from pool: BufferPool, size: Int, requestedSize: Int) -> BufferBlock? {
+  static func removeBufferBlock(
+    from pool: BufferPool,
+    size: Int,
+    requestedSize: Int
+  ) -> BufferBlock? {
     guard let index = pool.bufferBlocks.firstIndex(minimumSize: size) else {
       return nil
     }
@@ -411,7 +417,7 @@ private extension HeapAllocator {
     return bufferBlock
   }
   
-  func releaseBufferBlock(_ bufferBlock: BufferBlock) {
+  static func releaseBufferBlock(_ bufferBlock: BufferBlock) {
     let heapBlock = bufferBlock.heapBlock
     let pool = heapBlock.bufferPool
     totalAllocatedMemory -= bufferBlock.size
@@ -445,7 +451,7 @@ private extension HeapAllocator {
     }
   }
   
-  func releaseBufferBlocks(from pool: BufferPool) {
+  static func releaseBufferBlocks(from pool: BufferPool) {
     let bufferBlocks = pool.bufferBlocks
     for index in bufferBlocks.blocks.indices.reversed() {
       // Removes `bufferBlocks.blocks[index]`, which is always the last element.
@@ -454,7 +460,7 @@ private extension HeapAllocator {
     }
   }
   
-  func releaseCachedBufferBlocks() {
+  static func releaseCachedBufferBlocks() {
     releaseBufferBlocks(from: largePoolPrivate)
     releaseBufferBlocks(from: largePoolShared)
     releaseBufferBlocks(from: smallPoolPrivate)
