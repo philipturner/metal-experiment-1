@@ -22,19 +22,19 @@ enum ShaderCache {
   
   private static var device: MTLDevice!
   private static var defaultLibrary: MTLLibrary? // Uses the system shader cache.
-  private static var shaderSourceURL: URL = Bundle.module.resourceURL!
-  private static var binaryArchiveURL: URL = shaderSourceURL
+  private static var shaderSourceDirectory: URL = Bundle.module.resourceURL!
+  private static var binaryArchiveDirectory: URL = shaderSourceDirectory
     .appendingPathComponent("Archives", isDirectory: true)
   
   // Called during `Context.init`. Since the global context is currently initializing, it can't
   // access the device via `Context.global.device`.
   static func load(device: MTLDevice) {
     Self.device = device
-    Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
+//    Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
     
     if defaultLibrary == nil {
       try! FileManager.default.createDirectory(
-        at: binaryArchiveURL, withIntermediateDirectories: false)
+        at: binaryArchiveDirectory, withIntermediateDirectories: false)
     }
     
     // Loading custom shaders may be multithreaded (profile to determine whether this is faster).
@@ -67,20 +67,56 @@ enum ShaderCache {
     semaphores[name] = semaphore
     DispatchQueue.global().async {
       let nameString = name.makeString()
-      var library: MTLLibrary
+      var pipeline: MTLComputePipelineState
+      func makePipeline(library: MTLLibrary) -> MTLComputePipelineState {
+        let function = library.makeFunction(name: nameString)!
+        return try! device.makeComputePipelineState(function: function)
+      }
+      
       if let defaultLibrary = defaultLibrary {
-        library = defaultLibrary
+        pipeline = makePipeline(library: defaultLibrary)
       } else {
+        let fileName = nameString + ".metal"
+        let shaderSourcePath = shaderSourceDirectory
+          .appendingPathComponent(fileName, isDirectory: false).path
+        
+        // `keyPath` is not the `KeyPath<Root, Value>` used for introspection!
+        let keyPath = binaryArchiveDirectory
+          .appendingPathComponent(fileName, isDirectory: false).path
+        let fileManager = FileManager.default
+        guard let shaderSourceData = fileManager.contents(atPath: shaderSourcePath) else {
+          fatalError("Could not find shader source for pipeline '\(name.makeString())'.")
+        }
+        
+        let archiveName = nameString + ".metallib"
+        let archiveURL = binaryArchiveDirectory
+          .appendingPathComponent(archiveName, isDirectory: false)
+        let keyData: Data? = fileManager.contents(atPath: keyPath)
+        if shaderSourceData != keyData {
+          // The `unicode` encoding lets symbols like "µ" appear in the Metal shader. It takes
+          // longer to process than homogeneous UTF-8, but removes the chance of creating bugs in
+          // the future. Swift source files are encoded in `unicode`, so a grapheme cluster might
+          // leak if someone transfers comments from Swift to Metal files. This would be especially
+          // problematic since it only appears in the SwiftPM build, but goes under the radar when
+          // Xcode (the dominant use case) is used to compile it.
+          let shaderSource = String(data: shaderSourceData, encoding: .unicode)!
+          let library = try! device.makeLibrary(source: shaderSource, options: nil)
+          pipeline = makePipeline(library: library)
+          
+          // Atomically swap the binary archive. Remove its key (the shader source) to invalidate
+          // it, then replace the ".metallib", then write the new key.
+          try? fileManager.removeItem(atPath: keyPath)
+        } else {
+          let library = try! device.makeLibrary(URL: archiveURL)
+        }
+        
         //
-        // Atomically swap out the binary archive. Remove its key (the shader) to invalidate, then
-        // replace the ".metallib", then write the new key.
+        
         //
         _ = device.makeLibrary(URL:)
         fatalError("SwiftPM shader loading not yet implemented.")
       }
       
-      let function = library.makeFunction(name: nameString)!
-      let pipeline = try! device.makeComputePipelineState(function: function)
       dispatchQueue.sync {
         pipelines[name] = pipeline
       }
@@ -91,7 +127,7 @@ enum ShaderCache {
   static func wait(name: StringWrapper) -> MTLComputePipelineState {
     // Catch shader loading bugs.
     guard let semaphore = semaphores[name] else {
-      fatalError("Waited on operation '\(name.makeString())' before it was enqueued.")
+      fatalError("Waited on pipeline '\(name.makeString())' before it was enqueued.")
     }
     semaphore.wait()
     return dispatchQueue.sync {
