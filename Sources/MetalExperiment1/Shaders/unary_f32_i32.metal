@@ -52,27 +52,27 @@ enum MemoryCast: ushort {
 };
 
 // Cast operation
-// - lossy = X
-// - lossless = nothing
+// - lossy (must modify the bits) = X
+// - lossless (no-op) = .
 //
-// Horizontal (top) axis is input
-// Vertical (left) axis is output
+// Horizontal (top) axis is input, with integers masked as i32.
+// Vertical (left) axis is output, with integers masked as i32.
 //
 //     | i8  | i16 | i32 | u8  | u16 | f16 | f32 |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// i8  |     |     |     |     |     |     |     |
+// i8  |  .  |  X  |  X  |  .  |  X  |  X  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// i16 |     |     |     |     |     |     |     |
+// i16 |  .  |  .  |  X  |  .  |  .  |  X  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// i32 |     |     |     |     |     |     |     |
+// i32 |  .  |  .  |  .  |  .  |  .  |  X  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// u8  |     |     |     |     |     |     |     |
+// u8  |  .  |  X  |  X  |  .  |  X  |  X  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// u16 |     |     |     |     |     |     |     |
+// u16 |  .  |  .  |  X  |  .  |  .  |  X  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// f16 |     |     |     |     |     |     |     |
+// f16 |  X  |  X  |  X  |  X  |  X  |  .  |  X  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
-// f32 |     |     |     |     |     |     |     |
+// f32 |  X  |  X  |  X  |  X  |  X  |  .  |  .  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
 
 enum UnaryOperationType: ushort {
