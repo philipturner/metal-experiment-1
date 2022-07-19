@@ -12,7 +12,6 @@ public class Context {
   static let global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
-  var unaryComputePipeline: MTLComputePipelineState
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   static let maxBatchesInFlight = 10
   
@@ -35,19 +34,9 @@ public class Context {
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
     self.preferSharedStorage = device.hasUnifiedMemory
     
-    var unaryLibrary: MTLLibrary
-    if let defaultLibrary = try? device.makeDefaultLibrary(bundle: .module) {
-      unaryLibrary = defaultLibrary
-    } else {
-      let bundleURL = Bundle.module.resourceURL!
-      let unaryURL = bundleURL.appendingPathComponent("unary_f32_i32.metal", isDirectory: false)
-      let unaryData = FileManager.default.contents(atPath: unaryURL.path)!
-      let unaryString = String(data: unaryData, encoding: .utf8)!
-      unaryLibrary = try! device.makeLibrary(source: unaryString, options: nil)
-    }
-    let unaryFunction = unaryLibrary.makeFunction(name: "unary_f32_i32")!
-    self.unaryComputePipeline = try! device.makeComputePipelineState(function: unaryFunction)
-    
+    // Loads all commonly used shaders. Operations that reference these SHOULD NOT call
+    // `enqueue(_:)` on the shader cache, because that's redundant and wastes clock cycles. I don't
+    // know why anything would call `enqueue(_:)`, but it's there incase something needs to.
     ShaderCache.load(device: device)
   }
 }

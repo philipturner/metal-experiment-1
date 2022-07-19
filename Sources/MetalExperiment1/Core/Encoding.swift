@@ -73,7 +73,7 @@ private extension Context {
     operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     let encoder = ectx.makeEncoder()
-    ectx.setComputePipelineState(unaryComputePipeline)
+    ectx.setComputePipelineState(ShaderCache.unary_f32_i32)
     
     encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
