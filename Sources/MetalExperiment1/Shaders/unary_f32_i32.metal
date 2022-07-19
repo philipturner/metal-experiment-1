@@ -76,8 +76,16 @@ enum MemoryCast: ushort {
 // ----|-----|-----|-----|-----|-----|-----|-----|
 //
 // Unique operations:
-// - (i8/i16/i32/u8/u16) -> (f16) = (i32) -> (f16)
-// - (i8/i16/i32/u8/u16) -> (f32) = (i32) -> (f32)
+// - (i8/i16/i32/u8/u16) -> f16 = (i32) -> f16
+// - (i8/i16/i32/u8/u16) -> f32 = (i32) -> f32
+// - (f32) -> (f16)
+// - (f16/f32) -> i8 = (f32) -> i8
+// - (f16/f32) -> i16 = (f32) -> i16
+// - (f16/f32) -> i32 = (f32) -> i32
+// - (f16/f32) -> u8 = (f32) -> u8
+// - (f16/f32) -> u16 = (f32) -> u16
+// - (i16/i32/u16) -> (i8/u8) = (i32) -> u8
+// - (i32) -> (i16/u16) = (i32) -> u16
 
 enum UnaryOperationType: ushort {
   // Casts may occur in multiple instructions because of a large number of permutations.
