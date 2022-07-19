@@ -33,6 +33,30 @@ kernel void unary_f32_i32(
   output[tid] = value + increment;
 }
 
+// MARK: - New Code
+
+struct DispatchParams {
+//  ushort read_size;
+//  ushort write_size;
+};
+
+enum MemoryCast: ushort {
+  f32_i32_native,
+  scalar_broadcast_read,
+  f16_as_f32,
+  i8_as_i32,
+  i16_as_i32,
+  u8_as_i32,
+  u16_as_i32,
+};
+
+enum UnaryOperationType: ushort {
+  increment, // 0
+  read,
+  cast_f32_i32,
+  cast_i32_f32,
+};
+  
 kernel void unary_f32_i32_new(
   device float4 *input [[buffer(0)]],
   device float4 *output [[buffer(1)]],
@@ -42,3 +66,7 @@ kernel void unary_f32_i32_new(
   float4 value = input[tid];
   output[tid] = value + increment;
 }
+
+
+
+
