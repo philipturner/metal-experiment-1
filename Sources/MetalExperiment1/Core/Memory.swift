@@ -204,6 +204,9 @@ class Allocation {
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
   
+  // TODO: Rework this mechanism to permit tensors of rank > 5. There should be a performant
+  // alternative that minimizes overhead of allocating arrays. Look at using an `OperationTypeList`
+  // for this purpose.
   struct Metadata {
     // Vector elements:
     // 0..<5 - shape

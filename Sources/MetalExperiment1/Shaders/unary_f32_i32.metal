@@ -32,3 +32,13 @@ kernel void unary_f32_i32(
   float value = input[tid];
   output[tid] = value + increment;
 }
+
+kernel void unary_f32_i32_new(
+  device float4 *input [[buffer(0)]],
+  device float4 *output [[buffer(1)]],
+  constant float &increment [[buffer(2)]],
+  uint tid [[thread_position_in_grid]]
+) {
+  float4 value = input[tid];
+  output[tid] = value + increment;
+}

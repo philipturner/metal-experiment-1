@@ -6,7 +6,7 @@
 //
 
 enum UnaryOperationType: UInt8, CaseIterable {
-  case increment
+  case increment = 1
 }
 
 // Ordered by relative frequency, minimizing the number of conditional checks during compilation and
