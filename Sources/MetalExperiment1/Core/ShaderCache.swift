@@ -30,7 +30,7 @@ enum ShaderCache {
   // access the device via `Context.global.device`.
   static func load(device: MTLDevice) {
     Self.device = device
-//    Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
+    Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
     
     if defaultLibrary == nil {
       try! FileManager.default.createDirectory(
