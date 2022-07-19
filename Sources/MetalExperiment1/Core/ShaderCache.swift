@@ -33,7 +33,7 @@ enum ShaderCache {
     Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
     
     if defaultLibrary == nil {
-      try! FileManager.default.createDirectory(
+      try? FileManager.default.createDirectory(
         at: binaryArchiveDirectory, withIntermediateDirectories: false)
     }
     
@@ -45,11 +45,12 @@ enum ShaderCache {
     enqueue(name: "unary_u32_i64_u64")
     enqueue(name: "binary")
     enqueue(name: "tertiary")
+    Profiler.log("Create pipelines")
     _ = (unary_f32_i32)
     _ = (unary_u32_i64_u64)
     _ = (binary)
     _ = (tertiary)
-    Profiler.log("Create pipelines")
+    
   }
   
   @inline(__always)
@@ -65,7 +66,8 @@ enum ShaderCache {
   static func actuallyEnqueue(name: StringWrapper) {
     let semaphore = DispatchSemaphore(value: 0)
     semaphores[name] = semaphore
-    DispatchQueue.global().async {
+//    DispatchQueue.global().async {
+    do {
       let nameString = name.makeString()
       var pipeline: MTLComputePipelineState
       func makePipeline(library: MTLLibrary) -> MTLComputePipelineState {
@@ -75,6 +77,7 @@ enum ShaderCache {
       
       if let defaultLibrary = defaultLibrary {
         pipeline = makePipeline(library: defaultLibrary)
+        print("Fetched pipeline from system shader cache")
       } else {
         let fileName = nameString + ".metal"
         let shaderSourcePath = shaderSourceDirectory
@@ -93,28 +96,52 @@ enum ShaderCache {
           .appendingPathComponent(archiveName, isDirectory: false)
         let keyData: Data? = fileManager.contents(atPath: keyPath)
         if shaderSourceData != keyData {
-          // The `unicode` encoding lets symbols like "µ" appear in the Metal shader. It takes
-          // longer to process than homogeneous UTF-8, but removes the chance of creating bugs in
-          // the future. Swift source files are encoded in `unicode`, so a grapheme cluster might
-          // leak if someone transfers comments from Swift to Metal files. This would be especially
-          // problematic since it only appears in the SwiftPM build, but goes under the radar when
-          // Xcode (the dominant use case) is used to compile it.
-          let shaderSource = String(data: shaderSourceData, encoding: .unicode)!
+          let shaderSource = String(data: shaderSourceData, encoding: .utf8)!
           let library = try! device.makeLibrary(source: shaderSource, options: nil)
-          pipeline = makePipeline(library: library)
           
-          // Atomically swap the binary archive. Remove its key (the shader source) to invalidate
-          // it, then replace the ".metallib", then write the new key.
-          try? fileManager.removeItem(atPath: keyPath)
+          let functionDescriptor = MTLFunctionDescriptor()
+          functionDescriptor.name = nameString
+          functionDescriptor.options = .compileToBinary
+          let function = try! library.makeFunction(descriptor: functionDescriptor)
+          pipeline = try! device.makeComputePipelineState(function: function)
+          
+          let binaryArchive = try! device.makeBinaryArchive(descriptor: .init())
+          let pipelineDescriptor = MTLComputePipelineDescriptor()
+          pipelineDescriptor.computeFunction = function
+          try! binaryArchive.addComputePipelineFunctions(descriptor: pipelineDescriptor)
+          
+          // Atomically swap the binary archive. The swap proceeds in three steps:
+          // - Remove the old key (the outdated shader source) to invalidate the archive.
+          // - Replace the ".metallib" file.
+          // - Write the new key.
+          try? fileManager.removeItem(atPath: keyPath) // Ignore errors; the old key may not exist.
+          try! binaryArchive.serialize(to: archiveURL)
+          fileManager.createFile(atPath: keyPath, contents: shaderSourceData)
+          print("Wrote pipeline to custom shader cache")
         } else {
-          let library = try! device.makeLibrary(URL: archiveURL)
+          // It seems that using a Metal binary archive doesn't affect SwiftPM build performance.
+          // However, it might improve one-time performance if the system purges its shader cache.
+          // I put a lot of work into this custom caching infrastructure, so I'll keep it for now.
+          // TODO: Revisit the unnecessary code for generating binary archives.
+          let binaryArchiveDescriptor = MTLBinaryArchiveDescriptor()
+          binaryArchiveDescriptor.url = archiveURL
+          let binaryArchive = try! device.makeBinaryArchive(descriptor: binaryArchiveDescriptor)
+          
+          let functionDescriptor = MTLFunctionDescriptor()
+          functionDescriptor.name = nameString
+          functionDescriptor.binaryArchives = [binaryArchive]
+          
+          let shaderSource = String(data: shaderSourceData, encoding: .utf8)!
+          let redundantLibrary = try! device.makeLibrary(source: shaderSource, options: nil)
+          let function = try! redundantLibrary.makeFunction(descriptor: functionDescriptor)
+          
+          let pipelineDescriptor = MTLComputePipelineDescriptor()
+          pipelineDescriptor.computeFunction = function
+          pipelineDescriptor.binaryArchives = [binaryArchive]
+          pipeline = try! device.makeComputePipelineState(
+            descriptor: pipelineDescriptor, options: .failOnBinaryArchiveMiss).0
+          print("Fetched pipeline from custom shader cache")
         }
-        
-        //
-        
-        //
-        _ = device.makeLibrary(URL:)
-        fatalError("SwiftPM shader loading not yet implemented.")
       }
       
       dispatchQueue.sync {

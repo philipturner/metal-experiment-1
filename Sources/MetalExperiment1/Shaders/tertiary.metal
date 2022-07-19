@@ -16,4 +16,22 @@ kernel void tertiary(
   uint tid [[thread_position_in_grid]]
 ) {
   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }

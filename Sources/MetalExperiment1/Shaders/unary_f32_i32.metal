@@ -31,4 +31,26 @@ kernel void unary_f32_i32(
 ) {
   float value = input[tid];
   output[tid] = value + increment;
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 }
