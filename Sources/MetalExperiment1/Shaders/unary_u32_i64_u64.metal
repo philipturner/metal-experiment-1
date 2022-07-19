@@ -17,24 +17,4 @@ kernel void unary_u32_i64_u64(
   uint tid [[thread_position_in_grid]]
 ) {
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
 }

@@ -15,23 +15,4 @@ kernel void binary(
   uint tid [[thread_position_in_grid]]
 ) {
   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
 }

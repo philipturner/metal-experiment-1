@@ -91,57 +91,14 @@ enum ShaderCache {
           fatalError("Could not find shader source for pipeline '\(name.makeString())'.")
         }
         
-        let archiveName = nameString + ".metallib"
-        let archiveURL = binaryArchiveDirectory
-          .appendingPathComponent(archiveName, isDirectory: false)
-        let keyData: Data? = fileManager.contents(atPath: keyPath)
-        if shaderSourceData != keyData {
-          let shaderSource = String(data: shaderSourceData, encoding: .utf8)!
-          let library = try! device.makeLibrary(source: shaderSource, options: nil)
-          
-          let functionDescriptor = MTLFunctionDescriptor()
-          functionDescriptor.name = nameString
-          functionDescriptor.options = .compileToBinary
-          let function = try! library.makeFunction(descriptor: functionDescriptor)
-          pipeline = try! device.makeComputePipelineState(function: function)
-          
-          let binaryArchive = try! device.makeBinaryArchive(descriptor: .init())
-          let pipelineDescriptor = MTLComputePipelineDescriptor()
-          pipelineDescriptor.computeFunction = function
-          try! binaryArchive.addComputePipelineFunctions(descriptor: pipelineDescriptor)
-          
-          // Atomically swap the binary archive. The swap proceeds in three steps:
-          // - Remove the old key (the outdated shader source) to invalidate the archive.
-          // - Replace the ".metallib" file.
-          // - Write the new key.
-          try? fileManager.removeItem(atPath: keyPath) // Ignore errors; the old key may not exist.
-          try! binaryArchive.serialize(to: archiveURL)
-          fileManager.createFile(atPath: keyPath, contents: shaderSourceData)
-          print("Wrote pipeline to custom shader cache")
-        } else {
-          // It seems that using a Metal binary archive doesn't affect SwiftPM build performance.
-          // However, it might improve one-time performance if the system purges its shader cache.
-          // I put a lot of work into this custom caching infrastructure, so I'll keep it for now.
-          // TODO: Revisit the unnecessary code for generating binary archives.
-          let binaryArchiveDescriptor = MTLBinaryArchiveDescriptor()
-          binaryArchiveDescriptor.url = archiveURL
-          let binaryArchive = try! device.makeBinaryArchive(descriptor: binaryArchiveDescriptor)
-          
-          let functionDescriptor = MTLFunctionDescriptor()
-          functionDescriptor.name = nameString
-          functionDescriptor.binaryArchives = [binaryArchive]
-          
-          let shaderSource = String(data: shaderSourceData, encoding: .utf8)!
-          let redundantLibrary = try! device.makeLibrary(source: shaderSource, options: nil)
-          let function = try! redundantLibrary.makeFunction(descriptor: functionDescriptor)
-          
-          let pipelineDescriptor = MTLComputePipelineDescriptor()
-          pipelineDescriptor.computeFunction = function
-          pipelineDescriptor.binaryArchives = [binaryArchive]
-          pipeline = try! device.makeComputePipelineState(
-            descriptor: pipelineDescriptor, options: .failOnBinaryArchiveMiss).0
-          print("Fetched pipeline from custom shader cache")
-        }
+        // Using a Metal binary archive doesn't affect SwiftPM build performance. The fastest and
+        // simplest approach is compiling the shader from source. The system has some internal
+        // cache that appears to return immediately if the exact same source code was JIT-compiled
+        // before.
+        let shaderSource = String(data: shaderSourceData, encoding: .utf8)!
+        let library = try! device.makeLibrary(source: shaderSource, options: nil)
+        let function = library.makeFunction(name: nameString)!
+        pipeline = try! device.makeComputePipelineState(function: function)
       }
       
       dispatchQueue.sync {
