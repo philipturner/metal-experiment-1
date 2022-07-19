@@ -36,35 +36,70 @@ kernel void unary_f32_i32(
 // MARK: - New Code
 
 struct DispatchParams {
-//  ushort read_size;
-//  ushort write_size;
+  bool read_scalar_broadcast;
+  ushort read_size;
+  ushort write_size;
 };
 
 enum MemoryCast: ushort {
   f32_i32_native,
-  scalar_broadcast_read,
   f16_as_f32,
   i8_as_i32,
   i16_as_i32,
   u8_as_i32,
   u16_as_i32,
+  // `bool` can be masked as either `i8` or `u8`.
 };
 
 enum UnaryOperationType: ushort {
-  increment, // 0
-  read,
   cast_f32_i32,
   cast_i32_f32,
 };
+
+class Storage {
+  uint4 data;
   
+public:
+  Storage() {}
+  
+  void set_f32_i32(uint4 mem_slice) {
+    
+  }
+  
+  void set_f16(ushort4 mem_slice) {
+    
+  }
+  
+  void set_i8(uchar4 mem_slice) {
+    
+  }
+  
+  void set_i16(ushort4 mem_slice) {
+    
+  }
+  
+  void set_u8(uchar4 mem_slice) {
+    
+  }
+  
+  void set_u16(ushort4 mem_slice) {
+    
+  }
+  
+};
+
+
 kernel void unary_f32_i32_new(
-  device float4 *input [[buffer(0)]],
-  device float4 *output [[buffer(1)]],
-  constant float &increment [[buffer(2)]],
+  device void *input [[buffer(0)]],
+  device void *output [[buffer(1)]],
+  constant DispatchParams &params [[buffer(2)]],
+  constant MemoryCast &mem_cast [[buffer(3)]],
+  constant UnaryOperationType &op_type [[buffer(4)]],
   uint tid [[thread_position_in_grid]]
 ) {
-  float4 value = input[tid];
-  output[tid] = value + increment;
+  if (params.read_scalar_broadcast) {
+    
+  }
 }
 
 
