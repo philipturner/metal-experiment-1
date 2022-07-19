@@ -52,8 +52,8 @@ enum MemoryCast: ushort {
 };
 
 // Cast operation
-// - lossy (must modify the bits) = X
-// - lossless (no-op) = .
+// - X = must modify the bits
+// - . = no-op
 //
 // Horizontal (top) axis is input, with integers masked as i32.
 // Vertical (left) axis is output, with integers masked as i32.
@@ -74,16 +74,24 @@ enum MemoryCast: ushort {
 // ----|-----|-----|-----|-----|-----|-----|-----|
 // f32 |  X  |  X  |  X  |  X  |  X  |  .  |  .  |
 // ----|-----|-----|-----|-----|-----|-----|-----|
+//
+// Unique operations:
+// - (i8/i16/i32/u8/u16) -> (f16) = (i32) -> (f16)
+// - (i8/i16/i32/u8/u16) -> (f32) = (i32) -> (f32)
 
 enum UnaryOperationType: ushort {
-  // Casts occur in multiple instructions because of a large number of permutations.
-  expand_i8_to_i32, // no-op
-  expand_i16_to_i32, // no-op
-  expand_i32_to_i32,
+  // Casts may occur in multiple instructions because of a large number of permutations.
+  cast_i32_to_f16,
+  cast_i32_to_f32,
   
-  _f32_to_f16,
-  cast_f32_to_i32,
-  cast_i32_f32,
+  
+//  expand_i8_to_i32, // no-op
+//  expand_i16_to_i32, // no-op
+//  expand_i32_to_i32,
+//
+//  _f32_to_f16,
+//  cast_f32_to_i32,
+//  cast_i32_f32,
 };
 
 // MARK: - Classes
