@@ -206,7 +206,8 @@ class Allocation {
   
   // TODO: Rework this mechanism to permit tensors of rank > 5. There should be a performant
   // alternative that minimizes overhead of allocating arrays. Look at using an `OperationTypeList`
-  // for this purpose.
+  // for this purpose. SIMD vector size should be 4, as 5D tensors are very rare and only used for
+  // 3D convolutions.
   struct Metadata {
     // Vector elements:
     // 0..<5 - shape

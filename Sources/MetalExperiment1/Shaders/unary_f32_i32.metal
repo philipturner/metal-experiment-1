@@ -33,7 +33,7 @@ kernel void unary_f32_i32(
   output[tid] = value + increment;
 }
 
-// MARK: - New Code
+// MARK: - Enumerations
 
 struct DispatchParams {
   bool read_scalar_broadcast;
@@ -51,43 +51,127 @@ enum MemoryCast: ushort {
   // `bool` can be masked as either `i8` or `u8`.
 };
 
+// Cast operation
+// - lossy = X
+// - lossless = nothing
+//
+// Horizontal (top) axis is input
+// Vertical (left) axis is output
+//
+//     | i8  | i16 | i32 | u8  | u16 | f16 | f32 |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// i8  |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// i16 |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// i32 |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// u8  |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// u16 |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// f16 |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+// f32 |     |     |     |     |     |     |     |
+// ----|-----|-----|-----|-----|-----|-----|-----|
+
 enum UnaryOperationType: ushort {
-  cast_f32_i32,
+  // Casts occur in multiple instructions because of a large number of permutations.
+  expand_i8_to_i32, // no-op
+  expand_i16_to_i32, // no-op
+  expand_i32_to_i32,
+  
+  _f32_to_f16,
+  cast_f32_to_i32,
   cast_i32_f32,
+};
+
+// MARK: - Classes
+
+class CompressedStorage {
+  uint4 data;
+  
+public:
+  // Scalar setters
+  
+  void set_scalar_u8(uchar mem_slice) {
+    set_vector_u8(uchar4(mem_slice));
+  }
+  
+  void set_scalar_u16(ushort mem_slice) {
+    set_vector_u16(ushort4(mem_slice));
+  }
+  
+  void set_scalar_u32(uint mem_slice) {
+    set_vector_u32(uint4(mem_slice));
+  }
+  
+  // Vector setters
+  
+  void set_vector_u8(uchar4 mem_slice) {
+    data[0] = as_type<uint>(mem_slice);
+  }
+  
+  void set_vector_u16(ushort4 mem_slice) {
+    data[0] = as_type<uint2>(mem_slice)[0];
+    data[1] = as_type<uint2>(mem_slice)[1];
+  }
+  
+  void set_vector_u32(uint4 mem_slice) {
+    data = mem_slice;
+  }
+  
+  // Vector getters
+  
+  uchar4 get_vector_u8() {
+    return as_type<uchar4>(data[0]);
+  }
+  
+  ushort4 get_vector_u16() {
+    uint2 out(data[0], data[1]);
+    return as_type<ushort4>(out);
+  }
+  
+  uint4 get_vector_u32() {
+    return data;
+  }
 };
 
 class Storage {
   uint4 data;
   
 public:
-  Storage() {}
   
-  void set_f32_i32(uint4 mem_slice) {
+  
+  void set_f32_i32(CompressedStorage storage) {
+    data = storage.get_vector_u32();
+  }
+  
+  void set_f16(CompressedStorage storage) {
+    half4 in = as_type<half4>(storage.get_vector_u16());
+    float4 casted = float4(in);
+    data = as_type<uint4>(casted);
+  }
+  
+  void set_i8(CompressedStorage storage) {
     
   }
   
-  void set_f16(ushort4 mem_slice) {
+  void set_i16(CompressedStorage storage) {
     
   }
   
-  void set_i8(uchar4 mem_slice) {
+  void set_u8(CompressedStorage storage) {
     
   }
   
-  void set_i16(ushort4 mem_slice) {
-    
-  }
-  
-  void set_u8(uchar4 mem_slice) {
-    
-  }
-  
-  void set_u16(ushort4 mem_slice) {
+  void set_u16(CompressedStorage storage) {
     
   }
   
 };
 
+// MARK: - Shader Function
 
 kernel void unary_f32_i32_new(
   device void *input [[buffer(0)]],
@@ -97,11 +181,17 @@ kernel void unary_f32_i32_new(
   constant UnaryOperationType &op_type [[buffer(4)]],
   uint tid [[thread_position_in_grid]]
 ) {
+  Storage storage;
   if (params.read_scalar_broadcast) {
+    switch (params.read_size) {
+    case 1:
+      break;
+    case 2:
+      break;
+    case 4:
+      break;
+    }
+  } else {
     
   }
 }
-
-
-
-
