@@ -42,7 +42,7 @@ extension Context {
     }
     
     // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
-    // slow start right after reading a buffer's contents, being unable to fuse unary operators and
+    // slow start right after reading a buffer's contents, being unable to fuse unary operations and
     // creating a no-op pass through the compiler.
     //
     // Idea: After a "read" instruction, you have a certain window of time to delay the next command
@@ -146,17 +146,17 @@ private extension Context {
       commandBufferID += 1
       numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
       
-      // TODO: Look back into the latency here. If the CPU does a control flow operator depending
+      // TODO: Look back into the latency here. If the CPU does a control flow operation depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
       // total latency. I originally settled on using the completion handler because in the
       // scheduled handler, it was so unreliable and often harmed performance or did nothing. I
       // should revisit this once I confirm the delay for a total stop of the pipeline is 400 μs.
       // If done right, I could sometimes reduce it to 200 μs here.
       //
-      // "constant folding" on the CPU should reduce the overhead of scalar-wise operators after the
-      // read to near-zero, so maybe we don't need to wait for two command buffers to come through
-      // (2 x 200 μs). In that case, flushing the command stream in this scheduled handler would be
-      // pointless. The delay is 200 μs in every case.
+      // "constant folding" on the CPU should reduce the overhead of scalar-wise operations after
+      // the read to near-zero, so maybe we don't need to wait for two command buffers to come
+      // through (2 x 200 μs). In that case, flushing the command stream in this scheduled handler
+      // would be pointless. The delay is 200 μs in every case.
       //
       // This comment relates to the comment in `maybeFlushStream` above the call to
       // `flushStream(precomputedBackpressure:)`.

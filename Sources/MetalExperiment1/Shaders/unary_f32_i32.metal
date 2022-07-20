@@ -36,12 +36,12 @@ kernel void unary_f32_i32(
 // MARK: - Enumerations
 
 enum MemoryCast: ushort {
-  f32_i32_native,
-  f16_as_f32,
-  i8_as_i32,
-  i16_as_i32,
-  u8_as_i32,
-  u16_as_i32,
+  f32_i32_native = 0,
+  f16_as_f32 = 1,
+  i8_as_i32 = 2,
+  i16_as_i32 = 3,
+  u8_as_i32 = 4,
+  u16_as_i32 = 5,
   // `bool` can be masked as either `i8` or `u8`.
 };
 
@@ -100,7 +100,7 @@ struct DispatchParams {
 
 enum UnaryOperationType: ushort {
   abs_f32, // 0
-  abs_i32, // 1 - integer operator
+  abs_i32, // 1 - integer operation
   acos_f32, // 2
   acosh_f32, // 3
   asin_f32, // 4
@@ -131,7 +131,7 @@ enum UnaryOperationType: ushort {
   log_f32, // 41
   log1p_f32, // 42
   neg_f32, // 43
-  neg_i32, // 44 - integer operator
+  neg_i32, // 44 - integer operation
   relu_f32, // 45
   relu6_f32, // 46
   round_f32, // 47 - rounds to nearest even
@@ -140,7 +140,7 @@ enum UnaryOperationType: ushort {
   selu_f32, // 51
   sigmoid_f32, // 52
   sign_f32, // 53
-  sign_i32, // 54 - integer operator
+  sign_i32, // 54 - integer operation
   sin_f32, // 55
   sinh_f32, // 56
   softplus_f32, // 57
@@ -148,7 +148,7 @@ enum UnaryOperationType: ushort {
   softsign_f32, // 60
   sqrt_f32, // 61
   square_f32, // 62
-  square_i32, // 63 - integer operator
+  square_i32, // 63 - integer operation
   tan_f32, // 64
   tanh_f32, // 65
   

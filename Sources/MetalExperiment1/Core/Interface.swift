@@ -38,17 +38,17 @@ extension Context {
     _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
   ) {
     let string = StringWrapper(wrapping: name)
-    guard let function = OperatorRegistry.registry[string] else {
-      fatalError("Could not find operator '\(name)'")
+    guard let function = OperationRegistry.registry[string] else {
+      fatalError("Could not find operation '\(name)'")
     }
     function.call(attributes, inputs, outputs)
     self.maybeFlushStream()
   }
 }
 
-// MARK: - Operator Dispatch Table
+// MARK: - Operation Dispatch Table
 
-struct OperatorRegistry {
+struct OperationRegistry {
   typealias FunctionSignature = @convention(c) (
     OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int) -> Void
   
@@ -151,15 +151,15 @@ struct OperatorRegistry {
   }
 }
 
-extension OperatorRegistry {
+extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
     "increment": increment
   ]
 }
 
-// MARK: - Operator Functions
+// MARK: - Operation Functions
 
-extension OperatorRegistry {
+extension OperationRegistry {
   static let increment = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let ctx = Context.global

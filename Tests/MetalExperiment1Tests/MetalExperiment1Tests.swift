@@ -139,7 +139,7 @@ final class MetalExperiment1Tests: XCTestCase {
   private static var history: [ARCEvent] = []
   
   // Enables automatic fusion of unary ops, with no extra work from the frontend. Deallocated
-  // (invalid) tensors become placeholders for operator fusion.
+  // (invalid) tensors become placeholders for operation fusion.
   func testARCDeallocation() throws {
     testHeader("Automatic ARC deallocation")
     
