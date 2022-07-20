@@ -35,12 +35,6 @@ kernel void unary_f32_i32(
 
 // MARK: - Enumerations
 
-struct DispatchParams {
-  bool read_scalar_broadcast;
-  ushort read_size;
-  ushort write_size;
-};
-
 enum MemoryCast: ushort {
   f32_i32_native,
   f16_as_f32,
@@ -49,6 +43,14 @@ enum MemoryCast: ushort {
   u8_as_i32,
   u16_as_i32,
   // `bool` can be masked as either `i8` or `u8`.
+};
+
+struct DispatchParams {
+  bool read_scalar_broadcast;
+  ushort read_size;
+  MemoryCast memory_cast;
+  ushort num_ops;
+  ushort write_size;
 };
 
 // Cast operation
@@ -88,18 +90,61 @@ enum MemoryCast: ushort {
 // - (i32) -> (i16/u16) = (i32) -> u16
 
 enum UnaryOperationType: ushort {
-  // Casts may occur in multiple instructions because of a large number of permutations.
+  abs_f32,
+  abs_i32, // integer operator
+  acos_f32,
+  acosh_f32,
+  asin_f32,
+  asinh_f32,
+  atan_f32,
+  atanh_f32,
+  
   cast_i32_to_f16,
   cast_i32_to_f32,
+  cast_f32_to_f16,
+  cast_f32_to_i8,
+  cast_f32_to_i16,
+  cast_f32_to_i32,
+  cast_f32_to_u8,
+  cast_f32_to_u16,
+  cast_i32_to_u8,
+  cast_i32_to_u16,
   
+  ceil_f32,
+  cos_f32,
+  cosh_f32,
+  elu_f32,
+  exp_f32,
+  expm1_f32,
+  floor_f32,
   
-//  expand_i8_to_i32, // no-op
-//  expand_i16_to_i32, // no-op
-//  expand_i32_to_i32,
-//
-//  _f32_to_f16,
-//  cast_f32_to_i32,
-//  cast_i32_f32,
+  is_finite_f32, // returns bool/u8
+  is_inf_f32, // returns bool/u8
+  is_nan_f32, // returns bool/u8
+  
+  leaky_relu_f32,
+  log_f32,
+  log1p_f32,
+  neg_f32,
+  neg_i32, // integer operator
+  relu_f32,
+  relu6_f32,
+  round_f32,
+  rsqrt_f32,
+  selu_f32,
+  sigmoid_f32,
+  
+  sign_f32,
+  sign_i32, // integer operator
+  sin_f32,
+  sinh_f32,
+  softplus_f32,
+  softsign_f32,
+  sqrt_f32,
+  square_f32,
+  square_i32, // integer operator
+  tan_f32,
+  tanh_f32,
 };
 
 // MARK: - Classes
@@ -139,16 +184,16 @@ public:
   
   // Vector getters
   
-  uchar4 get_vector_u8() {
+  uchar4 get_vector_u8() const {
     return as_type<uchar4>(data[0]);
   }
   
-  ushort4 get_vector_u16() {
+  ushort4 get_vector_u16() const {
     uint2 out(data[0], data[1]);
     return as_type<ushort4>(out);
   }
   
-  uint4 get_vector_u32() {
+  uint4 get_vector_u32() const {
     return data;
   }
 };
@@ -157,7 +202,7 @@ class Storage {
   uint4 data;
   
 public:
-  
+  // Memory cast setters
   
   void set_f32_i32(CompressedStorage storage) {
     data = storage.get_vector_u32();
@@ -170,21 +215,46 @@ public:
   }
   
   void set_i8(CompressedStorage storage) {
-    
+    char4 in = as_type<char4>(storage.get_vector_u8());
+    int4 casted = int4(in);
+    data = as_type<uint4>(casted);
   }
   
   void set_i16(CompressedStorage storage) {
-    
+    short4 in = as_type<short4>(storage.get_vector_u16());
+    int4 casted = int4(in);
+    data = as_type<uint4>(casted);
   }
   
   void set_u8(CompressedStorage storage) {
-    
+    uchar4 in = as_type<uchar4>(storage.get_vector_u8());
+    int4 casted = int4(in);
+    data = as_type<uint4>(casted);
   }
   
   void set_u16(CompressedStorage storage) {
-    
+    ushort4 in = as_type<ushort4>(storage.get_vector_u16());
+    int4 casted = int4(in);
+    data = as_type<uint4>(casted);
   }
   
+  // Instruction execution helpers
+  
+  void set_f32(float4 input) {
+    data = as_type<uint4>(input);
+  }
+  
+  void set_i32(int4 input) {
+    data = as_type<uint4>(input);
+  }
+  
+  float4 get_f32() const {
+    return as_type<float4>(data);
+  }
+  
+  int4 get_i32() const {
+    return as_type<int4>(data);
+  }
 };
 
 // MARK: - Shader Function
@@ -193,21 +263,48 @@ kernel void unary_f32_i32_new(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
   constant DispatchParams &params [[buffer(2)]],
-  constant MemoryCast &mem_cast [[buffer(3)]],
-  constant UnaryOperationType &op_type [[buffer(4)]],
+  constant UnaryOperationType *op_types [[buffer(3)]],
   uint tid [[thread_position_in_grid]]
 ) {
-  Storage storage;
+  uint read_pos = params.read_scalar_broadcast ? 0 : tid;
+  CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
+    uint mem_slice_u32 = ((device uint*)input)[0];
     switch (params.read_size) {
-    case 1:
-      break;
-    case 2:
-      break;
-    case 4:
-      break;
+      case 1: {
+        uchar mem_slice = uchar(mem_slice_u32);
+        compressed_storage.set_scalar_u8(mem_slice);
+        break;
+      }
+      case 2: {
+        ushort mem_slice = ushort(mem_slice_u32);
+        compressed_storage.set_scalar_u16(mem_slice);
+        break;
+      }
+      case 4: {
+        uint mem_slice = uint(mem_slice_u32);
+        compressed_storage.set_scalar_u32(mem_slice);
+        break;
+      }
     }
   } else {
-    
+    switch (params.read_size) {
+      case 1: {
+        uchar4 mem_slice = ((device uchar4*)input)[read_pos];
+        compressed_storage.set_vector_u8(mem_slice);
+        break;
+      }
+      case 2: {
+        ushort4 mem_slice = ((device ushort4*)input)[read_pos];
+        compressed_storage.set_vector_u16(mem_slice);
+        break;
+      }
+      case 4: {
+        uint4 mem_slice = ((device uint4*)input)[read_pos];
+        compressed_storage.set_vector_u32(mem_slice);
+        break;
+      }
+    }
   }
+  
 }
