@@ -46,10 +46,16 @@ enum MemoryCast: ushort {
 };
 
 struct DispatchParams {
+  // Reading
   bool read_scalar_broadcast;
   ushort read_size;
-  MemoryCast memory_cast;
+  MemoryCast read_memory_cast;
+  
+  // Execution
   ushort num_ops;
+  
+  // Writing
+  MemoryCast write_memory_cast;
   ushort write_size;
 };
 
@@ -103,10 +109,10 @@ enum UnaryOperationType: ushort {
   atan_f32, // 6
   atanh_f32, // 7
   
-  cast_i32_to_f16, // 10
-  cast_i32_to_f32, // 11
-  cast_f32_to_f16, // 12
-  cast_f32_to_i32, // 13
+  cast_f32_to_f16, // 10
+  cast_f32_to_i32, // 11
+  cast_i32_to_f16, // 12
+  cast_i32_to_f32, // 13
   cast_i32_to_u8, // 14
   cast_i32_to_u16, // 15
   
@@ -146,6 +152,9 @@ enum UnaryOperationType: ushort {
   square_i32, // 63 - integer operator
   tan_f32, // 64
   tanh_f32, // 65
+  
+  increment_f32, // 70 - for testing purposes only
+  increment_i32, // 71 - for testing purposes only
 };
 
 // MARK: - Classes
@@ -205,38 +214,60 @@ class Storage {
 public:
   // Memory cast setters
   
-  void set_f32_i32(CompressedStorage storage) {
+  void set_vector_f32_i32(CompressedStorage storage) {
     data = storage.get_vector_u32();
   }
   
-  void set_f16(CompressedStorage storage) {
+  void set_vector_f16(CompressedStorage storage) {
     half4 in = as_type<half4>(storage.get_vector_u16());
     float4 casted = float4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_i8(CompressedStorage storage) {
+  void set_vector_i8(CompressedStorage storage) {
     char4 in = as_type<char4>(storage.get_vector_u8());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_i16(CompressedStorage storage) {
+  void set_vector_i16(CompressedStorage storage) {
     short4 in = as_type<short4>(storage.get_vector_u16());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_u8(CompressedStorage storage) {
+  void set_vector_u8(CompressedStorage storage) {
     uchar4 in = as_type<uchar4>(storage.get_vector_u8());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_u16(CompressedStorage storage) {
+  void set_vector_u16(CompressedStorage storage) {
     ushort4 in = as_type<ushort4>(storage.get_vector_u16());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
+  }
+  
+  // Memory cast getters
+  
+  uint4 get_vector_f32_i32() const {
+    return data;
+  }
+  
+  ushort4 get_vector_f16() const {
+    float4 out = as_type<float4>(data);
+    half4 casted = half4(out);
+    return as_type<ushort4>(casted);
+  }
+  
+  uchar4 get_vector_i8_u8() const {
+    int4 out = as_type<int4>(data);
+    return uchar4(out);
+  }
+  
+  ushort4 get_vector_i16_u16() const {
+    int4 out = as_type<int4>(data);
+    return ushort4(out);
   }
   
   // Instruction execution utilities
@@ -255,12 +286,6 @@ public:
   
   int4 get_i32() const {
     return as_type<int4>(data);
-  }
-  
-  // Memory writing utilities
-  
-  uint4 get_vector_u32() const {
-    return data;
   }
 };
 
@@ -281,7 +306,7 @@ SET_F32(expr(storage.get_f32())) \
 SET_I32(expr(storage.get_i32())) \
 
 // Bytes of metadata allowed per operation.
-constant ushort METADATA_BYTES = 4;
+constant ushort METADATA_BYTES = 8;
 
 constant void* get_metadata(constant void *metadata, ushort pc) {
   ushort byte_offset = pc * METADATA_BYTES;
@@ -348,29 +373,29 @@ kernel void unary_f32_i32_new(
   }
   
   Storage storage;
-  switch (params.memory_cast) {
+  switch (params.read_memory_cast) {
     case f32_i32_native: {
-      storage.set_f32_i32(compressed_storage);
+      storage.set_vector_f32_i32(compressed_storage);
       break;
     }
     case f16_as_f32: {
-      storage.set_f16(compressed_storage);
+      storage.set_vector_f16(compressed_storage);
       break;
     }
     case i8_as_i32: {
-      storage.set_i8(compressed_storage);
+      storage.set_vector_i8(compressed_storage);
       break;
     }
     case i16_as_i32: {
-      storage.set_i16(compressed_storage);
+      storage.set_vector_i16(compressed_storage);
       break;
     }
     case u8_as_i32: {
-      storage.set_u8(compressed_storage);
+      storage.set_vector_u8(compressed_storage);
       break;
     }
     case u16_as_i32: {
-      storage.set_u16(compressed_storage);
+      storage.set_vector_u16(compressed_storage);
       break;
     }
   }
@@ -408,7 +433,42 @@ kernel void unary_f32_i32_new(
           return; // This should never happen.
       }
     } else if (operation <= cast_i32_to_u16) {
-      
+      switch (operation) {
+        case cast_f32_to_f16: {
+          auto x = storage.get_f32();
+          auto casted = half4(x);
+          SET_F32(float4(casted))
+        }
+        case cast_f32_to_i32: {
+          auto x = storage.get_f32();
+          auto operation_metadata = get_metadata(metadata, pc);
+          int2 bounds = ((constant int2*)operation_metadata)[0];
+          auto casted = int4(x);
+          casted = clamp(casted, bounds[0], bounds[1]);
+          SET_I32(casted)
+        }
+        case cast_i32_to_f16: {
+          auto x = storage.get_i32();
+          auto casted = half4(x);
+          SET_F32(float4(casted))
+        }
+        case cast_i32_to_f32: {
+          auto x = storage.get_i32();
+          SET_F32(float4(x))
+        }
+        case cast_i32_to_u8: {
+          auto x = storage.get_i32();
+          auto casted = uchar4(x);
+          SET_I32(int4(casted))
+        }
+        case cast_i32_to_u16: {
+          auto x = storage.get_i32();
+          auto casted = ushort4(x);
+          SET_I32(int4(casted))
+        }
+        default:
+          return; // This should never happen.
+      }
     } else if (operation <= floor_f32) {
       switch (operation) {
         case ceil_f32: {
@@ -563,6 +623,43 @@ kernel void unary_f32_i32_new(
         default:
           return; // This should never happen.
       }
+    } else if (operation <= increment_i32) {
+      switch (operation) {
+        case increment_f32: {
+          auto x = storage.get_f32();
+          SET_F32(x + 1);
+        }
+        case increment_i32: {
+          auto x = storage.get_i32();
+          SET_I32(x + 1);
+        }
+        default:
+          return; // This should never happen.
+      }
+    } else {
+      return; // This should never happen.
+    }
+  }
+  
+  switch (params.write_memory_cast) {
+    case f32_i32_native: {
+      uint4 mem_slice = storage.get_vector_f32_i32();
+      ((device uint4*)output)[tid] = mem_slice;
+      break;
+    }
+    case f16_as_f32: {
+      ushort4 mem_slice = storage.get_vector_f16();
+      ((device ushort4*)output)[tid] = mem_slice;
+    }
+    case i8_as_i32:
+    case u8_as_i32: {
+      uchar4 mem_slice = storage.get_vector_i8_u8();
+      ((device uchar4*)output)[tid] = mem_slice;
+    }
+    case i16_as_i32:
+    case u16_as_i32: {
+      ushort4 mem_slice = storage.get_vector_i16_u16();
+      ((device ushort4*)output)[tid] = mem_slice;
     }
   }
 }
