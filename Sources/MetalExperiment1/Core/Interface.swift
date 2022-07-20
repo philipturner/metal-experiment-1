@@ -172,7 +172,7 @@ extension OperationRegistry {
     ctx._internalRetain(input1_alloc)
     
     // Generate outputs
-    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc.metadata)
+    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc)
     ctx._internalRetain(output1_alloc)
     
     // Append operation

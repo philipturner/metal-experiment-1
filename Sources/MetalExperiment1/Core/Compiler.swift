@@ -21,11 +21,11 @@ extension Context {
   // decision by querying the allocations' size and whether they're in the special CPU-side storage
   // mode.
   func compileEagerOperations() -> [CompiledOperation] {
-    if _slowPath(Allocation.debugInfoEnabled) {
+    if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
     }
     defer {
-      if _slowPath(Allocation.debugInfoEnabled) {
+      if Allocation.debugInfoEnabled {
         print("Compiler pass ends.")
       }
     }

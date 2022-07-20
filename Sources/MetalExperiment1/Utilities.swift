@@ -159,8 +159,11 @@ protocol TypeList {
   var storage: TypeListStorage<Vector> { get set }
 }
 
+// Used as the backing storage of `Allocation.shape`.
 struct TypeListStorage<Vector: SIMD>
 where Vector.Scalar: TypeListRawValue {
+  typealias Scalar = Vector.Scalar
+  
   private var vector: Vector
   private(set) var count: Int
   private var array: [Vector.Scalar]?
@@ -169,11 +172,28 @@ where Vector.Scalar: TypeListRawValue {
   init() {
     vector = .zero
     count = 0
-    array = nil
+  }
+  
+  // Need `Collection` instead of `Sequence` to query the number of elements efficiently. The
+  // restriction on `C.Index` makes cycling through indices faster and more concise.
+  @inline(__always)
+  init<C: Collection>(_ elements: C) where C.Element == Scalar, C.Index == Int {
+    vector = .zero
+    count = elements.count
+    
+    // `<=` because the count does not change.
+    if _fastPath(count <= Vector.scalarCount) {
+      for i in elements.indices {
+        vector[i] = elements[i]
+      }
+    } else {
+      array = Array(elements)
+    }
   }
   
   @inline(__always)
-  mutating func append(_ newElement: Vector.Scalar) {
+  mutating func append(_ newElement: Scalar) {
+    // Not `<=` because the count increases by one.
     if count < Vector.scalarCount {
       vector[count] = newElement
     } else {
@@ -191,11 +211,41 @@ where Vector.Scalar: TypeListRawValue {
   }
   
   @inline(__always)
-  subscript(index: Int) -> Vector.Scalar {
+  subscript(index: Int) -> Scalar {
     if count <= Vector.scalarCount {
       return vector[index]
     } else {
+      // Safely unwrapping the array could become a bottleneck when this is looped over several
+      // times.
       return array.unsafelyUnwrapped[index]
+    }
+  }
+  
+  @inline(__always)
+  func elementsEqual(_ other: Self) -> Bool {
+    guard count == other.count else {
+      return false
+    }
+    if _fastPath(count <= Vector.scalarCount) {
+      // Unused lanes are zeroed out, so equal instances have equal vectors.
+      return vector == other.vector
+    } else {
+      return array!.elementsEqual(other.array!)
+    }
+  }
+  
+  @inline(__always)
+  func copy(into bufferPointer: UnsafeMutableBufferPointer<Scalar>) {
+    precondition(count == bufferPointer.count)
+    let baseAddress = bufferPointer.baseAddress!
+    if count <= Vector.scalarCount {
+      for i in 0..<count {
+        baseAddress[i] = vector[i]
+      }
+    } else {
+      array!.withUnsafeBufferPointer {
+        _ = bufferPointer.initialize(from: $0)
+      }
     }
   }
 }

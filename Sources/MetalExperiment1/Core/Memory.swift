@@ -96,7 +96,7 @@ private extension Context {
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
     let allocation = _internalFetch(id)
-    allocation.copyShape(to: shape)
+    allocation.shape.copy(into: shape)
   }
   
   @inline(__always)
@@ -124,11 +124,11 @@ extension Context {
   
   @inline(__always)
   func _internalAllocate(
-    _ metadata: Allocation.Metadata,
+    _ other: Allocation,
     isShared: Bool? = nil
   ) -> (UInt64, Allocation) {
     let id = nextAllocationID
-    let allocation = Allocation(id: id, metadata: metadata, isShared: isShared)
+    let allocation = Allocation(other, id: id, isShared: isShared)
     nextAllocationID = id + 1
     allocations[id] = allocation
     return (id, allocation)
@@ -199,80 +199,34 @@ enum AllocationError: Error {
 }
 
 class Allocation {
+  // (Internal member layout) 0B boundary
   let id: UInt64
   var referenceCount: Int
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
   
-  // TODO: Rework this mechanism to permit tensors of rank > 5. There should be a performant
-  // alternative that minimizes overhead of allocating arrays. Look at using a `TypeListStorage` for
-  // this purpose. SIMD vector size should be 4, as 5D tensors are very rare and only used for 3D
-  // convolutions.
-  struct Metadata {
-    // Vector elements:
-    // 0..<5 - shape
-    // 5..<6 - data type, padded from `UInt16` to `Int`
-    // 6..<7 - physical size in bytes
-    // 7..<8 - rank
-    private var storage: SIMD8<Int>
-    
-    fileprivate init(dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
-      storage = .zero
-      storage[5] = Int(truncatingIfNeeded: dataType.rawValue)
-      storage[6] = byteCount
-      storage[7] = shape.count
-      
-      let shapePtr = shape.baseAddress!
-      for i in 0..<rank {
-        storage[i] = shapePtr[i]
-      }
-    }
-    
-    @inline(__always)
-    var dataType: DataType {
-      let rawValue = UInt16(truncatingIfNeeded: storage[5])
-      return DataType(rawValue: rawValue)!
-    }
-    
-    @inline(__always)
-    var byteCount: Int { storage[6] }
-    
-    @inline(__always)
-    var rank: Int { storage[7] }
-    
-    @inline(__always)
-    func shapeEquals(_ other: Metadata) -> Bool {
-      storage.lowHalf == other.storage.lowHalf && storage[4] == other.storage[4]
-    }
-    
-    @inline(__always)
-    func copyShape(to shape: UnsafeMutableBufferPointer<Int>) {
-      precondition(shape.count == rank)
-      let shapePtr = shape.baseAddress!
-      for i in 0..<rank {
-        shapePtr[i] = storage[i]
-      }
-    }
-  }
-  let metadata: Metadata
+  // (Internal member layout) 16B boundary
+  //
+  // Most tensors have a rank <= 4. 5D tensors are rare and typically used for 3D convolutions.
+  var shape: TypeListStorage<SIMD4<Int>> = .init()
+  @inline(__always)
+  var rank: Int { shape.count }
   
-  @inline(__always)
-  var dataType: DataType { metadata.dataType }
-  @inline(__always)
-  var byteCount: Int { metadata.byteCount }
-  @inline(__always)
-  var rank: Int { metadata.rank }
-  @inline(__always)
-  func shapeEquals(_ other: Metadata) -> Bool {
-    metadata.shapeEquals(other)
-  }
-  @inline(__always)
-  func copyShape(to shape: UnsafeMutableBufferPointer<Int>) {
-    metadata.copyShape(to: shape)
-  }
+  // (Internal member layout) 64B boundary
+  var byteCount: Int
+  var dataType: DataType
   
-  // A copy of `Context.global.preferSharedStorage`.
+  // A copy of `Context.global.preferSharedStorage`, unless this is a transient allocation for
+  // reading/writing to discrete GPU memory.
   let isShared: Bool
+  
+  // Extracting this to its own property improves performance. It probably skips a reference count
+  // to the `MTLBuffer`. Also, it could be useful if there are multiple storage modes.
+  var materialized = false
+  
+  // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
+  // memory.
+  var initialized = false
   
   // TODO: Special storage mode for scalars or small chunks of constant memory. If `size` is under
   // 4 KB and memory is never mutated, it can be initialized on the CPU and passed into
@@ -283,14 +237,8 @@ class Allocation {
   // memory. You may have to copy that CPU-backed memory to the `MTLBuffer`, but it's a very small
   // overhead. Take the overhead of a CPU function call + 2 * (4096 / (main memory bandwidth)).
   
-  // Extracting this to its own property improves performance. It probably skips a reference count
-  // to the `MTLBuffer`. Also, it could be useful if there are multiple storage modes.
-  var materialized = false
-  
-  // Check this before performing any ops on the allocation. Otherwise, you're accessing undefined
-  // memory.
-  var initialized = false
-  
+  // (Internal member layout) 80B boundary
+  //
   // TODO: Investigate a zero-cost reshape by transferring all resources over to another allocation.
   var mtlBuffer: MTLBuffer?
   var mpsMatrix: MPSMatrix?
@@ -299,21 +247,22 @@ class Allocation {
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int = -1
   
-  init(id: UInt64, metadata: Metadata, isShared: Bool? = nil) {
+  init(_ other: Allocation, id: UInt64, isShared: Bool? = nil) {
     self.id = id
     self.referenceCount = 1
-    self.metadata = metadata
+    self.shape = other.shape
+    self.byteCount = other.byteCount
+    self.dataType = other.dataType
     self.isShared = isShared ?? Context.global.preferSharedStorage
   }
   
-  convenience init(
-    id: UInt64,
-    dataType: DataType,
-    shape: UnsafeBufferPointer<Int>,
-    byteCount: Int
-  ) {
-    let metadata = Metadata(dataType: dataType, shape: shape, byteCount: byteCount)
-    self.init(id: id, metadata: metadata)
+  init(id: UInt64, dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
+    self.id = id
+    self.referenceCount = 1
+    self.shape = TypeListStorage(shape)
+    self.byteCount = byteCount
+    self.dataType = dataType
+    self.isShared = Context.global.preferSharedStorage
   }
   
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
@@ -407,7 +356,7 @@ class Allocation {
       body(ptr)
     } else {
       var sourceID: UInt64
-      (sourceID, sourceAllocation) = ctx._internalAllocate(metadata, isShared: true)
+      (sourceID, sourceAllocation) = ctx._internalAllocate(self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
@@ -441,7 +390,7 @@ class Allocation {
       sourceAllocation = self
     } else {
       var sourceID: UInt64
-      (sourceID, sourceAllocation) = Context.global._internalAllocate(metadata, isShared: true)
+      (sourceID, sourceAllocation) = Context.global._internalAllocate(self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       ctx._internalRetain(self)
