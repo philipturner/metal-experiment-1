@@ -129,7 +129,7 @@ enum UnaryOperationType: ushort {
   neg_i32, // 44 - integer operator
   relu_f32, // 45
   relu6_f32, // 46
-  round_f32, // 47
+  round_f32, // 47 - rounds to nearest even
   
   rsqrt_f32, // 50
   selu_f32, // 51
@@ -454,11 +454,17 @@ kernel void unary_f32_i32_new(
         }
         case relu_f32: {
           auto x = storage.get_f32();
-          SET_F32(max(0, x))
+          SET_F32(precise::max(0, x))
         }
         case relu6_f32: {
-          
+          auto x = storage.get_f32();
+          SET_F32(precise::clamp(x, 0, 6))
         }
+        case round_f32: {
+          GET_SET_F32(precise::rint)
+        }
+        default:
+          return; // This should never happen.
       }
     } else if (operation <= softplus_f32) {
       
