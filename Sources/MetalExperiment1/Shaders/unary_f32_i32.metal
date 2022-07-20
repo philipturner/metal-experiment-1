@@ -56,7 +56,6 @@ struct DispatchParams {
   
   // Writing
   MemoryCast write_memory_cast;
-  ushort write_size;
 };
 
 // Cast operation
