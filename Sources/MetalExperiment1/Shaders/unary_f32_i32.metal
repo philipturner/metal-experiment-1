@@ -296,7 +296,6 @@ namespace metal {
   }
 }
 
-
 // MARK: - Shader Function
 
 kernel void unary_f32_i32_new(
