@@ -52,7 +52,7 @@ struct DispatchParams {
   MemoryCast read_memory_cast;
   
   // Execution
-  ushort num_ops;
+  ushort num_operations;
   
   // Writing
   MemoryCast write_memory_cast;
@@ -307,8 +307,9 @@ SET_I32(expr(storage.get_i32())) \
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
 
-constant void* get_metadata(constant void *metadata, ushort pc) {
-  ushort byte_offset = pc * METADATA_BYTES;
+constant void* get_metadata(constant void *metadata, thread ushort &index) {
+  ushort byte_offset = index * METADATA_BYTES;
+  index += 1
   return (constant uchar*)metadata + byte_offset;
 }
 
@@ -334,7 +335,7 @@ kernel void unary_f32_i32_new(
   CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
     uint mem_slice_u32 = ((device uint*)input)[0];
-    switch (params.read_size) {
+    switch (params.read_memory_cast) {
       case 1: {
         uchar mem_slice = uchar(mem_slice_u32);
         compressed_storage.set_scalar_u8(mem_slice);
@@ -400,7 +401,7 @@ kernel void unary_f32_i32_new(
   }
   
   // pc = program counter
-  for (ushort pc = 0; pc < params.num_ops; ++pc) {
+  for (ushort pc = 0; pc < params.num_operations; ++pc) {
     UnaryOperationType operation = operations[pc];
     if (operation <= atan_f32) {
       switch (operation) {
@@ -440,7 +441,7 @@ kernel void unary_f32_i32_new(
         }
         case cast_f32_to_i32: {
           auto x = storage.get_f32();
-          auto operation_metadata = get_metadata(metadata, pc);
+          auto operation_metadata = get_metadata(metadata, &pc);FIXME
           int2 bounds = ((constant int2*)operation_metadata)[0];
           auto casted = int4(x);
           casted = clamp(casted, bounds[0], bounds[1]);

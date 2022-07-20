@@ -10,7 +10,7 @@ import MetalPerformanceShaders
 // Use a custom enumeration instead of `MPSDataType`. GPU shaders read the raw value for dynamic
 // typing. This has less cases than `MPSDataType` and is smaller (`UInt16` vs. `UInt32`), reducing
 // GPU register usage and enabling other optimizations.
-enum DataType: UInt16, CaseIterable {
+enum DataType: UInt16, CaseIterable, CustomStringConvertible {
   // Floating-point types
   case float16 = 0
   case float32 = 1
@@ -155,6 +155,33 @@ enum DataType: UInt16, CaseIterable {
   func contiguousSize(byteCount: Int) -> Int {
     let stridePowerOf2 = self.stride.trailingZeroBitCount
     return byteCount >> stridePowerOf2
+  }
+  
+  var description: String {
+    switch self {
+    case .float16:
+      return "Float16"
+    case .float32:
+      return "Float"
+    case .bool:
+      return "Bool"
+    case .int8:
+      return "Int8"
+    case .int16:
+      return "Int16"
+    case .int32:
+      return "Int32"
+    case .int64:
+      return "Int64"
+    case .uint8:
+      return "UInt8"
+    case .uint16:
+      return "UInt16"
+    case .uint32:
+      return "UInt32"
+    case .uint64:
+      return "UInt64"
+    }
   }
 }
 

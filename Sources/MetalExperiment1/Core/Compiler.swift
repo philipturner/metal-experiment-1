@@ -36,8 +36,8 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var fusionTypes: TypeList16<UnaryOperationType> = .init()
-    var fusionDataTypes: TypeList4<DataType> = .init()
+    var fusionOperations: TypeList16<UnaryOperationType> = .init()
+    var fusionMetadata: TypeListStorage<SIMD2<Int>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
     var fusionTailID: UInt64 = .max
@@ -52,8 +52,8 @@ extension Context {
     @inline(never)
     func appendOperationFusion() {
       defer {
-        fusionTypes = .init()
-        fusionDataTypes = .init()
+        fusionOperations = .init()
+        fusionMetadata = .init()
         fusionHead = nil
         fusionTail = nil
         fusionTailID = .max
@@ -61,8 +61,7 @@ extension Context {
       }
       guard let fusionHead = fusionHead,
             let fusionTail = fusionTail,
-            fusionTypes.count > 0,
-            fusionDataTypes.count > 0,
+            fusionOperations.count > 0,
             fusionSize >= 0 else {
         fatalError("Something went wrong while fusing operations")
       }
@@ -71,12 +70,12 @@ extension Context {
       fusionTail.initialized = true
       
       let multiUnary = CompiledOperation.MultiUnary(
-        types: fusionTypes, dataTypes: fusionDataTypes, input: fusionHead, output: fusionTail,
-        size: fusionSize)
+        operations: fusionOperations, metadata: fusionMetadata, input: fusionHead,
+        output: fusionTail, size: fusionSize)
       compiledOperations.append(.multiUnary(multiUnary))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
-        if fusionTypes.count >= 2 {
-          print("*** Fused \(fusionTypes.count) unary operations ***")
+        if fusionOperations.count >= 2 {
+          print("*** Fused \(fusionOperations.count) unary operations ***")
         } else {
           print("Appended single unary operation")
         }
@@ -89,11 +88,9 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         var input: Allocation
-        var inputDataType: DataType
         if unary.input == fusionTailID {
           // In the middle of an operation fusion.
           input = fusionTail!
-          inputDataType = input.dataType
           
           // The tail was the output of previous operation. Something that's initialized by the
           // frontend can't be the output of an operation, only the input.
@@ -108,18 +105,14 @@ extension Context {
             appendOperationFusion()
           }
           input = _internalFetch(unary.input)
-          inputDataType = input.dataType
-          precondition(inputDataType == .float32, "Execution currently limited to 'Float'")
-          fusionDataTypes.append(inputDataType)
           fusionHead = input
-          fusionSize = inputDataType.contiguousSize(byteCount: input.byteCount)
+          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         }
-        fusionTypes.append(unary.type)
+        fusionOperations.append(unary.operation)
         
         let output = _internalFetch(unary.output)
-        let outputDataType = output.dataType
-        precondition(inputDataType == outputDataType, "Casting not yet supported")
         precondition(input.byteCount == output.byteCount)
+        precondition(input.dataType == output.dataType, "Casting not yet supported")
         fusionTail = output
         fusionTailID = unary.output
         _internalRelease(input)

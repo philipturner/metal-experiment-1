@@ -5,17 +5,17 @@
 //  Created by Philip Turner on 7/9/22.
 //
 
+// Using `UInt8` instead of `UInt16` to fit as many operations as possible into a `TypeList16`.
 enum UnaryOperationType: UInt8, CaseIterable {
-  case increment = 1
-//  case increment_f32 = 70
-//  case increment_i32 = 71
+  case increment_f32 = 70
+  case increment_i32 = 71
 }
 
 // Ordered by relative frequency, minimizing the number of conditional checks during compilation and
 // encoding.
 enum EagerOperation {
   struct Unary {
-    var type: UnaryOperationType
+    var operation: UnaryOperationType
     var input: UInt64
     var output: UInt64
   }
@@ -33,12 +33,14 @@ enum EagerOperation {
 // easier to implement and more performant.
 enum CompiledOperation {
   struct MultiUnary {
-    // `dataTypes` has half the vector capacity of `types`. It doesn't need as much storage because
-    // it's serialized efficiently. A new type is only recorded after each cast operation. When
-    // encoding Metal commands, both lists expand to 2 bytes/element, mapping one-to-one with shader
-    // loop iterations.
-    var types: TypeList16<UnaryOperationType>
-    var dataTypes: TypeList4<DataType>
+    // `metadata` much less vector capacity of `operations`. It doesn't need as much storage because
+    // it's serialized efficiently. Metadata is only recorded after each operation that needs it.
+    var operations: TypeList16<UnaryOperationType>
+    
+    // Warning: `SIMD2` does not mean 2 operations worth of metadata. It means the total capacity
+    // for metadata is 16, which happens to be (2 operations) * (8 bytes/operation). The rationing
+    // of metadata per operation is subject to change.
+    var metadata: TypeListStorage<SIMD2<Int>>
     var input: Allocation
     var output: Allocation
     var size: Int

@@ -68,18 +68,84 @@ private extension Context {
     _ operation: CompiledOperation.MultiUnary,
     into ectx: inout EncodingContext
   ) throws {
-    try operation.input.materialize()
-    try operation.output.materialize()
-    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
+    let input = operation.input
+    try input.materialize()
+    let output = operation.output
+    try output.materialize()
+    output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     let encoder = ectx.makeEncoder()
     ectx.setComputePipelineState(ShaderCache.unary_f32_i32)
+    encoder.setBuffer(input.mtlBuffer!, offset: 0, index: 0)
+    encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 1)
     
-    encoder.setBuffer(operation.input.mtlBuffer!, offset: 0, index: 0)
-    encoder.setBuffer(operation.output.mtlBuffer!, offset: 0, index: 1)
+    enum MemoryCast: UInt16 {
+      case f32_i32_native = 0
+      case f16_as_f32 = 1
+      case i8_as_i32 = 2
+      case i16_as_i32 = 3
+      case u8_as_i32 = 4
+      case u16_as_i32 = 5
+      
+      @inline(__always)
+      init(dataType: DataType) {
+        switch dataType {
+        case .float16:
+          self = .f16_as_f32
+        case .float32:
+          self = .f32_i32_native
+        case .bool:
+          self = .u8_as_i32
+        case .int8:
+          self = .i8_as_i32
+        case .int16:
+          self = .i16_as_i32
+        case .int32:
+          self = .f32_i32_native
+        case .uint8:
+          self = .u8_as_i32
+        case .uint16:
+          self = .u16_as_i32
+        case .uint32, .int64, .uint64:
+          fatalError("'unary_f32_i32' does not support data type \(dataType)")
+        }
+      }
+      
+      @inline(__always)
+      var read_size: UInt16 {
+        switch self {
+        case .f32_i32_native: return 4
+        case .f16_as_f32: return 2
+        case .i8_as_i32: return 1
+        case .i16_as_i32: return 2
+        case .u8_as_i32: return 1
+        case .u16_as_i32: return 2
+        }
+      }
+    }
     
-    var bytes = Float(operation.types.count)
-    encoder.setBytes(&bytes, length: MemoryLayout.stride(ofValue: bytes), index: 2)
+    struct DispatchParams {
+      var read_scalar_broadcast: Bool
+      var read_size: UInt16
+      var read_memory_cast: MemoryCast
+      var num_operations: UInt16
+      var write_memory_cast: MemoryCast
+      
+      init(inputDataType: DataType, numOperations: Int, outputDataType: DataType) {
+        self.read_scalar_broadcast = false
+        self.read_memory_cast = MemoryCast(dataType: inputDataType)
+        self.num_operations = UInt16(numOperations)
+        self.write_memory_cast = MemoryCast(dataType: outputDataType)
+        self.read_size = read_memory_cast.read_size
+      }
+    }
+    
+    var params = DispatchParams(
+      inputDataType: input.dataType, numOperations: operation.operations.count,
+      outputDataType: output.dataType)
+    encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 2)
+    // operations
+    // metadata
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
   }
   
@@ -87,9 +153,11 @@ private extension Context {
     _ operation: CompiledOperation.ExplicitCopy,
     into ectx: inout EncodingContext
   ) throws {
-    try operation.input.materialize()
-    try operation.output.materialize()
-    operation.output.lastModifiedCommandBufferID = ectx.commandBufferID
+    let input = operation.input
+    try input.materialize()
+    let output = operation.output
+    try output.materialize()
+    output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     // Use a blit encoder because this command's dominant use case is marshalling data over PCIe. I
     // don't know the performance characteristics of PCIe, so it's best to delegate that to Apple's
@@ -107,7 +175,7 @@ private extension Context {
     }
     
     blitEncoder.copy(
-      from: operation.input.mtlBuffer!, sourceOffset: 0, to: operation.output.mtlBuffer!,
-      destinationOffset: 0, size: operation.byteCount)
+      from: input.mtlBuffer!, sourceOffset: 0, to: output.mtlBuffer!, destinationOffset: 0,
+      size: operation.byteCount)
   }
 }
