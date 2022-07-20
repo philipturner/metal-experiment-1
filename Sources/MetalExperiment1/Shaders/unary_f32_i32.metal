@@ -88,6 +88,10 @@ struct DispatchParams {
 // - (f16/f32) -> u16 = (f32) -> u16
 // - (i16/i32/u16) -> (i8/u8) = (i32) -> u8
 // - (i32) -> (i16/u16) = (i32) -> u16
+//
+// The (f16/f32) -> (i8/i16/i32/u8/u16) casts can be represented by clamping. An operation can come
+// with some metadata, so use the metadata to provide min/max bounds. This eliminates the need to
+// have multiple instructions for very similar casts. `cast_f32_to_i32` includes all of these casts.
 
 enum UnaryOperationType: ushort {
   abs_f32, // 0
@@ -102,52 +106,46 @@ enum UnaryOperationType: ushort {
   cast_i32_to_f16, // 10
   cast_i32_to_f32, // 11
   cast_f32_to_f16, // 12
-  cast_f32_to_i8, // 13
-  cast_f32_to_i16, // 14
-  cast_f32_to_i32, // 15
-  cast_f32_to_u8, // 16
-  cast_f32_to_u16, // 17
-  cast_i32_to_u8, // 18
-  cast_i32_to_u16, // 19
+  cast_f32_to_i32, // 13
+  cast_i32_to_u8, // 14
+  cast_i32_to_u16, // 15
   
-  // Skipping 20-29 to give `cast` room to expand.
+  ceil_f32, // 20
+  cos_f32, // 21
+  cosh_f32, // 22
+  elu_f32, // 23
+  exp_f32, // 24
+  expm1_f32, // 25
+  floor_f32, // 26
   
-  ceil_f32, // 30
-  cos_f32, // 31
-  cosh_f32, // 32
-  elu_f32, // 33
-  exp_f32, // 34
-  expm1_f32, // 35
-  floor_f32, // 36
+  is_finite_f32, // 30 - returns bool/u8
+  is_inf_f32, // 31 - returns bool/u8
+  is_nan_f32, // 32 - returns bool/u8
   
-  is_finite_f32, // 40 - returns bool/u8
-  is_inf_f32, // 41 - returns bool/u8
-  is_nan_f32, // 42 - returns bool/u8
+  leaky_relu_f32, // 40
+  log_f32, // 41
+  log1p_f32, // 42
+  neg_f32, // 43
+  neg_i32, // 44 - integer operator
+  relu_f32, // 45
+  relu6_f32, // 46
+  round_f32, // 47
   
-  leaky_relu_f32, // 50
-  log_f32, // 51
-  log1p_f32, // 52
-  neg_f32, // 53
-  neg_i32, // 54 - integer operator
-  relu_f32, // 55
-  relu6_f32, // 56
-  round_f32, // 57
+  rsqrt_f32, // 50
+  selu_f32, // 51
+  sigmoid_f32, // 52
+  sign_f32, // 53
+  sign_i32, // 54 - integer operator
+  sin_f32, // 55
+  sinh_f32, // 56
+  softplus_f32, // 57
   
-  rsqrt_f32, // 60
-  selu_f32, // 61
-  sigmoid_f32, // 62
-  sign_f32, // 63
-  sign_i32, // 64 - integer operator
-  sin_f32, // 65
-  sinh_f32, // 66
-  softplus_f32, // 67
-  
-  softsign_f32, // 70
-  sqrt_f32, // 71
-  square_f32, // 72
-  square_i32, // 73 - integer operator
-  tan_f32, // 74
-  tanh_f32, // 75
+  softsign_f32, // 60
+  sqrt_f32, // 61
+  square_f32, // 62
+  square_i32, // 63 - integer operator
+  tan_f32, // 64
+  tanh_f32, // 65
 };
 
 // MARK: - Classes
@@ -268,11 +266,34 @@ public:
 
 // MARK: - Shader Function
 
+#define SET_F32(expr)  \
+storage.set_f32(expr); \
+break;                 \
+
+#define SET_I32(expr)  \
+storage.set_i32(expr); \
+break;                 \
+
+#define GET_SET_F32(expr)        \
+SET_F32(expr(storage.get_f32())) \
+
+#define GET_SET_I32(expr)        \
+SET_I32(expr(storage.get_i32())) \
+
+// Bytes of metadata allowed per operation.
+constant ushort METADATA_BYTES = 4;
+
+constant void* get_metadata(constant void *metadata, ushort pc) {
+  ushort byte_offset = pc * METADATA_BYTES;
+  return (constant uchar*)metadata + byte_offset;
+}
+
 kernel void unary_f32_i32_new(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
   constant DispatchParams &params [[buffer(2)]],
-  constant UnaryOperationType *op_types [[buffer(3)]],
+  constant UnaryOperationType *operations [[buffer(3)]],
+  constant void *metadata [[buffer(4)]],
   uint tid [[thread_position_in_grid]]
 ) {
   uint read_pos = params.read_scalar_broadcast ? 0 : tid;
@@ -341,6 +362,108 @@ kernel void unary_f32_i32_new(
     case u16_as_i32: {
       storage.set_u16(compressed_storage);
       break;
+    }
+  }
+  
+  // pc = program counter
+  for (ushort pc = 0; pc < params.num_ops; ++pc) {
+    UnaryOperationType operation = operations[pc];
+    if (operation <= atan_f32) {
+      switch (operation) {
+        case abs_f32: {
+          GET_SET_F32(precise::abs)
+        }
+        case abs_i32: {
+          GET_SET_I32(abs)
+        }
+        case acos_f32: {
+          GET_SET_F32(precise::acos)
+        }
+        case acosh_f32: {
+          GET_SET_F32(precise::acosh)
+        }
+        case asin_f32: {
+          GET_SET_F32(precise::asin)
+        }
+        case asinh_f32: {
+          GET_SET_F32(precise::asinh)
+        }
+        case atan_f32: {
+          GET_SET_F32(precise::atan)
+        }
+        case atanh_f32: {
+          GET_SET_F32(precise::atanh)
+        }
+        default:
+          return; // This should never happen.
+      }
+    } else if (operation <= cast_i32_to_u16) {
+      
+    } else if (operation <= floor_f32) {
+      switch (operation) {
+        case ceil_f32: {
+          GET_SET_F32(precise::ceil)
+        }
+        case cos_f32: {
+          GET_SET_F32(precise::cos)
+        }
+        case cosh_f32: {
+          GET_SET_F32(precise::cos)
+        }
+        case elu_f32: {
+          auto x = storage.get_f32();
+          x = select(x, precise::exp(x) - 1, x < 0);
+          SET_F32(x)
+        }
+        case exp_f32: {
+          GET_SET_F32(precise::exp)
+        }
+        case expm1_f32: {
+          auto x = storage.get_f32();
+          SET_F32(precise::exp(x) - 1)
+        }
+        case floor_f32: {
+          GET_SET_F32(precise::floor)
+        }
+        default:
+          return; // This should never happen.
+      }
+    } else if (operation <= is_nan_f32) {
+      
+    } else if (operation <= round_f32) {
+      switch (operation) {
+        case leaky_relu_f32: {
+          auto x = storage.get_f32();
+          auto operation_metadata = get_metadata(metadata, pc);
+          float alpha = ((constant float*)operation_metadata)[0];
+          x = precise::max(x, x * alpha);
+          SET_F32(x);
+        }
+        case log_f32: {
+          GET_SET_F32(precise::log);
+        }
+        case log1p_f32: {
+          auto x = storage.get_f32();
+          SET_F32(precise::log(1 + x));
+        }
+        case neg_f32: {
+          GET_SET_F32(-)
+        }
+        case neg_i32: {
+          GET_SET_I32(-)
+        }
+        case relu_f32: {
+          auto x = storage.get_f32();
+          SET_F32(max(0, x))
+        }
+        case relu6_f32: {
+          
+        }
+      }
+    } else if (operation <= softplus_f32) {
+      
+    } else if (operation <= tanh_f32) {
+      
     }
   }
 }
