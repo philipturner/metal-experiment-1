@@ -264,7 +264,7 @@ public:
   }
 };
 
-// MARK: - Shader Function
+// MARK: - Shader Function Utilities
 
 #define SET_F32(expr)  \
 storage.set_f32(expr); \
@@ -287,6 +287,17 @@ constant void* get_metadata(constant void *metadata, ushort pc) {
   ushort byte_offset = pc * METADATA_BYTES;
   return (constant uchar*)metadata + byte_offset;
 }
+
+namespace metal {
+  namespace precise {
+    inline float4 expm1(float4 x) {
+      return precise::exp(x) - 1;
+    }
+  }
+}
+
+
+// MARK: - Shader Function
 
 kernel void unary_f32_i32_new(
   device void *input [[buffer(0)]],
@@ -412,15 +423,14 @@ kernel void unary_f32_i32_new(
         }
         case elu_f32: {
           auto x = storage.get_f32();
-          x = select(x, precise::exp(x) - 1, x < 0);
+          x = select(x, precise::expm1(x), x < 0);
           SET_F32(x)
         }
         case exp_f32: {
           GET_SET_F32(precise::exp)
         }
         case expm1_f32: {
-          auto x = storage.get_f32();
-          SET_F32(precise::exp(x) - 1)
+          GET_SET_F32(precise::expm1)
         }
         case floor_f32: {
           GET_SET_F32(precise::floor)
@@ -467,7 +477,25 @@ kernel void unary_f32_i32_new(
           return; // This should never happen.
       }
     } else if (operation <= softplus_f32) {
-      
+      switch (operation) {
+        case rsqrt_f32: {
+          GET_SET_F32(precise::rsqrt)
+        }
+        case selu_f32: {
+          auto x = storage.get_f32();
+          constexpr float ALPHA = 1.6732632423543772848170429916717;
+          constexpr float SCALE = 1.0507009873554804934193349852946;
+          x = select(x, ALPHA * precise::expm1(x), x < 0);
+          x = SCALE * x;
+          SET_F32(x);
+        }
+        case sigmoid_f32: {
+          auto x = storage.get_f32();
+          x = 1 + precise::exp(-x);
+          x = precise::divide(1, x);
+          SET_F32(x);
+        }
+      }
     } else if (operation <= tanh_f32) {
       
     }
