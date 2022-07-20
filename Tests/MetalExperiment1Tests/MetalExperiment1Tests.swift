@@ -141,8 +141,7 @@ final class MetalExperiment1Tests: XCTestCase {
   // Enables automatic fusion of unary ops, with no extra work from the frontend. Deallocated
   // (invalid) tensors become placeholders for operation fusion.
   func testARCDeallocation() throws {
-    testHeader("Automatic ARC deallocation")
-    
+    testHeader()
     Self.history = []
     
     class DummyTensorHandle {
@@ -214,8 +213,8 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertEqual(Self.history, expectedHistory)
   }
   
-  func testOperationTypeList() throws {
-    testHeader("OperationTypeList")
+  func testTypeList() throws {
+    testHeader()
     
     enum TestOperationType: UInt8, CaseIterable {
       case type1
@@ -224,7 +223,7 @@ final class MetalExperiment1Tests: XCTestCase {
       case type4
     }
     
-    var list1 = OperationTypeList2<TestOperationType>()
+    var list1 = TypeList2<TestOperationType>()
     list1.append(.type2)
     XCTAssertEqual(list1.count, 1)
     XCTAssertEqual(list1[0], .type2)
@@ -237,7 +236,7 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertEqual(list1[2], .type4)
     
     // Would crash with a regular Swift array, but is acceptable here.
-    let list2 = OperationTypeList16<TestOperationType>()
+    let list2 = TypeList16<TestOperationType>()
     XCTAssertEqual(list2.count, 0)
     XCTAssertEqual(TestOperationType.type1.rawValue, 0)
     XCTAssertEqual(list2[0], .type1)

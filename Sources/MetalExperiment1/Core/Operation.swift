@@ -35,8 +35,8 @@ enum CompiledOperation {
     // it's serialized efficiently. A new type is only recorded after each cast operation. When
     // encoding Metal commands, both lists expand to 2 bytes/element, mapping one-to-one with shader
     // loop iterations.
-    var types: OperationTypeList16<UnaryOperationType>
-    var dataTypes: OperationTypeList4<DataType>
+    var types: TypeList16<UnaryOperationType>
+    var dataTypes: TypeList4<DataType>
     var input: Allocation
     var output: Allocation
     var size: Int

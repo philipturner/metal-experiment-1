@@ -143,39 +143,44 @@ func fetchEnvironmentBoolean(_ name: String) -> Bool {
   return false
 }
 
-// MARK: - OperationTypeList
+// MARK: - TypeList
+
+typealias TypeListElement = CaseIterable & RawRepresentable
+typealias TypeListRawValue = FixedWidthInteger & SIMDScalar
 
 // Similar to the `SmallVector<_, _>` C++ type in LLVM.
-protocol OperationTypeList {
-  associatedtype Element: CaseIterable & RawRepresentable
-  where Element.RawValue: FixedWidthInteger & SIMDScalar
+protocol TypeList {
+  associatedtype Element: TypeListElement
+  where Element.RawValue: TypeListRawValue
   
-  associatedtype Vector: SIMD where Vector.Scalar == Element.RawValue
-  var storage: OperationTypeListStorage<Vector> { get set }
+  associatedtype Vector: SIMD
+  where Vector.Scalar == Element.RawValue
+  
+  var storage: TypeListStorage<Vector> { get set }
 }
 
-struct OperationTypeListStorage<Vector: SIMD>
-where Vector.Scalar: FixedWidthInteger & SIMDScalar {
+struct TypeListStorage<Vector: SIMD>
+where Vector.Scalar: TypeListRawValue {
   private var vector: Vector
-  private(set) fileprivate var count: Int
+  private(set) var count: Int
   private var array: [Vector.Scalar]?
   
   @inline(__always)
-  fileprivate init() {
+  init() {
     vector = .zero
     count = 0
     array = nil
   }
   
   @inline(__always)
-  fileprivate mutating func append(_ newElement: Vector.Scalar) {
+  mutating func append(_ newElement: Vector.Scalar) {
     if count < Vector.scalarCount {
       vector[count] = newElement
     } else {
       if _slowPath(array == nil) {
-        array = Array(unsafeUninitializedCapacity: Vector.scalarCount &+ 1) { bufferPointer, count in
+        array = Array(unsafeUninitializedCapacity: Vector.scalarCount &+ 1) { ptr, count in
           count = self.count
-          bufferPointer.withMemoryRebound(to: Vector.self) { ptr in
+          ptr.withMemoryRebound(to: Vector.self) { ptr in
             ptr[0] = vector
           }
         }
@@ -186,7 +191,7 @@ where Vector.Scalar: FixedWidthInteger & SIMDScalar {
   }
   
   @inline(__always)
-  fileprivate subscript(index: Int) -> Vector.Scalar {
+  subscript(index: Int) -> Vector.Scalar {
     if count <= Vector.scalarCount {
       return vector[index]
     } else {
@@ -195,7 +200,7 @@ where Vector.Scalar: FixedWidthInteger & SIMDScalar {
   }
 }
 
-extension OperationTypeList {
+extension TypeList {
   @inline(__always)
   mutating func append(_ newElement: Element) {
     storage.append(newElement.rawValue)
@@ -212,42 +217,36 @@ extension OperationTypeList {
   }
 }
 
-// MARK: - OperationTypeList Implementations
+// MARK: - TypeList Implementations
 
-struct OperationTypeList2<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList2<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD2<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
-struct OperationTypeList4<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList4<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD4<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
-struct OperationTypeList8<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList8<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD8<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
-struct OperationTypeList16<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList16<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD16<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
-struct OperationTypeList32<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList32<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD32<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
-struct OperationTypeList64<Element: CaseIterable & RawRepresentable>: OperationTypeList
-where Element.RawValue: FixedWidthInteger & SIMDScalar {
+struct TypeList64<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
   typealias Vector = SIMD64<Element.RawValue>
-  var storage: OperationTypeListStorage<Vector> = .init()
+  var storage: TypeListStorage<Vector> = .init()
 }
 
 // MARK: - StringWrapper

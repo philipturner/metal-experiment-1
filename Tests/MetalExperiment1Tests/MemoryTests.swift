@@ -171,7 +171,7 @@ final class MemoryTests: XCTestCase {
   }
   
   func testComplexAllocation() throws {
-    testHeader("Complex memory allocation")
+    testHeader()
     HeapAllocator._releaseCachedBufferBlocks()
     
     func allocate(byteCount: Int) -> UInt64 {

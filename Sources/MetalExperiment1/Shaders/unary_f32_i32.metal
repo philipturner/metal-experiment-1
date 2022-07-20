@@ -99,61 +99,61 @@ struct DispatchParams {
 // have multiple instructions for very similar casts. `cast_f32_to_i32` includes all of these casts.
 
 enum UnaryOperationType: ushort {
-  abs_f32, // 0
-  abs_i32, // 1 - integer operation
-  acos_f32, // 2
-  acosh_f32, // 3
-  asin_f32, // 4
-  asinh_f32, // 5
-  atan_f32, // 6
-  atanh_f32, // 7
+  abs_f32 = 0,
+  abs_i32 = 1, // integer operation
+  acos_f32 = 2,
+  acosh_f32 = 3,
+  asin_f32 = 4,
+  asinh_f32 = 5,
+  atan_f32 = 6,
+  atanh_f32 = 7,
   
-  cast_f32_to_f16, // 10
-  cast_f32_to_i32, // 11
-  cast_i32_to_f16, // 12
-  cast_i32_to_f32, // 13
-  cast_i32_to_u8, // 14
-  cast_i32_to_u16, // 15
+  cast_f32_to_f16 = 10,
+  cast_f32_to_i32 = 11,
+  cast_i32_to_f16 = 12,
+  cast_i32_to_f32 = 13,
+  cast_i32_to_u8 = 14,
+  cast_i32_to_u16 = 15,
   
-  ceil_f32, // 20
-  cos_f32, // 21
-  cosh_f32, // 22
-  elu_f32, // 23
-  exp_f32, // 24
-  expm1_f32, // 25
-  floor_f32, // 26
+  ceil_f32 = 20,
+  cos_f32 = 21,
+  cosh_f32 = 22,
+  elu_f32 = 23,
+  exp_f32 = 24,
+  expm1_f32 = 25,
+  floor_f32 = 26,
   
-  is_finite_f32, // 30 - returns bool/u8
-  is_inf_f32, // 31 - returns bool/u8
-  is_nan_f32, // 32 - returns bool/u8
+  is_finite_f32 = 30, // returns bool/u8
+  is_inf_f32 = 31, // returns bool/u8
+  is_nan_f32 = 32, // returns bool/u8
   
-  leaky_relu_f32, // 40
-  log_f32, // 41
-  log1p_f32, // 42
-  neg_f32, // 43
-  neg_i32, // 44 - integer operation
-  relu_f32, // 45
-  relu6_f32, // 46
-  round_f32, // 47 - rounds to nearest even
+  leaky_relu_f32 = 40,
+  log_f32 = 41,
+  log1p_f32 = 42,
+  neg_f32 = 43,
+  neg_i32 = 44, // integer operation
+  relu_f32 = 45,
+  relu6_f32 = 46,
+  round_f32 = 47, // rounds to nearest even
   
-  rsqrt_f32, // 50
-  selu_f32, // 51
-  sigmoid_f32, // 52
-  sign_f32, // 53
-  sign_i32, // 54 - integer operation
-  sin_f32, // 55
-  sinh_f32, // 56
-  softplus_f32, // 57
+  rsqrt_f32 = 50,
+  selu_f32 = 51,
+  sigmoid_f32 = 52,
+  sign_f32 = 53,
+  sign_i32 = 54, // integer operation
+  sin_f32 = 55,
+  sinh_f32 = 56,
+  softplus_f32 = 57,
   
-  softsign_f32, // 60
-  sqrt_f32, // 61
-  square_f32, // 62
-  square_i32, // 63 - integer operation
-  tan_f32, // 64
-  tanh_f32, // 65
+  softsign_f32 = 60,
+  sqrt_f32 = 61,
+  square_f32 = 62,
+  square_i32 = 63, // integer operation
+  tan_f32 = 64,
+  tanh_f32 = 65,
   
-  increment_f32, // 70 - for testing purposes only
-  increment_i32, // 71 - for testing purposes only
+  increment_f32 = 70, // for testing purposes only
+  increment_i32 = 71, // for testing purposes only
 };
 
 // MARK: - Classes

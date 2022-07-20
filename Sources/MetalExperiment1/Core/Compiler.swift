@@ -36,8 +36,8 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var fusionTypes: OperationTypeList16<UnaryOperationType> = .init()
-    var fusionDataTypes: OperationTypeList4<DataType> = .init()
+    var fusionTypes: TypeList16<UnaryOperationType> = .init()
+    var fusionDataTypes: TypeList4<DataType> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
     var fusionTailID: UInt64 = .max
