@@ -21,7 +21,8 @@ using namespace metal;
 // Limit write alignment to 16B, taking a slight performance hit on the u32/i64/u64 ubershader. Use
 // vectors of 2 scalars there. 64-bit operations are already ALU heavy, giving the performance
 // characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
-// special number.
+// special number: the alignment of `malloc` pointers and memory alignment of all Swift SIMD types.
+// On x86 with AVX-512 vectors, the alignment might be larger, but not smaller.
 
 kernel void unary_f32_i32_old(
   device float *input [[buffer(0)]],
