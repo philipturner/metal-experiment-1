@@ -176,10 +176,15 @@ extension OperationRegistry {
     ctx._internalRetain(output1_alloc)
     
     // Append operation
-    let operation = EagerOperation.Unary(type: .increment, input: input1_id, output: output1_id)
-    ctx.eagerOperations.append(.unary(operation))
+    let dataType = input1_alloc.dataType
+    let operation: UnaryOperationType = dataType.isFloatingPoint ? .increment_f32 : .increment_i32
+    ctx.eagerOperations.append(.unary(.init(
+      operation: operation, input: input1_id, output: output1_id)))
     
     // Return
     encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
   }
 }
+
+// TODO: A shared function for F32 types
+// TODO: A shared function for F32/I32 types

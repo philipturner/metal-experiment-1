@@ -94,9 +94,14 @@ struct DispatchParams {
 // - (i16/i32/u16) -> (i8/u8) = (i32) -> u8
 // - (i32) -> (i16/u16) = (i32) -> u16
 //
-// The (f16/f32) -> (i8/i16/i32/u8/u16) casts can be represented by clamping. An operation can come
-// with some metadata, so use the metadata to provide min/max bounds. This eliminates the need to
-// have multiple instructions for very similar casts. `cast_f32_to_i32` includes all of these casts.
+// Additional casts not listed in the table:
+// - (f16/f32) -> bool = (f32) -> bool
+// - (i8/i16/i32/u8/u16) -> bool = (i32) -> bool
+//
+// The (f16/f32) -> (bool/i8/i16/i32/u8/u16) casts can be represented by clamping. An operation can
+// come with some metadata, so use the metadata to provide min/max bounds. This eliminates the need
+// to have multiple instructions for very similar casts. `cast_f32_to_i32` encapsulates all of these
+// casts.
 
 enum UnaryOperationType: ushort {
   abs_f32 = 0,
@@ -110,10 +115,11 @@ enum UnaryOperationType: ushort {
   
   cast_f32_to_f16 = 10,
   cast_f32_to_i32 = 11,
-  cast_i32_to_f16 = 12,
-  cast_i32_to_f32 = 13,
-  cast_i32_to_u8 = 14,
-  cast_i32_to_u16 = 15,
+  cast_i32_to_bool = 12,
+  cast_i32_to_f16 = 13,
+  cast_i32_to_f32 = 14,
+  cast_i32_to_u8 = 15,
+  cast_i32_to_u16 = 16,
   
   ceil_f32 = 20,
   cos_f32 = 21,
@@ -130,11 +136,12 @@ enum UnaryOperationType: ushort {
   leaky_relu_f32 = 40,
   log_f32 = 41,
   log1p_f32 = 42,
-  neg_f32 = 43,
-  neg_i32 = 44, // integer operation
-  relu_f32 = 45,
-  relu6_f32 = 46,
-  round_f32 = 47, // rounds to nearest even
+  logical_not = 43, // boolean operation
+  neg_f32 = 44,
+  neg_i32 = 45, // integer operation
+  relu_f32 = 46,
+  relu6_f32 = 47,
+  round_f32 = 48, // rounds to nearest even
   
   rsqrt_f32 = 50,
   selu_f32 = 51,
@@ -307,9 +314,10 @@ SET_I32(expr(storage.get_i32())) \
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
 
+// Warning: `index` is a captured mutable reference.
 constant void* get_metadata(constant void *metadata, thread ushort &index) {
   ushort byte_offset = index * METADATA_BYTES;
-  index += 1
+  index += 1;
   return (constant uchar*)metadata + byte_offset;
 }
 
@@ -335,7 +343,7 @@ kernel void unary_f32_i32_new(
   CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
     uint mem_slice_u32 = ((device uint*)input)[0];
-    switch (params.read_memory_cast) {
+    switch (params.read_size) {
       case 1: {
         uchar mem_slice = uchar(mem_slice_u32);
         compressed_storage.set_scalar_u8(mem_slice);
@@ -400,6 +408,8 @@ kernel void unary_f32_i32_new(
     }
   }
   
+  ushort metadata_index = 0;
+  
   // pc = program counter
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
     UnaryOperationType operation = operations[pc];
@@ -441,12 +451,18 @@ kernel void unary_f32_i32_new(
         }
         case cast_f32_to_i32: {
           auto x = storage.get_f32();
-          auto operation_metadata = get_metadata(metadata, &pc);FIXME
+          auto operation_metadata = get_metadata(metadata, metadata_index);
           int2 bounds = ((constant int2*)operation_metadata)[0];
           auto casted = int4(x);
           casted = clamp(casted, bounds[0], bounds[1]);
           SET_I32(casted)
         }
+        case cast_i32_to_bool: {
+          auto x = storage.get_i32();
+          auto casted = bool4(x);
+          SET_I32(int4(casted));
+        }
+          // TODO: cast_i32_to_bool
         case cast_i32_to_f16: {
           auto x = storage.get_i32();
           auto casted = half4(x);
@@ -521,7 +537,7 @@ kernel void unary_f32_i32_new(
       switch (operation) {
         case leaky_relu_f32: {
           auto x = storage.get_f32();
-          auto operation_metadata = get_metadata(metadata, pc);
+          auto operation_metadata = get_metadata(metadata, metadata_index);
           float alpha = ((constant float*)operation_metadata)[0];
           x = precise::max(x, x * alpha);
           SET_F32(x);
@@ -532,6 +548,12 @@ kernel void unary_f32_i32_new(
         case log1p_f32: {
           auto x = storage.get_f32();
           SET_F32(precise::log(1 + x));
+        }
+        case logical_not: {
+          auto x = storage.get_i32();
+          auto casted = bool4(x);
+          auto mask = int4(!casted);
+          SET_I32(mask)
         }
         case neg_f32: {
           GET_SET_F32(-)

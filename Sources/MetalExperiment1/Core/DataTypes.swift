@@ -152,6 +152,16 @@ enum DataType: UInt16, CaseIterable, CustomStringConvertible {
   }
   
   @inline(__always)
+  var isFloatingPoint: Bool {
+    rawValue <= 1
+  }
+  
+  @inline(__always)
+  var isSigned: Bool {
+    rawValue >= 3 && rawValue <= 6
+  }
+  
+  @inline(__always)
   func contiguousSize(byteCount: Int) -> Int {
     let stridePowerOf2 = self.stride.trailingZeroBitCount
     return byteCount >> stridePowerOf2

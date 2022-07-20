@@ -140,12 +140,32 @@ private extension Context {
       }
     }
     
+    let numOperations = operation.operations.count
     var params = DispatchParams(
-      inputDataType: input.dataType, numOperations: operation.operations.count,
-      outputDataType: output.dataType)
+      inputDataType: input.dataType, numOperations: numOperations, outputDataType: output.dataType)
     encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 2)
-    // operations
-    // metadata
+    
+    withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in
+      let operations = bufferPointer.baseAddress!
+      for i in 0..<numOperations {
+        operations[i] = UInt16(operation.operations[i].rawValue)
+      }
+      let length = numOperations * MemoryLayout<UInt16>.stride
+      encoder.setBytes(operations, length: length, index: 3)
+    }
+    
+    // One unit of metadata, but not exactly one operation's total allocation of metadata.
+    typealias Atom = TypeListStorage<SIMD2<Int>>.Scalar
+    let numMetadataAtoms = operation.metadata.count
+    withUnsafeTemporaryAllocation(of: Atom.self, capacity: numMetadataAtoms) { bufferPointer in
+      let metadata = bufferPointer.baseAddress!
+      for i in 0..<numMetadataAtoms {
+        metadata[i] = operation.metadata[i]
+      }
+      let length = numMetadataAtoms * MemoryLayout<Atom>.stride
+      encoder.setBytes(metadata, length: length, index: 4)
+    }
+    
     encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
   }
   
