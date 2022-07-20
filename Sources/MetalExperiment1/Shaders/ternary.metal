@@ -1,5 +1,5 @@
 //
-//  tertiary.metal
+//  ternary.metal
 //
 //
 //  Created by Philip Turner on 7/8/22.
@@ -8,7 +8,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-kernel void tertiary(
+kernel void ternary(
   device float *input1 [[buffer(0)]],
   device float *input2 [[buffer(1)]],
   device float *input3 [[buffer(2)]],

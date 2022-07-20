@@ -39,7 +39,7 @@ enum ShaderCache {
     enqueue(name: "binary", asynchronous: false)
     DispatchQueue.global().async {
       enqueue(name: "unary_u32_i64_u64", asynchronous: false)
-      enqueue(name: "tertiary", asynchronous: false)
+      enqueue(name: "ternary", asynchronous: false)
     }
   }
   
@@ -109,5 +109,5 @@ extension ShaderCache {
   static let unary_f32_i32 = Self.wait(name: "unary_f32_i32")
   static let unary_u32_i64_u64 = Self.wait(name: "unary_u32_i64_u64")
   static let binary = Self.wait(name: "binary")
-  static let tertiary = Self.wait(name: "tertiary")
+  static let ternary = Self.wait(name: "tertiary")
 }

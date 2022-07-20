@@ -90,61 +90,64 @@ struct DispatchParams {
 // - (i32) -> (i16/u16) = (i32) -> u16
 
 enum UnaryOperationType: ushort {
-  abs_f32,
-  abs_i32, // integer operator
-  acos_f32,
-  acosh_f32,
-  asin_f32,
-  asinh_f32,
-  atan_f32,
-  atanh_f32,
+  abs_f32, // 0
+  abs_i32, // 1 - integer operator
+  acos_f32, // 2
+  acosh_f32, // 3
+  asin_f32, // 4
+  asinh_f32, // 5
+  atan_f32, // 6
+  atanh_f32, // 7
   
-  cast_i32_to_f16,
-  cast_i32_to_f32,
-  cast_f32_to_f16,
-  cast_f32_to_i8,
-  cast_f32_to_i16,
-  cast_f32_to_i32,
-  cast_f32_to_u8,
-  cast_f32_to_u16,
-  cast_i32_to_u8,
-  cast_i32_to_u16,
+  cast_i32_to_f16, // 10
+  cast_i32_to_f32, // 11
+  cast_f32_to_f16, // 12
+  cast_f32_to_i8, // 13
+  cast_f32_to_i16, // 14
+  cast_f32_to_i32, // 15
+  cast_f32_to_u8, // 16
+  cast_f32_to_u16, // 17
+  cast_i32_to_u8, // 18
+  cast_i32_to_u16, // 19
   
-  ceil_f32,
-  cos_f32,
-  cosh_f32,
-  elu_f32,
-  exp_f32,
-  expm1_f32,
-  floor_f32,
+  // Skipping 20-29 to give `cast` room to expand.
   
-  is_finite_f32, // returns bool/u8
-  is_inf_f32, // returns bool/u8
-  is_nan_f32, // returns bool/u8
+  ceil_f32, // 30
+  cos_f32, // 31
+  cosh_f32, // 32
+  elu_f32, // 33
+  exp_f32, // 34
+  expm1_f32, // 35
+  floor_f32, // 36
   
-  leaky_relu_f32,
-  log_f32,
-  log1p_f32,
-  neg_f32,
-  neg_i32, // integer operator
-  relu_f32,
-  relu6_f32,
-  round_f32,
-  rsqrt_f32,
-  selu_f32,
-  sigmoid_f32,
+  is_finite_f32, // 40 - returns bool/u8
+  is_inf_f32, // 41 - returns bool/u8
+  is_nan_f32, // 42 - returns bool/u8
   
-  sign_f32,
-  sign_i32, // integer operator
-  sin_f32,
-  sinh_f32,
-  softplus_f32,
-  softsign_f32,
-  sqrt_f32,
-  square_f32,
-  square_i32, // integer operator
-  tan_f32,
-  tanh_f32,
+  leaky_relu_f32, // 50
+  log_f32, // 51
+  log1p_f32, // 52
+  neg_f32, // 53
+  neg_i32, // 54 - integer operator
+  relu_f32, // 55
+  relu6_f32, // 56
+  round_f32, // 57
+  
+  rsqrt_f32, // 60
+  selu_f32, // 61
+  sigmoid_f32, // 62
+  sign_f32, // 63
+  sign_i32, // 64 - integer operator
+  sin_f32, // 65
+  sinh_f32, // 66
+  softplus_f32, // 67
+  
+  softsign_f32, // 70
+  sqrt_f32, // 71
+  square_f32, // 72
+  square_i32, // 73 - integer operator
+  tan_f32, // 74
+  tanh_f32, // 75
 };
 
 // MARK: - Classes
@@ -238,7 +241,7 @@ public:
     data = as_type<uint4>(casted);
   }
   
-  // Instruction execution helpers
+  // Instruction execution utilities
   
   void set_f32(float4 input) {
     data = as_type<uint4>(input);
@@ -254,6 +257,12 @@ public:
   
   int4 get_i32() const {
     return as_type<int4>(data);
+  }
+  
+  // Memory writing utilities
+  
+  uint4 get_vector_u32() const {
+    return data;
   }
 };
 
@@ -307,4 +316,31 @@ kernel void unary_f32_i32_new(
     }
   }
   
+  Storage storage;
+  switch (params.memory_cast) {
+    case f32_i32_native: {
+      storage.set_f32_i32(compressed_storage);
+      break;
+    }
+    case f16_as_f32: {
+      storage.set_f16(compressed_storage);
+      break;
+    }
+    case i8_as_i32: {
+      storage.set_i8(compressed_storage);
+      break;
+    }
+    case i16_as_i32: {
+      storage.set_i16(compressed_storage);
+      break;
+    }
+    case u8_as_i32: {
+      storage.set_u8(compressed_storage);
+      break;
+    }
+    case u16_as_i32: {
+      storage.set_u16(compressed_storage);
+      break;
+    }
+  }
 }
