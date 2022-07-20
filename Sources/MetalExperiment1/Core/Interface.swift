@@ -163,8 +163,7 @@ extension OperationRegistry {
   static func dispatchUnary(
     _ args: inout Arguments,
     _ operation_f32: UnaryOperationType?,
-    _ operation_i32: UnaryOperationType?,
-    _ operation_u32_i64_u64: UnaryOperationType?
+    _ operation_i32: UnaryOperationType?
   ) {
     let ctx = Context.global
     precondition(args.inputs.count == 1)
@@ -191,25 +190,26 @@ extension OperationRegistry {
     var operation: UnaryOperationType
     switch (operation_f32, operation_i32) {
     case (.some(let operation_f32), .some(let operation_i32)):
-      break
+      if dataType.isFloatingPoint {
+        operation = operation_f32
+      } else if dataType.representableByInt32 {
+        operation = operation_i32
+      } else {
+        preconditionFailure(dataMismatch(operation_i32))
+      }
     case (.some(let operation_f32), .none):
       precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
-      break
+      operation = operation_f32
     case (.none, .some(let operation_i32)):
-      precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
-      break
+      precondition(dataType.representableByInt32, dataMismatch(operation_i32))
+      operation = operation_i32
     case (.none, .none):
-      break
+      fatalError("This should never happen.")
     }
     
-//    // Append operation.
-//
-//
-//    // Append operation and encode output
-//    ctx.eagerOperations.append(.unary(.init(
-//      operation: operation, input: input1_id, output: output1_id)))
-//
-//    return dataType
+    // Append operation.
+    ctx.eagerOperations.append(.unary(.init(
+      operation: operation, input: input1_id, output: output1_id)))
   }
 }
 
@@ -217,26 +217,6 @@ extension OperationRegistry {
 extension OperationRegistry {
   static let increment = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    let ctx = Context.global
-    precondition(args.inputs.count == 1)
-    precondition(args.outputs.count == 1)
-    
-    // Fetch inputs
-    let input1_id = decodeInput(&args.inputs)
-    let input1_alloc = ctx._internalFetch(input1_id)
-    ctx._internalRetain(input1_alloc)
-    
-    // Generate outputs
-    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc)
-    ctx._internalRetain(output1_alloc)
-    
-    // Append operation
-    let dataType = input1_alloc.dataType
-    let operation: UnaryOperationType = dataType.isFloatingPoint ? .increment_f32 : .increment_i32
-    ctx.eagerOperations.append(.unary(.init(
-      operation: operation, input: input1_id, output: output1_id)))
-    
-    // Return
-    encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
+    dispatchUnary(&args, .increment_f32, .increment_i32)
   }
 }

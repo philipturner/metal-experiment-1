@@ -55,4 +55,27 @@ final class TensorTests: XCTestCase {
     XCTAssertEqual(shape2.dimensions, shape3.dimensions)
     Profiler.log("Tensor shape test execution time")
   }
+  
+  func testUnaryOperations() throws {
+    testHeader()
+    func test<T: Equatable>(_ function: (Tensor<T>) -> () -> Tensor<T>, input: T, expected: T) {
+      let tensor = Tensor(repeating: input, shape: [5])
+      let transformedTensor = function(tensor)()
+      XCTAssertEqual(transformedTensor.scalars, [T](repeating: expected, count: 5))
+    }
+    
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Tensor<Float16>.incremented, input: 42, expected: 43)
+    #endif
+    test(Tensor<Float>.incremented, input: 42, expected: 43)
+    test(Tensor<Int8>.incremented, input: 42, expected: 43)
+    test(Tensor<Int16>.incremented, input: 42, expected: 43)
+    test(Tensor<Int32>.incremented, input: 42, expected: 43)
+    test(Tensor<UInt8>.incremented, input: 42, expected: 43)
+    test(Tensor<UInt16>.incremented, input: 42, expected: 43)
+    
+    // Test overflow of small integers.
+    test(Tensor<Int8>.incremented, input: 127, expected: -128)
+    test(Tensor<UInt8>.incremented, input: 255, expected: 0)
+  }
 }

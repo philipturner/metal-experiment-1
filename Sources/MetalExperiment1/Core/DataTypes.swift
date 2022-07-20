@@ -162,6 +162,12 @@ enum DataType: UInt16, CaseIterable, CustomStringConvertible {
   }
   
   @inline(__always)
+  var representableByInt32: Bool {
+    (rawValue >= 2 && rawValue <= 5) ||
+    (rawValue >= 7 && rawValue <= 8)
+  }
+  
+  @inline(__always)
   func contiguousSize(byteCount: Int) -> Int {
     let stridePowerOf2 = self.stride.trailingZeroBitCount
     return byteCount >> stridePowerOf2
