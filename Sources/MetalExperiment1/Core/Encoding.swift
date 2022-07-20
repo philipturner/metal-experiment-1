@@ -79,7 +79,7 @@ private extension Context {
     encoder.setBuffer(input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 1)
     
-    enum MemoryCast: UInt16 {
+    enum MemoryCast: UInt16, RawRepresentable {
       case f32_i32_native = 0
       case f16_as_f32 = 1
       case i8_as_i32 = 2
@@ -124,18 +124,23 @@ private extension Context {
       }
     }
     
+    // The memory casts must be stored as explicit raw values, instead of Swift enums. Doing the
+    // latter makes Metal code run incorrectly. Swift probably doesn't store an `enum` in memory
+    // using its exact raw value.
     struct DispatchParams {
       var read_scalar_broadcast: Bool
       var read_size: UInt16
-      var read_memory_cast: MemoryCast
+      var read_memory_cast: MemoryCast.RawValue
       var num_operations: UInt16
-      var write_memory_cast: MemoryCast
+      var write_memory_cast: MemoryCast.RawValue
       
       init(inputDataType: DataType, numOperations: Int, outputDataType: DataType) {
+        let read_memory_cast = MemoryCast(dataType: inputDataType)
+        let write_memory_cast = MemoryCast(dataType: outputDataType)
         self.read_scalar_broadcast = false
-        self.read_memory_cast = MemoryCast(dataType: inputDataType)
+        self.read_memory_cast = read_memory_cast.rawValue
         self.num_operations = UInt16(numOperations)
-        self.write_memory_cast = MemoryCast(dataType: outputDataType)
+        self.write_memory_cast = write_memory_cast.rawValue
         self.read_size = read_memory_cast.read_size
       }
     }
@@ -166,7 +171,8 @@ private extension Context {
       encoder.setBytes(metadata, length: length, index: 4)
     }
     
-    encoder.dispatchThreadgroups(.init(operation.size), threadsPerThreadgroup: 1)
+    let numThreads = (operation.size + 3) / 4
+    encoder.dispatchThreadgroups(MTLSize(numThreads), threadsPerThreadgroup: 1)
   }
   
   func encodeExplicitCopy(

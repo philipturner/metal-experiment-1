@@ -23,7 +23,7 @@ using namespace metal;
 // characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
 // special number.
 
-kernel void unary_f32_i32(
+kernel void unary_f32_i32_old(
   device float *input [[buffer(0)]],
   device float *output [[buffer(1)]],
   constant float &increment [[buffer(2)]],
@@ -331,7 +331,7 @@ namespace metal {
 
 // MARK: - Shader Function
 
-kernel void unary_f32_i32_new(
+kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
   constant DispatchParams &params [[buffer(2)]],
@@ -339,9 +339,10 @@ kernel void unary_f32_i32_new(
   constant void *metadata [[buffer(4)]],
   uint tid [[thread_position_in_grid]]
 ) {
-  uint read_pos = params.read_scalar_broadcast ? 0 : tid;
   CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
+    // Scalar broadcasting is unused now. Once I start fusing binary operations into unary operation
+    // chains, it will be used. Also, it's a fast way to encode some broadcasting operations.
     uint mem_slice_u32 = ((device uint*)input)[0];
     switch (params.read_size) {
       case 1: {
@@ -363,17 +364,17 @@ kernel void unary_f32_i32_new(
   } else {
     switch (params.read_size) {
       case 1: {
-        uchar4 mem_slice = ((device uchar4*)input)[read_pos];
+        uchar4 mem_slice = ((device uchar4*)input)[tid];
         compressed_storage.set_vector_u8(mem_slice);
         break;
       }
       case 2: {
-        ushort4 mem_slice = ((device ushort4*)input)[read_pos];
+        ushort4 mem_slice = ((device ushort4*)input)[tid];
         compressed_storage.set_vector_u16(mem_slice);
         break;
       }
       case 4: {
-        uint4 mem_slice = ((device uint4*)input)[read_pos];
+        uint4 mem_slice = ((device uint4*)input)[tid];
         compressed_storage.set_vector_u32(mem_slice);
         break;
       }
@@ -672,16 +673,19 @@ kernel void unary_f32_i32_new(
     case f16_as_f32: {
       ushort4 mem_slice = storage.get_vector_f16();
       ((device ushort4*)output)[tid] = mem_slice;
+      break;
     }
     case i8_as_i32:
     case u8_as_i32: {
       uchar4 mem_slice = storage.get_vector_i8_u8();
       ((device uchar4*)output)[tid] = mem_slice;
+      break;
     }
     case i16_as_i32:
     case u16_as_i32: {
       ushort4 mem_slice = storage.get_vector_i16_u16();
       ((device ushort4*)output)[tid] = mem_slice;
+      break;
     }
   }
 }
