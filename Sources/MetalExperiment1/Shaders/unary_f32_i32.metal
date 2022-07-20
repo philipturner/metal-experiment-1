@@ -438,7 +438,25 @@ kernel void unary_f32_i32_new(
           return; // This should never happen.
       }
     } else if (operation <= is_nan_f32) {
-      
+      switch (operation) {
+        case is_finite_f32: {
+          auto x = storage.get_f32();
+          auto mask = int4(isfinite(x));
+          SET_I32(mask)
+        }
+        case is_inf_f32: {
+          auto x = storage.get_f32();
+          auto mask = int4(isinf(x));
+          SET_I32(mask)
+        }
+        case is_nan_f32: {
+          auto x = storage.get_f32();
+          auto mask = int4(isnan(x));
+          SET_I32(mask)
+        }
+        default:
+          return; // This should never happen.
+      }
     } else if (operation <= round_f32) {
       switch (operation) {
         case leaky_relu_f32: {
@@ -494,9 +512,57 @@ kernel void unary_f32_i32_new(
           x = precise::divide(1, x);
           SET_F32(x);
         }
+        case sign_f32: {
+          GET_SET_F32(sign)
+        }
+        case sign_i32: {
+          auto x = storage.get_i32();
+          x = select(int4(1), int4(-1), x < 0);
+          SET_I32(x)
+        }
+        case sin_f32: {
+          GET_SET_F32(precise::sin)
+        }
+        case sinh_f32: {
+          GET_SET_F32(precise::sinh)
+        }
+        case softplus_f32: {
+          auto x = storage.get_f32();
+          x = precise::exp(x) + 1;
+          x = precise::log(x);
+          SET_F32(x)
+        }
+        default:
+          return; // This should never happen.
       }
     } else if (operation <= tanh_f32) {
-      
+      switch (operation) {
+        case softsign_f32: {
+          auto x = storage.get_f32();
+          auto denominator = precise::abs(x) + 1;
+          x = precise::divide(x, denominator);
+          SET_F32(x)
+        }
+        case sqrt_f32: {
+          GET_SET_F32(precise::sqrt)
+        }
+        case square_f32: {
+          auto x = storage.get_f32();
+          SET_F32(x * x)
+        }
+        case square_i32: {
+          auto x = storage.get_i32();
+          SET_I32(x * x)
+        }
+        case tan_f32: {
+          GET_SET_F32(precise::tan)
+        }
+        case tanh_f32: {
+          GET_SET_F32(precise::tanh)
+        }
+        default:
+          return; // This should never happen.
+      }
     }
   }
 }
