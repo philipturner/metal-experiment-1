@@ -162,6 +162,10 @@ public struct Tensor<Scalar> {
 
 // MARK: - _Raw
 
+// TODO: A shared function for unary F32 types
+// TODO: A shared function for unary F32/I32 types
+// TODO: A shared function for unary I32 types
+
 // Differs from the old S4TF in that the function bodies aren't emitted into the client.
 public enum _Raw {
   @inline(__always)

@@ -15,6 +15,8 @@ enum UnaryOperationType: UInt8, CaseIterable {
 // encoding.
 enum EagerOperation {
   struct Unary {
+    // `metadata` stored before `operation` to make the memory layout more compact.
+    var metadata: UInt64? = nil
     var operation: UnaryOperationType
     var input: UInt64
     var output: UInt64
@@ -40,7 +42,7 @@ enum CompiledOperation {
     // Warning: `SIMD2` does not mean 2 operations worth of metadata. It means the total capacity
     // for metadata is 16, which happens to be (2 operations) * (8 bytes/operation). The rationing
     // of metadata per operation is subject to change.
-    var metadata: TypeListStorage<SIMD2<Int>>
+    var metadata: TypeListStorage<SIMD2<UInt64>>
     var input: Allocation
     var output: Allocation
     var size: Int

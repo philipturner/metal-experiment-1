@@ -157,8 +157,63 @@ extension OperationRegistry {
   ]
 }
 
-// MARK: - Operation Functions
+// MARK: - Unary Operations
 
+extension OperationRegistry {
+  static func dispatchUnary(
+    _ args: inout Arguments,
+    _ operation_f32: UnaryOperationType?,
+    _ operation_i32: UnaryOperationType?,
+    _ operation_u32_i64_u64: UnaryOperationType?
+  ) {
+    let ctx = Context.global
+    precondition(args.inputs.count == 1)
+    precondition(args.outputs.count == 1)
+    
+    // Fetch inputs.
+    let input1_id = decodeInput(&args.inputs)
+    let input1_alloc = ctx._internalFetch(input1_id)
+    ctx._internalRetain(input1_alloc)
+    
+    // Generate outputs.
+    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc)
+    ctx._internalRetain(output1_alloc)
+    encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
+    
+    // Fetch data type.
+    let dataType = input1_alloc.dataType
+    func dataMismatch(_ operation: UnaryOperationType) -> String {
+      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+    }
+    precondition(dataType != .bool, "")
+    
+    // Select operation type.
+    var operation: UnaryOperationType
+    switch (operation_f32, operation_i32) {
+    case (.some(let operation_f32), .some(let operation_i32)):
+      break
+    case (.some(let operation_f32), .none):
+      precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
+      break
+    case (.none, .some(let operation_i32)):
+      precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
+      break
+    case (.none, .none):
+      break
+    }
+    
+//    // Append operation.
+//
+//
+//    // Append operation and encode output
+//    ctx.eagerOperations.append(.unary(.init(
+//      operation: operation, input: input1_id, output: output1_id)))
+//
+//    return dataType
+  }
+}
+
+// TODO: Watch out for SELU, which requires metadata.
 extension OperationRegistry {
   static let increment = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
@@ -185,6 +240,3 @@ extension OperationRegistry {
     encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
   }
 }
-
-// TODO: A shared function for F32 types
-// TODO: A shared function for F32/I32 types

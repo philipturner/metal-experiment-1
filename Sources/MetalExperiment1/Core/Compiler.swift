@@ -37,7 +37,7 @@ extension Context {
     compiledOperations.reserveCapacity(eagerOperations.count)
     
     var fusionOperations: TypeList16<UnaryOperationType> = .init()
-    var fusionMetadata: TypeListStorage<SIMD2<Int>> = .init()
+    var fusionMetadata: TypeListStorage<SIMD2<UInt64>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
     var fusionTailID: UInt64 = .max
@@ -108,7 +108,12 @@ extension Context {
           fusionHead = input
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         }
+        
         fusionOperations.append(unary.operation)
+        if let metadata = unary.metadata {
+          fusionMetadata.append(metadata)
+        }
+        
         
         let output = _internalFetch(unary.output)
         precondition(input.byteCount == output.byteCount)

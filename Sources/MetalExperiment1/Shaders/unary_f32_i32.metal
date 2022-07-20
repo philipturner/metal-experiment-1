@@ -137,7 +137,7 @@ enum UnaryOperationType: ushort {
   leaky_relu_f32 = 40,
   log_f32 = 41,
   log1p_f32 = 42,
-  logical_not = 43, // boolean operation
+  logical_not_bool = 43, // boolean operation
   neg_f32 = 44,
   neg_i32 = 45, // integer operation
   relu_f32 = 46,
@@ -162,6 +162,8 @@ enum UnaryOperationType: ushort {
   
   increment_f32 = 70, // for testing purposes only
   increment_i32 = 71, // for testing purposes only
+  
+  // 80 - 255 reserved for `unary_u32_i64_u64` ubershader.
 };
 
 // MARK: - Classes
@@ -551,7 +553,7 @@ kernel void unary_f32_i32(
           auto x = storage.get_f32();
           SET_F32(precise::log(1 + x));
         }
-        case logical_not: {
+        case logical_not_bool: {
           auto x = storage.get_i32();
           auto casted = bool4(x);
           auto mask = int4(!casted);

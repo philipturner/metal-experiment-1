@@ -160,7 +160,7 @@ private extension Context {
     }
     
     // One unit of metadata, but not exactly one operation's total allocation of metadata.
-    typealias Atom = TypeListStorage<SIMD2<Int>>.Scalar
+    typealias Atom = TypeListStorage<SIMD2<UInt64>>.Scalar
     let numMetadataAtoms = operation.metadata.count
     withUnsafeTemporaryAllocation(of: Atom.self, capacity: numMetadataAtoms) { bufferPointer in
       let metadata = bufferPointer.baseAddress!
