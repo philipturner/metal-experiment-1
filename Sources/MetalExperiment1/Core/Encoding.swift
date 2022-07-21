@@ -107,7 +107,7 @@ private extension Context {
         case .uint16:
           self = .u16_as_i32
         case .uint32, .int64, .uint64:
-          fatalError("'unary_f32_i32' does not support data type \(dataType)")
+          fatalError("'unary_f32_i32' does not support data type '\(dataType)'.")
         }
       }
       

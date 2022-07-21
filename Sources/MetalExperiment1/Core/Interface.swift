@@ -39,7 +39,7 @@ extension Context {
   ) {
     let string = StringWrapper(wrapping: name)
     guard let function = OperationRegistry.registry[string] else {
-      fatalError("Could not find operation '\(name)'")
+      fatalError("Could not find operation '\(name)'.")
     }
     function.call(attributes, inputs, outputs)
     self.maybeFlushStream()

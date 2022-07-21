@@ -63,7 +63,7 @@ extension Context {
             let fusionTail = fusionTail,
             fusionOperations.count > 0,
             fusionSize >= 0 else {
-        fatalError("Something went wrong while fusing operations")
+        fatalError("Something went wrong while fusing operations.")
       }
       
       // Make the fusion tail valid to read from.

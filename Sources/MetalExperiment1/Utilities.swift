@@ -78,7 +78,7 @@ extension MTLCommandBuffer {
   @inline(never)
   var errorMessage: String {
     guard let error = error as NSError? else {
-      fatalError("Tried to retrieve 'MTLCommandBuffer' error message when there was no error")
+      fatalError("Tried to retrieve 'MTLCommandBuffer' error message when there was no error.")
     }
     
     var output: [String] = []
@@ -90,7 +90,7 @@ extension MTLCommandBuffer {
       
       guard let debugLocation = log.debugLocation,
             let functionName = debugLocation.functionName else {
-        fatalError("'MTLCommandBuffer' log should have debug info")
+        fatalError("'MTLCommandBuffer' log should have debug info.")
       }
       output.append("""
         Faulting function: \(functionName) (line \(debugLocation.line), column \

@@ -91,6 +91,35 @@ enum DataType: UInt16, CaseIterable, CustomStringConvertible {
   
   // TODO: A way to initialize from `TF_DataType` raw values.
   
+  init(tensorflowDataType: TF_DataType) {
+    switch tensorflowDataType {
+    case TF_HALF:
+      self = .float16
+    case TF_FLOAT:
+      self = .float32
+    case TF_BOOL:
+      self = .bool
+    case TF_INT8:
+      self = .int8
+    case TF_INT16:
+      self = .int16
+    case TF_INT32:
+      self = .int32
+    case TF_INT64:
+      self = .int64
+    case TF_UINT8:
+      self = .uint8
+    case TF_UINT16:
+      self = .uint16
+    case TF_UINT32:
+      self = .uint32
+    case TF_UINT64:
+      self = .uint64
+    default:
+      fatalError("Did not recognize 'TF_DataType' with raw value '\(tensorflowDataType)'.")
+    }
+  }
+  
   var mpsDataType: MPSDataType {
     switch self {
     case .float16:
@@ -201,27 +230,28 @@ enum DataType: UInt16, CaseIterable, CustomStringConvertible {
   }
 }
 
-let TF_FLOAT: Int32 = 1
-let TF_DOUBLE: Int32 = 2
-let TF_INT32: Int32 = 3
-let TF_UINT8: Int32 = 4
-let TF_INT16: Int32 = 5
-let TF_INT8: Int32 = 6
-let TF_STRING: Int32 = 7
-let TF_COMPLEX64: Int32 = 8
-let TF_COMPLEX: Int32 = 8
-let TF_INT64: Int32 = 9
-let TF_BOOL: Int32 = 10
-let TF_QINT8: Int32 = 11
-let TF_QUINT8: Int32 = 12
-let TF_QINT32: Int32 = 13
-let TF_BFLOAT16: Int32 = 14
-let TF_QINT16: Int32 = 15
-let TF_QUINT16: Int32 = 16
-let TF_UINT16: Int32 = 17
-let TF_COMPLEX128: Int32 = 18
-let TF_HALF: Int32 = 19
-let TF_RESOURCE: Int32 = 20
-let TF_VARIANT: Int32 = 21
-let TF_UINT32: Int32 = 22
-let TF_UINT64: Int32 = 23
+typealias TF_DataType = Int32
+let TF_FLOAT: TF_DataType = 1
+let TF_DOUBLE: TF_DataType = 2
+let TF_INT32: TF_DataType = 3
+let TF_UINT8: TF_DataType = 4
+let TF_INT16: TF_DataType = 5
+let TF_INT8: TF_DataType = 6
+let TF_STRING: TF_DataType = 7
+let TF_COMPLEX64: TF_DataType = 8
+let TF_COMPLEX: TF_DataType = 8
+let TF_INT64: TF_DataType = 9
+let TF_BOOL: TF_DataType = 10
+let TF_QINT8: TF_DataType = 11
+let TF_QUINT8: TF_DataType = 12
+let TF_QINT32: TF_DataType = 13
+let TF_BFLOAT16: TF_DataType = 14
+let TF_QINT16: TF_DataType = 15
+let TF_QUINT16: TF_DataType = 16
+let TF_UINT16: TF_DataType = 17
+let TF_COMPLEX128: TF_DataType = 18
+let TF_HALF: TF_DataType = 19
+let TF_RESOURCE: TF_DataType = 20
+let TF_VARIANT: TF_DataType = 21
+let TF_UINT32: TF_DataType = 22
+let TF_UINT64: TF_DataType = 23
