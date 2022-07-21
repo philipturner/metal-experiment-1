@@ -189,9 +189,9 @@ extension OperationRegistry {
 extension OperationRegistry {
   static func dispatchUnary(
     _ args: inout Arguments,
-    _ operation_f32: ElementwiseOperationType?,
-    _ operation_i32: ElementwiseOperationType?,
-    _ operation_bool: ElementwiseOperationType?,
+    _ operation_f32: UnaryOperationType?,
+    _ operation_i32: UnaryOperationType?,
+    _ operation_bool: UnaryOperationType?,
     _ metadata: UInt64? = nil
   ) {
     let ctx = Context.global
@@ -208,13 +208,14 @@ extension OperationRegistry {
     ctx._internalRetain(output_alloc)
     encodeOutput(&args.outputs, (output_id, output_alloc.rank))
     
-    // Select operation type.
-    var operation: ElementwiseOperationType
+    // Fetch data type.
     let dataType = input_alloc.dataType
-    func dataMismatch(_ operation: ElementwiseOperationType) -> String {
+    func dataMismatch(_ operation: UnaryOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
     
+    // Select operation type.
+    var operation: UnaryOperationType
     if let operation_bool = operation_bool {
       precondition(dataType == .bool, dataMismatch(operation_bool))
       guard operation_f32 == nil,
@@ -251,18 +252,39 @@ extension OperationRegistry {
   
   static func dispatchUnaryRelational(
     _ args: inout Arguments,
-    _ operation: ElementwiseOperationType
+    _ operation: UnaryOperationType
   ) {
     let ctx = Context.global
     precondition(args.inputs.count == 1)
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let input1_id = decodeInput(&args.inputs)
-    let input1_alloc = ctx._internalFetch(input1_id)
-    ctx._internalRetain(input1_alloc)
+    let input_id = decodeInput(&args.inputs)
+    let input_alloc = ctx._internalFetch(input_id)
+    ctx._internalRetain(input_alloc)
     
-//    let output1_byteCount = input1_
+    // Fetch data type.
+    let dataType = input_alloc.dataType
+    func dataMismatch(_ operation: UnaryOperationType) -> String {
+      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+    }
+    precondition(dataType.isFloatingPoint, dataMismatch(operation))
+    let stridePowerOf2 = (dataType == .float16) ? 2.trailingZeroBitCount : 4.trailingZeroBitCount
+    let byteCount = input_alloc.byteCount >> stridePowerOf2
+    
+    // Generate output.
+    let (output_id, output_alloc) = withUnsafeTemporaryAllocation(
+      of: Int.self, capacity: input_alloc.rank
+    ) { shape in
+      input_alloc.shape.copy(into: shape)
+      return ctx._internalAllocate(dataType, UnsafeBufferPointer(shape), byteCount)
+    }
+    ctx._internalRetain(output_alloc)
+    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
+    
+    // Append operation.
+    ctx.eagerOperations.append(.unary(.init(
+      operation: operation, input: input_id, output: output_id)))
   }
 }
 
@@ -326,6 +348,8 @@ extension OperationRegistry {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .floor_f32, nil, nil)
   }
+  
+  // Codes 30 - 32
   
   // Codes 40 - 48
   static let leakyRelu = Function {

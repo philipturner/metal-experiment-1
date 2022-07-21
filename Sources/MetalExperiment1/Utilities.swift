@@ -143,25 +143,11 @@ func fetchEnvironmentBoolean(_ name: String) -> Bool {
   return false
 }
 
-// MARK: - TypeList
-
-typealias TypeListElement = CaseIterable & RawRepresentable
-typealias TypeListRawValue = FixedWidthInteger & SIMDScalar
+// MARK: - SmallVector
 
 // Similar to the `SmallVector<_, _>` C++ type in LLVM.
-protocol TypeList {
-  associatedtype Element: TypeListElement
-  where Element.RawValue: TypeListRawValue
-  
-  associatedtype Vector: SIMD
-  where Vector.Scalar == Element.RawValue
-  
-  var storage: TypeListStorage<Vector> { get set }
-}
-
-// Used as the backing storage of `Allocation.shape`.
-struct TypeListStorage<Vector: SIMD>
-where Vector.Scalar: TypeListRawValue {
+struct SmallVector<Vector: SIMD>
+where Vector.Scalar: FixedWidthInteger & SIMDScalar {
   typealias Scalar = Vector.Scalar
   
   private var vector: Vector
@@ -248,55 +234,6 @@ where Vector.Scalar: TypeListRawValue {
       }
     }
   }
-}
-
-extension TypeList {
-  @inline(__always)
-  mutating func append(_ newElement: Element) {
-    storage.append(newElement.rawValue)
-  }
-  
-  @inline(__always)
-  var count: Int {
-    storage.count
-  }
-  
-  @inline(__always)
-  subscript(index: Int) -> Element {
-    Element(rawValue: storage[index]).unsafelyUnwrapped
-  }
-}
-
-// MARK: - TypeList Implementations
-
-struct TypeList2<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD2<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
-}
-
-struct TypeList4<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD4<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
-}
-
-struct TypeList8<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD8<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
-}
-
-struct TypeList16<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD16<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
-}
-
-struct TypeList32<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD32<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
-}
-
-struct TypeList64<Element: TypeListElement>: TypeList where Element.RawValue: TypeListRawValue {
-  typealias Vector = SIMD64<Element.RawValue>
-  var storage: TypeListStorage<Vector> = .init()
 }
 
 // MARK: - StringWrapper

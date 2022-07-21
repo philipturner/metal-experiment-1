@@ -10,7 +10,7 @@ import MetalPerformanceShaders
 // Use a custom enumeration instead of `MPSDataType`. GPU shaders read the raw value for dynamic
 // typing. This has less cases than `MPSDataType` and is smaller (`UInt16` vs. `UInt32`), reducing
 // GPU register usage and enabling other optimizations.
-enum DataType: UInt16, CaseIterable, CustomStringConvertible {
+enum DataType: UInt16, CustomStringConvertible {
   // Floating-point types
   case float16 = 0
   case float32 = 1

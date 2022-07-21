@@ -213,33 +213,25 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertEqual(Self.history, expectedHistory)
   }
   
-  func testTypeList() throws {
+  func testSmallVector() throws {
     testHeader()
     
-    enum TestOperationType: UInt8, CaseIterable {
-      case type1
-      case type2
-      case type3
-      case type4
-    }
-    
-    var list1 = TypeList2<TestOperationType>()
-    list1.append(.type2)
+    var list1 = SmallVector<SIMD2<UInt8>>()
+    list1.append(1)
     XCTAssertEqual(list1.count, 1)
-    XCTAssertEqual(list1[0], .type2)
+    XCTAssertEqual(list1[0], 1)
     
-    list1.append(.type3)
-    list1.append(.type4)
+    list1.append(2)
+    list1.append(3)
     XCTAssertEqual(list1.count, 3)
-    XCTAssertEqual(list1[0], .type2)
-    XCTAssertEqual(list1[1], .type3)
-    XCTAssertEqual(list1[2], .type4)
+    XCTAssertEqual(list1[0], 1)
+    XCTAssertEqual(list1[1], 2)
+    XCTAssertEqual(list1[2], 3)
     
     // Would crash with a regular Swift array, but is acceptable here.
-    let list2 = TypeList16<TestOperationType>()
+    let list2 = SmallVector<SIMD16<UInt8>>()
     XCTAssertEqual(list2.count, 0)
-    XCTAssertEqual(TestOperationType.type1.rawValue, 0)
-    XCTAssertEqual(list2[0], .type1)
-    XCTAssertEqual(list2[1], .type1)
+    XCTAssertEqual(list2[0], 0)
+    XCTAssertEqual(list2[1], 0)
   }
 }

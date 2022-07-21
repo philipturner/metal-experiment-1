@@ -36,8 +36,8 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var fusionOperations: TypeList8<ElementwiseOperationType> = .init()
-    var fusionMetadata: TypeListStorage<SIMD2<UInt64>> = .init()
+    var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
+    var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
     var fusionTailID: UInt64 = .max
@@ -110,7 +110,7 @@ extension Context {
         }
         
         if !unary.isNoOp {
-          fusionOperations.append(unary.operation)
+          fusionOperations.append(unary.operation.rawValue)
           if let metadata = unary.metadata {
             fusionMetadata.append(metadata)
           }

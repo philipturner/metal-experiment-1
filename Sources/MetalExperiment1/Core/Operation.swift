@@ -5,7 +5,7 @@
 //  Created by Philip Turner on 7/9/22.
 //
 
-enum ElementwiseOperationType: UInt16, CaseIterable {
+enum UnaryOperationType: UInt16 {
   case abs_f32 = 0
   case abs_i32 = 1 // integer operation
   case acos_f32 = 2
@@ -68,7 +68,7 @@ enum ElementwiseOperationType: UInt16, CaseIterable {
   case increment_i32 = 71 // for testing purposes only
 }
 
-enum ElementwiseOperationType2: UInt8, CaseIterable {
+enum UnaryOperationType2: UInt8 {
   case abs_i64 = 0
   case neg_i64 = 1
   case sign_i64 = 2
@@ -95,7 +95,7 @@ enum ElementwiseOperationType2: UInt8, CaseIterable {
   
   case increment_i64 = 30 // for testing purposes only
   
-  init?(type32: ElementwiseOperationType, dataType: DataType) {
+  init?(type32: UnaryOperationType, dataType: DataType) {
     guard !dataType.representableByInt32 else {
       return nil
     }
@@ -130,7 +130,7 @@ enum EagerOperation {
     // `metadata` stored before `operation` to make the memory layout more compact.
     var metadata: UInt64? = nil
     var isNoOp: Bool = false
-    var operation: ElementwiseOperationType
+    var operation: UnaryOperationType
     var input: UInt64
     var output: UInt64
   }
@@ -150,12 +150,12 @@ enum CompiledOperation {
   struct Elementwise {
     // `metadata` much less vector capacity of `operations`. It doesn't need as much storage because
     // it's serialized efficiently. Metadata is only recorded after each operation that needs it.
-    var operations: TypeList8<ElementwiseOperationType>
+    var operations: SmallVector<SIMD8<UInt16>>
     
     // Warning: `SIMD2` does not mean 2 operations worth of metadata. It means the total capacity
     // for metadata is 16, which happens to be (2 operations) * (8 bytes/operation). The rationing
     // of metadata per operation is subject to change.
-    var metadata: TypeListStorage<SIMD2<UInt64>>
+    var metadata: SmallVector<SIMD2<UInt64>>
     var input: Allocation
     var output: Allocation
     var size: Int

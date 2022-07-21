@@ -153,14 +153,14 @@ private extension Context {
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in
       let operations = bufferPointer.baseAddress!
       for i in 0..<numOperations {
-        operations[i] = operation.operations[i].rawValue
+        operations[i] = operation.operations[i]
       }
       let length = numOperations * MemoryLayout<UInt16>.stride
       encoder.setBytes(operations, length: length, index: 3)
     }
     
     // One unit of metadata, but not exactly one operation's total allocation of metadata.
-    typealias Atom = TypeListStorage<SIMD2<UInt64>>.Scalar
+    typealias Atom = SmallVector<SIMD2<UInt64>>.Scalar
     let numMetadataAtoms = operation.metadata.count
     withUnsafeTemporaryAllocation(of: Atom.self, capacity: numMetadataAtoms) { bufferPointer in
       let metadata = bufferPointer.baseAddress!

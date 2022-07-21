@@ -208,7 +208,7 @@ class Allocation {
   // (Internal member layout) 16B boundary
   //
   // Most tensors have a rank <= 4. 5D tensors are rare and typically used for 3D convolutions.
-  var shape: TypeListStorage<SIMD4<Int>> = .init()
+  var shape: SmallVector<SIMD4<Int>> = .init()
   @inline(__always)
   var rank: Int { shape.count }
   
@@ -259,7 +259,7 @@ class Allocation {
   init(id: UInt64, dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
     self.id = id
     self.referenceCount = 1
-    self.shape = TypeListStorage(shape)
+    self.shape = SmallVector(shape)
     self.byteCount = byteCount
     self.dataType = dataType
     self.isShared = Context.global.preferSharedStorage
