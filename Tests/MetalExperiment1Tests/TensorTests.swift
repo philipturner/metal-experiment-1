@@ -74,8 +74,12 @@ final class TensorTests: XCTestCase {
     test(Tensor<UInt8>.incremented, input: 42, expected: 43)
     test(Tensor<UInt16>.incremented, input: 42, expected: 43)
     
-    // Test overflow of small integers.
+    // Test overflow of integers.
     test(Tensor<Int8>.incremented, input: 127, expected: -128)
+    test(Tensor<Int16>.incremented, input: .max, expected: .min)
+    test(Tensor<Int32>.incremented, input: .max, expected: .min)
     test(Tensor<UInt8>.incremented, input: 255, expected: 0)
+    test(Tensor<UInt16>.incremented, input: .max, expected: .min)
+    
   }
 }
