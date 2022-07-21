@@ -47,6 +47,7 @@ struct DispatchParams {
   MemoryCast write_memory_cast;
 };
 
+  
 // Cast operation
 // - X = must modify the bits
 // - . = no-op
