@@ -335,6 +335,28 @@ namespace metal {
 
 // MARK: - Shader Function
 
+// Performance of original, naively bucketed loop:
+// Iteration and instruction fetching: >=2 clock cycles
+// First switch statement: 1 - 8 comparisons
+// Second switch statement: 1 - 9 comparisons
+// Overhead range: 4 - 19 clock cycles
+// Overhead per element: 1 - 4.75 clock cycles
+// Average overhead: 2.875 clock cycles
+//
+// Overhead for `increment`: 9/4 = 2.25 clock cycles
+// Amortized sequential throughput for `increment_f32`: 2.7 µs
+
+// Performance of radix-4 dispatch:
+// Iteration and instruction fetching: >=2 clock cycles
+// <=64 operators, so 3 levels of recursion
+// Overhead per level of recursion: 1 - 3 comparisons
+// Overhead range: 5 - 11 clock cycles
+// Overhead per element: 1.25 - 2.75 clock cycles
+// Average overhead: 2 clock cycles
+//
+// Overhead for `increment`: (#49 -> 3 + 1 + 2 = 6)/4 = 1.5 clock cycles
+// Amortized sequential throughput for `increment_f32`: ??? µs
+  
 kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
