@@ -62,8 +62,45 @@ func testFloat16(
 }
 #endif
 
+fileprivate var profilingEncoding = false
+
+func tensorOperationHeader(_ message: String? = nil) {
+  Profiler.checkpoint()
+  Context.withDispatchQueue {
+    _ = Context.global
+  }
+  let startupTime = Profiler.checkpoint()
+  if startupTime > 1000 {
+    print("=== Initialize context ===")
+    print("Initialization time: \(startupTime) \(Profiler.timeUnit)")
+  }
+  
+  if let message = message {
+    print()
+    print("=== \(message) ===")
+  }
+  
+  // Stop messages about references from flooding the console. You can re-activate this inside a
+  // test function if you want.
+  Context.withDispatchQueue {
+    Allocation.debugInfoEnabled = false
+    profilingEncoding = Context.profilingEncoding
+    Context.profilingEncoding = false
+  }
+  Context.barrier()
+}
+
+func tensorOperationFooter() {
+  Context.withDispatchQueue {
+    Context.profilingEncoding = profilingEncoding
+  }
+}
+
 final class TensorOperationTests: XCTestCase {
   func testIncrement() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     test(Tensor<Float16>.incremented, input: 42, expected: 43)
     #endif
@@ -85,6 +122,9 @@ final class TensorOperationTests: XCTestCase {
   // Integer overflow demonstrates the behavior described here:
   // https://stackoverflow.com/questions/35251410/c-safely-taking-absolute-value-of-integer
   func testAbs() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     test(abs, input: Float16(-42), expected: 42)
     #endif
@@ -99,6 +139,9 @@ final class TensorOperationTests: XCTestCase {
   }
   
   func testInverseTrigonometric() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     testFloat16(acos, acos, input: 0.42, accuracy: 0)
     testFloat16(acosh, acosh, input: 1.42, accuracy: 0)

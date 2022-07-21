@@ -55,25 +55,4 @@ final class TensorTests: XCTestCase {
     XCTAssertEqual(shape2.dimensions, shape3.dimensions)
     Profiler.log("Tensor shape test execution time")
   }
-  
-  func testUnaryOperations() throws {
-    testHeader()
-    func test<T: Equatable>(_ function: (Tensor<T>) -> () -> Tensor<T>, input: T, expected: T) {
-      let tensor = Tensor(repeating: input, shape: [5])
-      let transformedTensor = function(tensor)()
-      XCTAssertEqual(transformedTensor.scalars, [T](repeating: expected, count: 5))
-    }
-    
-    func test<T: Equatable>(_ function: (Tensor<T>) -> Tensor<T>, input: T, expected: T) {
-      let tensor = Tensor(repeating: input, shape: [5])
-      let transformedTensor = function(tensor)
-      XCTAssertEqual(transformedTensor.scalars, [T](repeating: expected, count: 5))
-    }
-    
-    
-    
-    
-    
-    
-  }
 }
