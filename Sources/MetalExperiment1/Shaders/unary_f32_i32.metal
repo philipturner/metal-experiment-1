@@ -24,18 +24,6 @@ using namespace metal;
 // special number: the alignment of `malloc` pointers and memory alignment of all Swift SIMD types.
 // On x86 with AVX-512 vectors, the alignment might be larger, but not smaller.
 
-kernel void unary_f32_i32_old(
-  device float *input [[buffer(0)]],
-  device float *output [[buffer(1)]],
-  constant float &increment [[buffer(2)]],
-  uint tid [[thread_position_in_grid]]
-) {
-  float value = input[tid];
-  output[tid] = value + increment;
-}
-
-// MARK: - Enumerations
-
 enum MemoryCast: ushort {
   f32_i32_native = 0,
   f16_as_f32 = 1,
@@ -347,7 +335,7 @@ namespace metal {
 //
 // Overhead for `increment`: 8/4 = 2 clock cycles
 // Amortized sequential throughput for `increment_f32`: 2.6 µs
-
+//
 // Performance of perfect radix-4 dispatch:
 // Iteration and instruction fetching: >=2 clock cycles
 // <=64 operators, so 3 levels of recursion
@@ -358,21 +346,36 @@ namespace metal {
 //
 // Overhead for `increment`: (#49 -> 3 + 1 + 2 = 6)/4 = 1.5 clock cycles
 // Amortized sequential throughput for `increment_f32`: 2.3 µs
-// - For 1.4 µs, total execution time was (0 overhead) + (2 ALU) = 2
-// - For 2.6 µs, total execution time was (2 overhead) + (2 ALU) = 4
-// - Using a linear interpolation of (1.5=overhead), (25% x 1.4) + (75% x 2.6) = 2.3
-
+// - For 1.4 µs, before making ubershader, execution time was (0 overhead) + (2 ALU) = 2
+// - For 2.6 µs, after making ubershader, execution time was (2 overhead) + (2 ALU) = 4
+// - Using a linear interpolation of (1.5=overhead), (25% x 1.4) + (75% x 2.6) = 2.3 µs
+//
+//===------------------------------------------------------------------------------------------===//
+//
 // Perfect radix-4 overhead takes an extrapolated 88% of the execution time for `increment`. In a
-// quick calculation that accounted for changes to bandwidth utilization (changing 1.4 -> 0.7 µs),
-// the percentage was 82%. But ignoring the affect of bandwidth, results with different combos:
-// - Horizontal row = overhead reduction
-//   - A = Δ(upper bounds) =
-//   - B = Δ(average) =
-//   - C = Δ(lower bounds) =
-// - Vertical row = clocks/operation
-//   - A = abs_f32 = 1
-//   - B = increment_f32 = 2
-//   - C = estimated trig = 10
+// quick calculation that optimized the pre-ubershader increment (changing 1.4 -> 0.7 µs), the
+// percentage was 82%. Keeping pre-ubershader = 1.4 µs, results with different combos:
+//
+// - Horizontal axis = overhead reduction
+//   - A = Δ(upper bounds) = -1.5 cycles  = 4.25 -> 2.75
+//   - B = Δ(average)      = -0.3 cycles  = 2.49 -> 2.19
+//   - C = Δ(lower bounds) = +0.25 cycles = 1.00 -> 1.25
+// - Vertical axis = clocks/operation
+//   - D = abs_f32 = 1
+//   - E = increment_f32 = 2
+//   - F = estimated trig = 10
+//
+// Absolute clock cycle ratio
+//     |  A  |  B  |  C  |
+// ----|-----|-----|-----|
+//  D  | .71 |  X  |  X  |
+// ----|-----|-----|-----|
+//  E  |  .  |  .  |  X  |
+// ----|-----|-----|-----|
+//  F  |  .  |  .  |  .  |
+// ----|-----|-----|-----|
+//
+// Linear regression sequential throughput ratio
 
 kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
