@@ -189,36 +189,38 @@ extension OperationRegistry {
 extension OperationRegistry {
   static func dispatchUnary(
     _ args: inout Arguments,
-    _ operation_f32: UnaryOperationType?,
-    _ operation_i32: UnaryOperationType?,
-    _ operation_bool: UnaryOperationType?,
+    _ operation_f32: ElementwiseOperationType?,
+    _ operation_i32: ElementwiseOperationType?,
+    _ operation_bool: ElementwiseOperationType?,
     _ metadata: UInt64? = nil
   ) {
     let ctx = Context.global
     precondition(args.inputs.count == 1)
     precondition(args.outputs.count == 1)
     
-    // Fetch inputs.
-    let input1_id = decodeInput(&args.inputs)
-    let input1_alloc = ctx._internalFetch(input1_id)
-    ctx._internalRetain(input1_alloc)
+    // Fetch input.
+    let input_id = decodeInput(&args.inputs)
+    let input_alloc = ctx._internalFetch(input_id)
+    ctx._internalRetain(input_alloc)
     
-    // Generate outputs.
-    let (output1_id, output1_alloc) = ctx._internalAllocate(input1_alloc)
-    ctx._internalRetain(output1_alloc)
-    encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
+    // Generate output.
+    let (output_id, output_alloc) = ctx._internalAllocate(input_alloc)
+    ctx._internalRetain(output_alloc)
+    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
     
     // Select operation type.
-    var operation: UnaryOperationType
-    let dataType = input1_alloc.dataType
-    func dataMismatch(_ operation: UnaryOperationType) -> String {
+    var operation: ElementwiseOperationType
+    let dataType = input_alloc.dataType
+    func dataMismatch(_ operation: ElementwiseOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
     
     if let operation_bool = operation_bool {
       precondition(dataType == .bool, dataMismatch(operation_bool))
-      precondition(operation_f32 == nil, "This should never happen.")
-      precondition(operation_i32 == nil, "This should never happen.")
+      guard operation_f32 == nil,
+            operation_i32 == nil else {
+        fatalError("This should never happen.")
+      }
       operation = operation_bool
     } else {
       precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
@@ -244,7 +246,23 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, operation: operation, input: input1_id, output: output1_id)))
+      metadata: metadata, operation: operation, input: input_id, output: output_id)))
+  }
+  
+  static func dispatchUnaryRelational(
+    _ args: inout Arguments,
+    _ operation: ElementwiseOperationType
+  ) {
+    let ctx = Context.global
+    precondition(args.inputs.count == 1)
+    precondition(args.outputs.count == 1)
+    
+    // Fetch input.
+    let input1_id = decodeInput(&args.inputs)
+    let input1_alloc = ctx._internalFetch(input1_id)
+    ctx._internalRetain(input1_alloc)
+    
+//    let output1_byteCount = input1_
   }
 }
 

@@ -36,7 +36,7 @@ extension Context {
     var compiledOperations: [CompiledOperation] = []
     compiledOperations.reserveCapacity(eagerOperations.count)
     
-    var fusionOperations: TypeList16<UnaryOperationType> = .init()
+    var fusionOperations: TypeList8<ElementwiseOperationType> = .init()
     var fusionMetadata: TypeListStorage<SIMD2<UInt64>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
@@ -68,10 +68,10 @@ extension Context {
       // Make the fusion tail valid to read from.
       fusionTail.initialized = true
       
-      let multiUnary = CompiledOperation.MultiUnary(
+      let elementwise = CompiledOperation.Elementwise(
         operations: fusionOperations, metadata: fusionMetadata, input: fusionHead,
         output: fusionTail, size: fusionSize)
-      compiledOperations.append(.multiUnary(multiUnary))
+      compiledOperations.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if fusionOperations.count >= 2 {
           // This number does not include no-ops that were fused.

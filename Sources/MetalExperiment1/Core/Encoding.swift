@@ -55,8 +55,8 @@ extension Context {
     into ectx: inout EncodingContext
   ) throws {
     switch operation {
-    case .multiUnary(let multiUnary):
-      try encodeMultiUnary(multiUnary, into: &ectx)
+    case .elementwise(let elementwise):
+      try encodeElementwise(elementwise, into: &ectx)
     case .explicitCopy(let explicitCopy):
       try encodeExplicitCopy(explicitCopy, into: &ectx)
     }
@@ -64,8 +64,8 @@ extension Context {
 }
 
 private extension Context {
-  func encodeMultiUnary(
-    _ operation: CompiledOperation.MultiUnary,
+  func encodeElementwise(
+    _ operation: CompiledOperation.Elementwise,
     into ectx: inout EncodingContext
   ) throws {
     let input = operation.input
@@ -75,7 +75,7 @@ private extension Context {
     output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     let encoder = ectx.makeEncoder()
-    ectx.setComputePipelineState(ShaderCache.unary_f32_i32)
+    ectx.setComputePipelineState(ShaderCache.elementwise_f32_i32)
     encoder.setBuffer(input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 1)
     
@@ -153,7 +153,7 @@ private extension Context {
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in
       let operations = bufferPointer.baseAddress!
       for i in 0..<numOperations {
-        operations[i] = UInt16(operation.operations[i].rawValue)
+        operations[i] = operation.operations[i].rawValue
       }
       let length = numOperations * MemoryLayout<UInt16>.stride
       encoder.setBytes(operations, length: length, index: 3)

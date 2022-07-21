@@ -1,5 +1,5 @@
 //
-//  unary_f32_i32.metal
+//  elementwise_f32_i32.metal
 //  
 //
 //  Created by Philip Turner on 7/8/22.
@@ -90,7 +90,9 @@ struct DispatchParams {
 // to have multiple instructions for very similar casts. `cast_f32_to_i32` encapsulates all of these
 // casts.
 
-enum UnaryOperationType: ushort {
+enum ElementwiseOperationType: ushort {
+  // Unary (0 - 999)
+  
   abs_f32 = 0,
   abs_i32 = 1, // integer operation
   acos_f32 = 2,
@@ -148,6 +150,13 @@ enum UnaryOperationType: ushort {
   
   increment_f32 = 70, // for testing purposes only
   increment_i32 = 71, // for testing purposes only
+  
+  // Binary (1000 - 1999)
+  
+  add_f32 = 1000,
+  add_i32 = 2000,
+  
+  // Ternary (2000 - 2999)
 };
 
 // MARK: - Classes
@@ -383,12 +392,21 @@ namespace metal {
 // fusion is not that common. If only 10 operations were fused, the benefits of switching to perfect
 // radix-4 could reduce by a factor of 10. If 2 operations were fused (the most common case), the
 // benefits reduce by a factor of 50.
+//
+//===------------------------------------------------------------------------------------------===//
+//
+// Future plans for this shader:
+// Basically making an assembly language. It can read from memory addresses and swap registers.
+// - Pre-read everything before the shader starts
+// - Can fuse two binary ops or one tertiary op
+// - Can only have one output
+// - Loop over the code for reading
 
-kernel void unary_f32_i32(
+kernel void elementwise_f32_i32(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
   constant DispatchParams &params [[buffer(2)]],
-  constant UnaryOperationType *operations [[buffer(3)]],
+  constant ElementwiseOperationType *operations [[buffer(3)]],
   constant void *metadata [[buffer(4)]],
   uint tid [[thread_position_in_grid]]
 ) {
@@ -466,236 +484,245 @@ kernel void unary_f32_i32(
   
   // pc = program counter
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
-    UnaryOperationType operation = operations[pc];
-    if (operation <= atanh_f32) {
-      switch (operation) {
-        case abs_f32: {
-          GET_SET_F32(precise::abs)
+    ElementwiseOperationType operation = operations[pc];
+    if (operation < 1000) {
+      // Unary
+      if (operation <= atanh_f32) {
+        switch (operation) {
+          case abs_f32: {
+            GET_SET_F32(precise::abs)
+          }
+          case abs_i32: {
+            GET_SET_I32(abs)
+          }
+          case acos_f32: {
+            GET_SET_F32(precise::acos)
+          }
+          case acosh_f32: {
+            GET_SET_F32(precise::acosh)
+          }
+          case asin_f32: {
+            GET_SET_F32(precise::asin)
+          }
+          case asinh_f32: {
+            GET_SET_F32(precise::asinh)
+          }
+          case atan_f32: {
+            GET_SET_F32(precise::atan)
+          }
+          default: /*atanh_f32*/ {
+            GET_SET_F32(precise::atanh)
+          }
         }
-        case abs_i32: {
-          GET_SET_I32(abs)
+      } else if (operation <= cast_i32_to_u16) {
+        switch (operation) {
+          case cast_f32_to_f16: {
+            auto x = storage.get_f32();
+            auto casted = half4(x);
+            SET_F32(float4(casted))
+          }
+          case cast_f32_to_i32: {
+            auto x = storage.get_f32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            int2 bounds = ((constant int2*)operation_metadata)[0];
+            auto casted = int4(x);
+            casted = clamp(casted, bounds[0], bounds[1]);
+            SET_I32(casted)
+          }
+          case cast_i32_to_bool: {
+            auto x = storage.get_i32();
+            auto casted = bool4(x);
+            SET_I32(int4(casted));
+          }
+            // TODO: cast_i32_to_bool
+          case cast_i32_to_f16: {
+            auto x = storage.get_i32();
+            auto casted = half4(x);
+            SET_F32(float4(casted))
+          }
+          case cast_i32_to_f32: {
+            auto x = storage.get_i32();
+            SET_F32(float4(x))
+          }
+          case cast_i32_to_u8: {
+            auto x = storage.get_i32();
+            auto casted = uchar4(x);
+            SET_I32(int4(casted))
+          }
+          default: /*cast_i32_to_u16*/ {
+            auto x = storage.get_i32();
+            auto casted = ushort4(x);
+            SET_I32(int4(casted))
+          }
         }
-        case acos_f32: {
-          GET_SET_F32(precise::acos)
+      } else if (operation <= floor_f32) {
+        switch (operation) {
+          case ceil_f32: {
+            GET_SET_F32(precise::ceil)
+          }
+          case cos_f32: {
+            GET_SET_F32(precise::cos)
+          }
+          case cosh_f32: {
+            GET_SET_F32(precise::cosh)
+          }
+          case elu_f32: {
+            auto x = storage.get_f32();
+            x = select(x, precise::expm1(x), x < 0);
+            SET_F32(x)
+          }
+          case exp_f32: {
+            GET_SET_F32(precise::exp)
+          }
+          case expm1_f32: {
+            GET_SET_F32(precise::expm1)
+          }
+          default: /*floor_f32*/ {
+            GET_SET_F32(precise::floor)
+          }
         }
-        case acosh_f32: {
-          GET_SET_F32(precise::acosh)
+      } else if (operation <= is_nan_f32) {
+        switch (operation) {
+          case is_finite_f32: {
+            auto x = storage.get_f32();
+            auto mask = int4(isfinite(x));
+            SET_I32(mask)
+          }
+          case is_inf_f32: {
+            auto x = storage.get_f32();
+            auto mask = int4(isinf(x));
+            SET_I32(mask)
+          }
+          default: /*is_nan_f32*/ {
+            auto x = storage.get_f32();
+            auto mask = int4(isnan(x));
+            SET_I32(mask)
+          }
         }
-        case asin_f32: {
-          GET_SET_F32(precise::asin)
+      } else if (operation <= round_f32) {
+        switch (operation) {
+          case leaky_relu_f32: {
+            auto x = storage.get_f32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            float alpha = ((constant float*)operation_metadata)[0];
+            x = precise::max(x, x * alpha);
+            SET_F32(x);
+          }
+          case log_f32: {
+            GET_SET_F32(precise::log);
+          }
+          case log1p_f32: {
+            auto x = storage.get_f32();
+            SET_F32(precise::log(1 + x));
+          }
+          case logical_not_bool: {
+            auto x = storage.get_i32();
+            auto casted = bool4(x);
+            auto mask = int4(!casted);
+            SET_I32(mask)
+          }
+          case neg_f32: {
+            GET_SET_F32(-)
+          }
+          case neg_i32: {
+            GET_SET_I32(-)
+          }
+          case relu_f32: {
+            auto x = storage.get_f32();
+            SET_F32(precise::max(0, x))
+          }
+          case relu6_f32: {
+            auto x = storage.get_f32();
+            SET_F32(precise::clamp(x, 0, 6))
+          }
+          default: /*round_f32*/ {
+            GET_SET_F32(precise::rint)
+          }
         }
-        case asinh_f32: {
-          GET_SET_F32(precise::asinh)
+      } else if (operation <= softplus_f32) {
+        switch (operation) {
+          case rsqrt_f32: {
+            GET_SET_F32(precise::rsqrt)
+          }
+          case selu_f32: {
+            auto x = storage.get_f32();
+            constexpr float ALPHA = 1.6732632423543772848170429916717;
+            constexpr float SCALE = 1.0507009873554804934193349852946;
+            x = select(x, ALPHA * precise::expm1(x), x < 0);
+            x = SCALE * x;
+            SET_F32(x);
+          }
+          case sigmoid_f32: {
+            auto x = storage.get_f32();
+            x = 1 + precise::exp(-x);
+            x = precise::divide(1, x);
+            SET_F32(x);
+          }
+          case sign_f32: {
+            GET_SET_F32(sign)
+          }
+          case sign_i32: {
+            auto x = storage.get_i32();
+            x = select(int4(1), int4(-1), x < 0);
+            SET_I32(x)
+          }
+          case sin_f32: {
+            GET_SET_F32(precise::sin)
+          }
+          case sinh_f32: {
+            GET_SET_F32(precise::sinh)
+          }
+          default: /*softplus_f32*/ {
+            auto x = storage.get_f32();
+            x = precise::exp(x) + 1;
+            x = precise::log(x);
+            SET_F32(x)
+          }
         }
-        case atan_f32: {
-          GET_SET_F32(precise::atan)
+      } else if (operation <= tanh_f32) {
+        switch (operation) {
+          case softsign_f32: {
+            auto x = storage.get_f32();
+            auto denominator = precise::abs(x) + 1;
+            x = precise::divide(x, denominator);
+            SET_F32(x)
+          }
+          case sqrt_f32: {
+            GET_SET_F32(precise::sqrt)
+          }
+          case square_f32: {
+            auto x = storage.get_f32();
+            SET_F32(x * x)
+          }
+          case square_i32: {
+            auto x = storage.get_i32();
+            SET_I32(x * x)
+          }
+          case tan_f32: {
+            GET_SET_F32(precise::tan)
+          }
+          default: /*tanh_f32*/ {
+            GET_SET_F32(precise::tanh)
+          }
         }
-        default: /*atanh_f32*/ {
-          GET_SET_F32(precise::atanh)
+      } else {
+        switch (operation) {
+          case increment_f32: {
+            auto x = storage.get_f32();
+            SET_F32(x + 1);
+          }
+          default: /*increment_i32*/ {
+            auto x = storage.get_i32();
+            SET_I32(x + 1);
+          }
         }
       }
-    } else if (operation <= cast_i32_to_u16) {
-      switch (operation) {
-        case cast_f32_to_f16: {
-          auto x = storage.get_f32();
-          auto casted = half4(x);
-          SET_F32(float4(casted))
-        }
-        case cast_f32_to_i32: {
-          auto x = storage.get_f32();
-          auto operation_metadata = get_metadata(metadata, metadata_index);
-          int2 bounds = ((constant int2*)operation_metadata)[0];
-          auto casted = int4(x);
-          casted = clamp(casted, bounds[0], bounds[1]);
-          SET_I32(casted)
-        }
-        case cast_i32_to_bool: {
-          auto x = storage.get_i32();
-          auto casted = bool4(x);
-          SET_I32(int4(casted));
-        }
-          // TODO: cast_i32_to_bool
-        case cast_i32_to_f16: {
-          auto x = storage.get_i32();
-          auto casted = half4(x);
-          SET_F32(float4(casted))
-        }
-        case cast_i32_to_f32: {
-          auto x = storage.get_i32();
-          SET_F32(float4(x))
-        }
-        case cast_i32_to_u8: {
-          auto x = storage.get_i32();
-          auto casted = uchar4(x);
-          SET_I32(int4(casted))
-        }
-        default: /*cast_i32_to_u16*/ {
-          auto x = storage.get_i32();
-          auto casted = ushort4(x);
-          SET_I32(int4(casted))
-        }
-      }
-    } else if (operation <= floor_f32) {
-      switch (operation) {
-        case ceil_f32: {
-          GET_SET_F32(precise::ceil)
-        }
-        case cos_f32: {
-          GET_SET_F32(precise::cos)
-        }
-        case cosh_f32: {
-          GET_SET_F32(precise::cosh)
-        }
-        case elu_f32: {
-          auto x = storage.get_f32();
-          x = select(x, precise::expm1(x), x < 0);
-          SET_F32(x)
-        }
-        case exp_f32: {
-          GET_SET_F32(precise::exp)
-        }
-        case expm1_f32: {
-          GET_SET_F32(precise::expm1)
-        }
-        default: /*floor_f32*/ {
-          GET_SET_F32(precise::floor)
-        }
-      }
-    } else if (operation <= is_nan_f32) {
-      switch (operation) {
-        case is_finite_f32: {
-          auto x = storage.get_f32();
-          auto mask = int4(isfinite(x));
-          SET_I32(mask)
-        }
-        case is_inf_f32: {
-          auto x = storage.get_f32();
-          auto mask = int4(isinf(x));
-          SET_I32(mask)
-        }
-        default: /*is_nan_f32*/ {
-          auto x = storage.get_f32();
-          auto mask = int4(isnan(x));
-          SET_I32(mask)
-        }
-      }
-    } else if (operation <= round_f32) {
-      switch (operation) {
-        case leaky_relu_f32: {
-          auto x = storage.get_f32();
-          auto operation_metadata = get_metadata(metadata, metadata_index);
-          float alpha = ((constant float*)operation_metadata)[0];
-          x = precise::max(x, x * alpha);
-          SET_F32(x);
-        }
-        case log_f32: {
-          GET_SET_F32(precise::log);
-        }
-        case log1p_f32: {
-          auto x = storage.get_f32();
-          SET_F32(precise::log(1 + x));
-        }
-        case logical_not_bool: {
-          auto x = storage.get_i32();
-          auto casted = bool4(x);
-          auto mask = int4(!casted);
-          SET_I32(mask)
-        }
-        case neg_f32: {
-          GET_SET_F32(-)
-        }
-        case neg_i32: {
-          GET_SET_I32(-)
-        }
-        case relu_f32: {
-          auto x = storage.get_f32();
-          SET_F32(precise::max(0, x))
-        }
-        case relu6_f32: {
-          auto x = storage.get_f32();
-          SET_F32(precise::clamp(x, 0, 6))
-        }
-        default: /*round_f32*/ {
-          GET_SET_F32(precise::rint)
-        }
-      }
-    } else if (operation <= softplus_f32) {
-      switch (operation) {
-        case rsqrt_f32: {
-          GET_SET_F32(precise::rsqrt)
-        }
-        case selu_f32: {
-          auto x = storage.get_f32();
-          constexpr float ALPHA = 1.6732632423543772848170429916717;
-          constexpr float SCALE = 1.0507009873554804934193349852946;
-          x = select(x, ALPHA * precise::expm1(x), x < 0);
-          x = SCALE * x;
-          SET_F32(x);
-        }
-        case sigmoid_f32: {
-          auto x = storage.get_f32();
-          x = 1 + precise::exp(-x);
-          x = precise::divide(1, x);
-          SET_F32(x);
-        }
-        case sign_f32: {
-          GET_SET_F32(sign)
-        }
-        case sign_i32: {
-          auto x = storage.get_i32();
-          x = select(int4(1), int4(-1), x < 0);
-          SET_I32(x)
-        }
-        case sin_f32: {
-          GET_SET_F32(precise::sin)
-        }
-        case sinh_f32: {
-          GET_SET_F32(precise::sinh)
-        }
-        default: /*softplus_f32*/ {
-          auto x = storage.get_f32();
-          x = precise::exp(x) + 1;
-          x = precise::log(x);
-          SET_F32(x)
-        }
-      }
-    } else if (operation <= tanh_f32) {
-      switch (operation) {
-        case softsign_f32: {
-          auto x = storage.get_f32();
-          auto denominator = precise::abs(x) + 1;
-          x = precise::divide(x, denominator);
-          SET_F32(x)
-        }
-        case sqrt_f32: {
-          GET_SET_F32(precise::sqrt)
-        }
-        case square_f32: {
-          auto x = storage.get_f32();
-          SET_F32(x * x)
-        }
-        case square_i32: {
-          auto x = storage.get_i32();
-          SET_I32(x * x)
-        }
-        case tan_f32: {
-          GET_SET_F32(precise::tan)
-        }
-        default: /*tanh_f32*/ {
-          GET_SET_F32(precise::tanh)
-        }
-      }
+    } else if (operation < 2000) {
+      // Binary
+      
     } else {
-      switch (operation) {
-        case increment_f32: {
-          auto x = storage.get_f32();
-          SET_F32(x + 1);
-        }
-        default: /*increment_i32*/ {
-          auto x = storage.get_i32();
-          SET_I32(x + 1);
-        }
-      }
+      // Ternary
+      
     }
   }
   

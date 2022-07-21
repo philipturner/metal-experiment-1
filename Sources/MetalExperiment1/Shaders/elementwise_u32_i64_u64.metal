@@ -1,5 +1,5 @@
 //
-//  unary_u32_i64_u64.metal
+//  elementwise_u32_i64_u64.metal
 //
 //
 //  Created by Philip Turner on 7/8/22.
@@ -11,7 +11,7 @@ using namespace metal;
 // The u32/i64/u64 ubsershader includes any casts that involve u32/i64/u64. Its start and end are
 // more complex than f32/i32; it can read and write from more data types.
 
-enum UnaryOperationType2: ushort {
+enum ElementwiseOperationType2: ushort {
   abs_i64 = 0,
   neg_i64 = 1,
   sign_i64 = 2,
@@ -39,7 +39,7 @@ enum UnaryOperationType2: ushort {
   increment_i64 = 30, // for testing purposes only
 };
 
-kernel void unary_u32_i64_u64(
+kernel void elementwise_u32_i64_u64(
   device float *input [[buffer(0)]],
   device float *output [[buffer(1)]],
   uint tid [[thread_position_in_grid]]
