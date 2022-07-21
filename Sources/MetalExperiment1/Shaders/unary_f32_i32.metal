@@ -338,23 +338,25 @@ namespace metal {
 //
 // Performance of perfect radix-4 dispatch:
 // Iteration and instruction fetching: >=2 clock cycles
-// <=64 operators, so 3 levels of recursion
+// <=64 unique operations, so 3 levels of recursion
 // Overhead per level of recursion: 1 - 3 comparisons (4 execution paths)
 // Overhead range: 5 - 11 clock cycles
 // Overhead per element: 1.25 - 2.75 clock cycles
 // Average overhead: (2 + 3 * (1+2+3+3)/4)/4 = 2.19 clock cycles
 //
 // Overhead for `increment`: (#49 -> 3 + 1 + 2 = 6)/4 = 1.5 clock cycles
-// Amortized sequential throughput for `increment_f32`: 2.3 µs
+// Amortized sequential throughput for `increment_f32`: 2.4 µs
 // - For 1.4 µs, before making ubershader, execution time was (0 overhead) + (2 ALU) = 2
 // - For 2.6 µs, after making ubershader, execution time was (2 overhead) + (2 ALU) = 4
-// - Using a linear interpolation of (1.5=overhead), (25% x 1.4) + (75% x 2.6) = 2.3 µs
+// - With perfect radix-4 dispatch, execution time should be (1.5 overhead) + (2 ALU) = 3.5
+// - 3.5/4 = 87.5%, rounded down to 87%
+// - Using a linear interpolation of (1.5=overhead), (13% x 1.4) + (87% x 2.6) = 2.44 µs
 //
 //===------------------------------------------------------------------------------------------===//
 //
-// Perfect radix-4 overhead takes an extrapolated 88% of the execution time for `increment`. In a
+// Perfect radix-4 overhead takes an extrapolated 93.8% of the execution time for `increment`. In a
 // quick calculation that optimized the pre-ubershader increment (changing 1.4 -> 0.7 µs), the
-// percentage was 82%. Keeping pre-ubershader = 1.4 µs, results with different combos:
+// percentage was 90.5%. Keeping pre-ubershader = 1.4 µs, results with different combos:
 //
 // - Horizontal axis = overhead reduction
 //   - A = Δ(upper bounds) = -1.5 cycles  = 4.25 -> 2.75
@@ -365,17 +367,26 @@ namespace metal {
 //   - E = increment_f32 = 2
 //   - F = estimated trig = 10
 //
-// Absolute clock cycle ratio
-//     |  A  |  B  |  C  |
-// ----|-----|-----|-----|
-//  D  | .71 |  X  |  X  |
-// ----|-----|-----|-----|
-//  E  |  .  |  .  |  X  |
-// ----|-----|-----|-----|
-//  F  |  .  |  .  |  .  |
-// ----|-----|-----|-----|
+// Absolute clock cycle ratio (increment = 0.87)
+//    |  A  |  B  |  C  |
+// ---|-----|-----|------|
+//  D | .71 | .91 | 1.13 |
+// ---|-----|-----|------|
+//  E | .76 | .93 | 1.08 |
+// ---|-----|-----|------|
+//  F | .89 | .98 | 1.02 |
+// ---|-----|-----|------|
 //
-// Linear regression sequential throughput ratio
+// The results are very disappointing. Operations taking >10 cycles/element have worse sequential
+// throughput than cheap ones, making the linear regression for sequential throughput useless. If I
+// ran the calculation, results might be 10% speedup at best. This marginal benefit is outweighed by
+// the costs of making the ubershader unmaintable. The doubling of amortized execution time from
+// 1.4 µs to 2.6 µs seems alarming, but I can't do much about it.
+//
+// Furthermore, these numbers assume around 100 operations have been fused. In real-world code,
+// fusion is not that common. If only 10 operations were fused, the benefits of switching to perfect
+// radix-4 could reduce by a factor of 10. If 2 operations were fused (the most common case), the
+// benefits reduce by a factor of 50.
 
 kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
