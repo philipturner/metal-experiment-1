@@ -108,7 +108,7 @@ enum UnaryOperationType: ushort {
   atanh_f32 = 7,
   
   cast_f32_to_f16 = 10,
-  cast_f32_to_i32 = 11,
+  cast_f32_to_i32 = 11, // requires metadata
   cast_i32_to_bool = 12,
   cast_i32_to_f16 = 13,
   cast_i32_to_f32 = 14,
@@ -127,7 +127,7 @@ enum UnaryOperationType: ushort {
   is_inf_f32 = 31, // returns bool/u8
   is_nan_f32 = 32, // returns bool/u8
   
-  leaky_relu_f32 = 40,
+  leaky_relu_f32 = 40, // requires metadata
   log_f32 = 41,
   log1p_f32 = 42,
   logical_not_bool = 43, // boolean operation
@@ -155,8 +155,6 @@ enum UnaryOperationType: ushort {
   
   increment_f32 = 70, // for testing purposes only
   increment_i32 = 71, // for testing purposes only
-  
-  // 80 - 255 reserved for `unary_u32_i64_u64` ubershader.
 };
 
 // MARK: - Classes

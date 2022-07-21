@@ -18,7 +18,7 @@ enum UnaryOperationType: UInt8, CaseIterable {
   
   // TODO: - Support casting
 //  case cast_f32_to_f16 = 10
-//  case cast_f32_to_i32 = 11
+//  case cast_f32_to_i32 = 11 // requires metadata
 //  case cast_i32_to_bool = 12
 //  case cast_i32_to_f16 = 13
 //  case cast_i32_to_f32 = 14
@@ -39,19 +39,18 @@ enum UnaryOperationType: UInt8, CaseIterable {
 //  case is_nan_f32 = 32 // returns bool/u8
   
   // TODO: - Support boolean operations, metadata
-//  case leaky_relu_f32 = 40
+  case leaky_relu_f32 = 40 // requires metadata
   case log_f32 = 41
   case log1p_f32 = 42
-//  case logical_not_bool = 43 // boolean operation
+  case logical_not_bool = 43 // boolean operation
   case neg_f32 = 44
   case neg_i32 = 45 // integer operation
   case relu_f32 = 46
   case relu6_f32 = 47
   case round_f32 = 48 // rounds to nearest even
   
-  // TODO: - Support metadata
   case rsqrt_f32 = 50
-//  case selu_f32 = 51
+  case selu_f32 = 51
   case sigmoid_f32 = 52
   case sign_f32 = 53
   case sign_i32 = 54 // integer operation
@@ -70,12 +69,68 @@ enum UnaryOperationType: UInt8, CaseIterable {
   case increment_i32 = 71 // for testing purposes only
 }
 
+enum UnaryOperationType2: UInt8, CaseIterable {
+  case abs_i64 = 0
+  case neg_i64 = 1
+  case sign_i64 = 2
+  case sign_u64 = 3
+  case square_i64 = 4
+  case square_u64 = 5
+  
+  case cast_f32_to_i64 = 10
+  case cast_i64_to_bool = 11
+  case cast_i64_to_f16 = 12
+  case cast_i64_to_f32 = 13
+  case cast_i64_to_u8 = 14
+  case cast_i64_to_u16 = 15
+  case cast_i64_to_u32 = 16
+  
+  case cast_f32_to_u32 = 20
+  case cast_f32_to_u64 = 21
+  case cast_u64_to_bool = 22
+  case cast_u64_to_f16 = 23
+  case cast_u64_to_f32 = 24
+  case cast_u64_to_u8 = 25
+  case cast_u64_to_u16 = 26
+  case cast_u64_to_u32 = 27
+  
+  case increment_i64 = 30 // for testing purposes only
+  
+  init?(type32: UnaryOperationType, dataType: DataType) {
+    guard !dataType.representableByInt32 else {
+      return nil
+    }
+    
+    switch type32 {
+    case .abs_i32:
+      if dataType == .int64 {
+        self = .abs_i64
+      } else {
+        return nil
+      }
+    case .neg_i32:
+      if dataType == .int64 {
+        self = .neg_i64
+      } else {
+        return nil
+      }
+    case .sign_i32:
+      self = (dataType == .uint64) ? .sign_u64 : .sign_i64
+    case .increment_i32:
+      self = .increment_i64
+    default:
+      return nil
+    }
+  }
+}
+
 // Ordered by relative frequency, minimizing the number of conditional checks during compilation and
 // encoding.
 enum EagerOperation {
   struct Unary {
     // `metadata` stored before `operation` to make the memory layout more compact.
     var metadata: UInt64? = nil
+    var isNoOp: Bool = false
     var operation: UnaryOperationType
     var input: UInt64
     var output: UInt64

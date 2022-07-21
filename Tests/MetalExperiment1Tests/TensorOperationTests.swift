@@ -197,6 +197,18 @@ final class TensorOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
+    func gpu_leakyReluWrapper<T: TensorFlowFloatingPoint>(
+      alpha: Double
+    ) -> (Tensor<T>) -> Tensor<T> {
+      { leakyRelu($0, alpha: alpha) }
+    }
+    
+    func swift_leakyReluWrapper(
+      alpha: Double
+    ) -> (Float) -> Float {
+      { max($0, $0 * Float(alpha)) }
+    }
+    
     func swift_relu(_ x: Float) -> Float {
       max(x, 0)
     }
@@ -207,6 +219,10 @@ final class TensorOperationTests: XCTestCase {
     for input in [Float(-0.42), 0.42] {
       #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
       let input_f16 = Float16(input)
+      testFloat16(
+        gpu_leakyReluWrapper(alpha: 0.2), swift_leakyReluWrapper(alpha: 0.2), input: input_f16)
+      testFloat16(
+        gpu_leakyReluWrapper(alpha: 0.7), swift_leakyReluWrapper(alpha: 0.7), input: input_f16)
       if input > 0 {
         testFloat16(log, log, input: input_f16)
       }
@@ -216,6 +232,8 @@ final class TensorOperationTests: XCTestCase {
       testFloat16(relu6, swift_relu6, input: input_f16)
       testFloat16(round, rint, input: input_f16)
       #endif
+      testFloat(gpu_leakyReluWrapper(alpha: 0.2), swift_leakyReluWrapper(alpha: 0.2), input: input)
+      testFloat(gpu_leakyReluWrapper(alpha: 0.7), swift_leakyReluWrapper(alpha: 0.7), input: input)
       if input > 0 {
         testFloat(log, log, input: input, accuracy: 1e-5)
       }
@@ -226,6 +244,8 @@ final class TensorOperationTests: XCTestCase {
       testFloat(round, rint, input: input)
     }
     
+    test(Tensor<Bool>.elementsLogicalNot, input: true, expected: false)
+    test(Tensor<Bool>.elementsLogicalNot, input: false, expected: true)
     test(-, input: Int8(127), expected: Int8(-127))
     test(-, input: Int16.max, expected: -Int16.max)
     test(-, input: Int32.max, expected: -Int32.max)

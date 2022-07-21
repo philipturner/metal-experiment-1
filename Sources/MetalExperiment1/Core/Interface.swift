@@ -173,8 +173,10 @@ extension OperationRegistry {
     "expm1": expm1,
     "floor": floor,
     
+    "leakyRelu": leakyRelu,
     "log": log,
     "log1p": log1p,
+    "logicalNot": logicalNot,
     "neg": neg,
     "relu": relu,
     "relu6": relu6,
@@ -188,7 +190,9 @@ extension OperationRegistry {
   static func dispatchUnary(
     _ args: inout Arguments,
     _ operation_f32: UnaryOperationType?,
-    _ operation_i32: UnaryOperationType?
+    _ operation_i32: UnaryOperationType?,
+    _ operation_bool: UnaryOperationType?,
+    _ metadata: UInt64? = nil
   ) {
     let ctx = Context.global
     precondition(args.inputs.count == 1)
@@ -204,37 +208,43 @@ extension OperationRegistry {
     ctx._internalRetain(output1_alloc)
     encodeOutput(&args.outputs, (output1_id, output1_alloc.rank))
     
-    // Fetch data type.
+    // Select operation type.
+    var operation: UnaryOperationType
     let dataType = input1_alloc.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
-    precondition(dataType != .bool, "")
     
-    // Select operation type.
-    var operation: UnaryOperationType
-    switch (operation_f32, operation_i32) {
-    case (.some(let operation_f32), .some(let operation_i32)):
-      if dataType.isFloatingPoint {
+    if let operation_bool = operation_bool {
+      precondition(dataType == .bool, dataMismatch(operation_bool))
+      precondition(operation_f32 == nil, "This should never happen.")
+      precondition(operation_i32 == nil, "This should never happen.")
+      operation = operation_bool
+    } else {
+      precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
+      switch (operation_f32, operation_i32) {
+      case (.some(let operation_f32), .some(let operation_i32)):
+        if dataType.isFloatingPoint {
+          operation = operation_f32
+        } else if dataType.representableByInt32 {
+          operation = operation_i32
+        } else {
+          preconditionFailure(dataMismatch(operation_i32))
+        }
+      case (.some(let operation_f32), .none):
+        precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
         operation = operation_f32
-      } else if dataType.representableByInt32 {
+      case (.none, .some(let operation_i32)):
+        precondition(dataType.representableByInt32, dataMismatch(operation_i32))
         operation = operation_i32
-      } else {
-        preconditionFailure(dataMismatch(operation_i32))
+      case (.none, .none):
+        fatalError("This should never happen.")
       }
-    case (.some(let operation_f32), .none):
-      precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
-      operation = operation_f32
-    case (.none, .some(let operation_i32)):
-      precondition(dataType.representableByInt32, dataMismatch(operation_i32))
-      operation = operation_i32
-    case (.none, .none):
-      fatalError("This should never happen.")
     }
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation: operation, input: input1_id, output: output1_id)))
+      metadata: metadata, operation: operation, input: input1_id, output: output1_id)))
   }
 }
 
@@ -242,92 +252,102 @@ extension OperationRegistry {
   // Codes 0 - 7
   static let abs = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .abs_f32, .abs_i32)
+    dispatchUnary(&args, .abs_f32, .abs_i32, nil)
   }
   static let acos = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .acos_f32, nil)
+    dispatchUnary(&args, .acos_f32, nil, nil)
   }
   static let acosh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .acosh_f32, nil)
+    dispatchUnary(&args, .acosh_f32, nil, nil)
   }
   static let asin = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .asin_f32, nil)
+    dispatchUnary(&args, .asin_f32, nil, nil)
   }
   static let asinh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .asinh_f32, nil)
+    dispatchUnary(&args, .asinh_f32, nil, nil)
   }
   static let atan = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .atan_f32, nil)
+    dispatchUnary(&args, .atan_f32, nil, nil)
   }
   static let atanh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .atanh_f32, nil)
+    dispatchUnary(&args, .atanh_f32, nil, nil)
   }
   
   // Codes 20 - 26
   static let ceil = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .ceil_f32, nil)
+    dispatchUnary(&args, .ceil_f32, nil, nil)
   }
   static let cos = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .cos_f32, nil)
+    dispatchUnary(&args, .cos_f32, nil, nil)
   }
   static let cosh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .cosh_f32, nil)
+    dispatchUnary(&args, .cosh_f32, nil, nil)
   }
   static let elu = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .elu_f32, nil)
+    dispatchUnary(&args, .elu_f32, nil, nil)
   }
   static let exp = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .exp_f32, nil)
+    dispatchUnary(&args, .exp_f32, nil, nil)
   }
   static let expm1 = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .expm1_f32, nil)
+    dispatchUnary(&args, .expm1_f32, nil, nil)
   }
   static let floor = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .floor_f32, nil)
+    dispatchUnary(&args, .floor_f32, nil, nil)
   }
   
-  // Codes 40 - 48, excluding 40 and 43
+  // Codes 40 - 48
+  static let leakyRelu = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let alpha: Double = decodeScalar(&args.attributes)
+    let metadata = UInt64(Float(alpha).bitPattern)
+    dispatchUnary(&args, .leaky_relu_f32, nil, nil, metadata)
+  }
   static let log = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .log_f32, nil)
+    dispatchUnary(&args, .log_f32, nil, nil)
   }
   static let log1p = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .log1p_f32, nil)
+    dispatchUnary(&args, .log1p_f32, nil, nil)
+  }
+  static let logicalNot = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, nil, nil, .logical_not_bool)
   }
   static let neg = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .neg_f32, .neg_i32)
+    dispatchUnary(&args, .neg_f32, .neg_i32, nil)
   }
   static let relu = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .relu_f32, nil)
+    dispatchUnary(&args, .relu_f32, nil, nil)
   }
   static let relu6 = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .relu6_f32, nil)
+    dispatchUnary(&args, .relu6_f32, nil, nil)
   }
   static let round = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .round_f32, nil)
+    dispatchUnary(&args, .round_f32, nil, nil)
   }
 
   // Codes 70 - 71
   static let increment = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .increment_f32, .increment_i32)
+    dispatchUnary(&args, .increment_f32, .increment_i32, nil)
   }
 }

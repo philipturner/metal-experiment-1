@@ -61,7 +61,6 @@ extension Context {
       }
       guard let fusionHead = fusionHead,
             let fusionTail = fusionTail,
-            fusionOperations.count > 0,
             fusionSize >= 0 else {
         fatalError("Something went wrong while fusing operations.")
       }
@@ -75,6 +74,7 @@ extension Context {
       compiledOperations.append(.multiUnary(multiUnary))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if fusionOperations.count >= 2 {
+          // This number does not include no-ops that were fused.
           print("*** Fused \(fusionOperations.count) unary operations ***")
         } else {
           print("Appended single unary operation")
@@ -109,15 +109,15 @@ extension Context {
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         }
         
-        fusionOperations.append(unary.operation)
-        if let metadata = unary.metadata {
-          fusionMetadata.append(metadata)
+        if !unary.isNoOp {
+          fusionOperations.append(unary.operation)
+          if let metadata = unary.metadata {
+            fusionMetadata.append(metadata)
+          }
         }
         
-        
         let output = _internalFetch(unary.output)
-        precondition(input.byteCount == output.byteCount)
-        precondition(input.dataType == output.dataType, "Casting not yet supported")
+        precondition(input.shape.elementsEqual(output.shape))
         fusionTail = output
         fusionTailID = unary.output
         _internalRelease(input)

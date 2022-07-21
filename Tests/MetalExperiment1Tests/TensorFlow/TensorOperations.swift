@@ -68,7 +68,7 @@ public func cosh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 @inlinable
 public func elu<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
-  _Raw.elu(x)
+  _Raw.elu(features: x)
 }
 
 @inlinable
@@ -89,6 +89,14 @@ public func floor<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 
 @inlinable
+public func leakyRelu<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>,
+  alpha: Double = 0.2
+) -> Tensor<T> {
+  _Raw.leakyRelu(features: x, alpha: alpha)
+}
+
+@inlinable
 public func log<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.log(x)
 }
@@ -96,6 +104,13 @@ public func log<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 @inlinable
 public func log1p<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.log1p(x)
+}
+
+extension Tensor where Scalar == Bool {
+  @inlinable
+  public func elementsLogicalNot() -> Tensor {
+    return _Raw.logicalNot(self)
+  }
 }
 
 extension Tensor where Scalar: SignedNumeric {
@@ -107,12 +122,12 @@ extension Tensor where Scalar: SignedNumeric {
 
 @inlinable
 public func relu<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
-  _Raw.relu(x)
+  _Raw.relu(features: x)
 }
 
 @inlinable
 public func relu6<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
-  _Raw.relu6(x)
+  _Raw.relu6(features: x)
 }
 
 @inlinable
