@@ -161,6 +161,14 @@ extension OperationRegistry {
     "atan": atan,
     "atanh": atanh,
     
+    "ceil": ceil,
+    "cos": cos,
+    "cosh": cosh,
+    "elu": elu,
+    "exp": exp,
+    "expm1": expm1,
+    "floor": floor,
+    
     "increment": increment
   ]
 }
@@ -251,6 +259,36 @@ extension OperationRegistry {
   static let atanh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .atanh_f32, nil)
+  }
+  
+  // Codes 20 - 26
+  static let ceil = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .ceil_f32, nil)
+  }
+  static let cos = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .cos_f32, nil)
+  }
+  static let cosh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .cosh_f32, nil)
+  }
+  static let elu = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .elu_f32, nil)
+  }
+  static let exp = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .exp_f32, nil)
+  }
+  static let expm1 = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .expm1_f32, nil)
+  }
+  static let floor = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .floor_f32, nil)
   }
 
   // Codes 70 - 71

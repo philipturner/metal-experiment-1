@@ -46,3 +46,40 @@ public func atan<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 public func atanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.atanh(x)
 }
+
+
+
+@inlinable
+public func ceil<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.ceil(x)
+}
+
+@inlinable
+public func cos<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.cos(x)
+}
+
+@inlinable
+public func cosh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.cosh(x)
+}
+
+@inlinable
+public func elu<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.elu(x)
+}
+
+@inlinable
+public func exp<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.exp(x)
+}
+
+@inlinable
+public func expm1<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.expm1(x)
+}
+
+@inlinable
+public func floor<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.floor(x)
+}

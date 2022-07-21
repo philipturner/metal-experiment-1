@@ -412,7 +412,7 @@ kernel void unary_f32_i32(
         compressed_storage.set_scalar_u16(mem_slice);
         break;
       }
-      case 4: {
+      default: /*4*/ {
         uint mem_slice = uint(mem_slice_u32);
         compressed_storage.set_scalar_u32(mem_slice);
         break;
@@ -430,7 +430,7 @@ kernel void unary_f32_i32(
         compressed_storage.set_vector_u16(mem_slice);
         break;
       }
-      case 4: {
+      default: /*4*/ {
         uint4 mem_slice = ((device uint4*)input)[tid];
         compressed_storage.set_vector_u32(mem_slice);
         break;
@@ -460,7 +460,7 @@ kernel void unary_f32_i32(
       storage.set_vector_u8(compressed_storage);
       break;
     }
-    case u16_as_i32: {
+    default: /*u16_as_i32*/ {
       storage.set_vector_u16(compressed_storage);
       break;
     }
@@ -494,11 +494,9 @@ kernel void unary_f32_i32(
         case atan_f32: {
           GET_SET_F32(precise::atan)
         }
-        case atanh_f32: {
+        default: /*atanh_f32*/ {
           GET_SET_F32(precise::atanh)
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= cast_i32_to_u16) {
       switch (operation) {
@@ -535,13 +533,11 @@ kernel void unary_f32_i32(
           auto casted = uchar4(x);
           SET_I32(int4(casted))
         }
-        case cast_i32_to_u16: {
+        default: /*cast_i32_to_u16*/ {
           auto x = storage.get_i32();
           auto casted = ushort4(x);
           SET_I32(int4(casted))
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= floor_f32) {
       switch (operation) {
@@ -552,7 +548,7 @@ kernel void unary_f32_i32(
           GET_SET_F32(precise::cos)
         }
         case cosh_f32: {
-          GET_SET_F32(precise::cos)
+          GET_SET_F32(precise::cosh)
         }
         case elu_f32: {
           auto x = storage.get_f32();
@@ -565,11 +561,9 @@ kernel void unary_f32_i32(
         case expm1_f32: {
           GET_SET_F32(precise::expm1)
         }
-        case floor_f32: {
+        default: /*floor_f32*/ {
           GET_SET_F32(precise::floor)
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= is_nan_f32) {
       switch (operation) {
@@ -583,13 +577,11 @@ kernel void unary_f32_i32(
           auto mask = int4(isinf(x));
           SET_I32(mask)
         }
-        case is_nan_f32: {
+        default: /*is_nan_f32*/ {
           auto x = storage.get_f32();
           auto mask = int4(isnan(x));
           SET_I32(mask)
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= round_f32) {
       switch (operation) {
@@ -627,11 +619,9 @@ kernel void unary_f32_i32(
           auto x = storage.get_f32();
           SET_F32(precise::clamp(x, 0, 6))
         }
-        case round_f32: {
+        default: /*round_f32*/ {
           GET_SET_F32(precise::rint)
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= softplus_f32) {
       switch (operation) {
@@ -666,14 +656,12 @@ kernel void unary_f32_i32(
         case sinh_f32: {
           GET_SET_F32(precise::sinh)
         }
-        case softplus_f32: {
+        default: /*softplus_f32*/ {
           auto x = storage.get_f32();
           x = precise::exp(x) + 1;
           x = precise::log(x);
           SET_F32(x)
         }
-        default:
-          return; // This should never happen.
       }
     } else if (operation <= tanh_f32) {
       switch (operation) {
@@ -697,11 +685,9 @@ kernel void unary_f32_i32(
         case tan_f32: {
           GET_SET_F32(precise::tan)
         }
-        case tanh_f32: {
+        default: /*tanh_f32*/ {
           GET_SET_F32(precise::tanh)
         }
-        default:
-          return; // This should never happen.
       }
     } else {
       switch (operation) {
@@ -734,8 +720,8 @@ kernel void unary_f32_i32(
       ((device uchar4*)output)[tid] = mem_slice;
       break;
     }
-    case i16_as_i32:
-    case u16_as_i32: {
+    default: /*i16_as_i32
+               u16_as_i32*/ {
       ushort4 mem_slice = storage.get_vector_i16_u16();
       ((device ushort4*)output)[tid] = mem_slice;
       break;

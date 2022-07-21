@@ -111,6 +111,13 @@ extension Int32: PluggableDeviceEncodable {
 // Differs from the old S4TF in that the function bodies aren't emitted into the client.
 public enum _Raw {
   @inline(__always)
+  public static func increment<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("increment", input)
+  }
+  
+  // Functions that are used in Swift for TensorFlow:
+  
+  @inline(__always)
   public static func abs<T>(_ input: Tensor<T>) -> Tensor<T> {
     dispatchUnary("abs", input)
   }
@@ -145,8 +152,40 @@ public enum _Raw {
     dispatchUnary("atanh", input)
   }
   
+  
+  
   @inline(__always)
-  public static func increment<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("increment", input)
+  public static func ceil<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("ceil", input)
+  }
+  
+  @inline(__always)
+  public static func cos<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("cos", input)
+  }
+  
+  @inline(__always)
+  public static func cosh<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("cosh", input)
+  }
+  
+  @inline(__always)
+  public static func elu<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("elu", input)
+  }
+  
+  @inline(__always)
+  public static func exp<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("exp", input)
+  }
+  
+  @inline(__always)
+  public static func expm1<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("expm1", input)
+  }
+  
+  @inline(__always)
+  public static func floor<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("floor", input)
   }
 }

@@ -32,7 +32,7 @@ func testFloat(
   _ function: (Tensor<Float>) -> Tensor<Float>,
   _ swiftFunction: (Float) -> Float,
   input: Float,
-  accuracy: Float
+  accuracy: Float = 0
 ) {
   let tensor = Tensor(repeating: input, shape: [5])
   let transformedTensor = function(tensor)
@@ -49,7 +49,7 @@ func testFloat16(
   _ function: (Tensor<Float16>) -> Tensor<Float16>,
   _ swiftFunction: (Float) -> Float,
   input: Float16,
-  accuracy: Float16
+  accuracy: Float16 = 0
 ) {
   let tensor = Tensor(repeating: input, shape: [5])
   let transformedTensor = function(tensor)
@@ -156,5 +156,39 @@ final class TensorOperationTests: XCTestCase {
     testFloat(asinh, asinh, input: 1.42, accuracy: 1e-5)
     testFloat(atan, atan, input: 0.42, accuracy: 1e-5)
     testFloat(atanh, atanh, input: 0.42, accuracy: 1e-5)
+  }
+  
+  // Operations with codes 20 - 26
+  func testOperations20Series() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    func swift_elu(_ x: Float) -> Float {
+      if x < 0 {
+        return exp(x) - 1
+      } else {
+        return x
+      }
+    }
+    
+    for input in [Float(-0.42), 0.42] {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      let input_f16 = Float16(input)
+      testFloat16(ceil, ceil, input: input_f16)
+      testFloat16(cos, cos, input: input_f16)
+      testFloat16(cosh, cosh, input: input_f16)
+      testFloat16(elu, swift_elu, input: input_f16)
+      testFloat16(exp, exp, input: input_f16)
+      testFloat16(expm1, expm1, input: input_f16)
+      testFloat16(floor, floor, input: input_f16)
+      #endif
+      testFloat(ceil, ceil, input: input)
+      testFloat(cos, cos, input: input)
+      testFloat(cosh, cosh, input: input, accuracy: 1e-5)
+      testFloat(elu, swift_elu, input: input, accuracy: 1e-5)
+      testFloat(exp, exp, input: input, accuracy: 1e-5)
+      testFloat(expm1, expm1, input: input, accuracy: 1e-5)
+      testFloat(floor, floor, input: input)
+    }
   }
 }
