@@ -33,13 +33,13 @@ enum UnaryOperationType: UInt8, CaseIterable {
   case expm1_f32 = 25
   case floor_f32 = 26
   
-  // TODO: - Support casting, support boolean operations
+  // TODO: - Support casting, boolean operations
 //  case is_finite_f32 = 30 // returns bool/u8
 //  case is_inf_f32 = 31 // returns bool/u8
 //  case is_nan_f32 = 32 // returns bool/u8
   
-  // TODO: - Support boolean operations
-  case leaky_relu_f32 = 40
+  // TODO: - Support boolean operations, metadata
+//  case leaky_relu_f32 = 40
   case log_f32 = 41
   case log1p_f32 = 42
 //  case logical_not_bool = 43 // boolean operation

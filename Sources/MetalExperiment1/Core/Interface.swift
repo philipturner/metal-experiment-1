@@ -153,6 +153,10 @@ struct OperationRegistry {
 
 extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
+    "increment": increment,
+    
+    // Unary
+    
     "abs": abs,
     "acos": acos,
     "acosh": acosh,
@@ -169,7 +173,12 @@ extension OperationRegistry {
     "expm1": expm1,
     "floor": floor,
     
-    "increment": increment
+    "log": log,
+    "log1p": log1p,
+    "neg": neg,
+    "relu": relu,
+    "relu6": relu6,
+    "round": round,
   ]
 }
 
@@ -229,7 +238,6 @@ extension OperationRegistry {
   }
 }
 
-// TODO: Watch out for SELU, which requires metadata.
 extension OperationRegistry {
   // Codes 0 - 7
   static let abs = Function {
@@ -289,6 +297,32 @@ extension OperationRegistry {
   static let floor = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .floor_f32, nil)
+  }
+  
+  // Codes 40 - 48, excluding 40 and 43
+  static let log = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .log_f32, nil)
+  }
+  static let log1p = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .log1p_f32, nil)
+  }
+  static let neg = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .neg_f32, .neg_i32)
+  }
+  static let relu = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .relu_f32, nil)
+  }
+  static let relu6 = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .relu6_f32, nil)
+  }
+  static let round = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .round_f32, nil)
   }
 
   // Codes 70 - 71

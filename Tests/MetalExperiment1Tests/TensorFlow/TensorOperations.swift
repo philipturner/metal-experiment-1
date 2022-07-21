@@ -12,6 +12,8 @@ extension Tensor where Scalar: Numeric {
   }
 }
 
+// Unary
+
 @inlinable
 public func abs<T: SignedNumeric>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.abs(x)
@@ -82,4 +84,38 @@ public func expm1<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 @inlinable
 public func floor<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.floor(x)
+}
+
+
+
+@inlinable
+public func log<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.log(x)
+}
+
+@inlinable
+public func log1p<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.log1p(x)
+}
+
+extension Tensor where Scalar: SignedNumeric {
+  @inlinable
+  public static prefix func - (rhs: Tensor) -> Tensor {
+    return _Raw.neg(rhs)
+  }
+}
+
+@inlinable
+public func relu<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.relu(x)
+}
+
+@inlinable
+public func relu6<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.relu6(x)
+}
+
+@inlinable
+public func round<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.round(x)
 }

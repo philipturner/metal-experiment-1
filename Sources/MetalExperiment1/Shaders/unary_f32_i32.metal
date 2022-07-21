@@ -23,6 +23,11 @@ using namespace metal;
 // characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
 // special number: the alignment of `malloc` pointers and memory alignment of all Swift SIMD types.
 // On x86 with AVX-512 vectors, the alignment might be larger, but not smaller.
+//
+// Sticking to two vector components in the u32_i64_u64 ubershader means u32 should also have 2
+// vector components, otherwise operations can't be fused. When reading from f32/i32 and casting to
+// u32/i64/u64, it also reads two scalars per shader. This may degrade performance, but it can't be
+// helped.
 
 enum MemoryCast: ushort {
   f32_i32_native = 0,

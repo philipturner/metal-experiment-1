@@ -115,7 +115,7 @@ public enum _Raw {
     dispatchUnary("increment", input)
   }
   
-  // Functions that are used in Swift for TensorFlow:
+  // Unary
   
   @inline(__always)
   public static func abs<T>(_ input: Tensor<T>) -> Tensor<T> {
@@ -187,5 +187,37 @@ public enum _Raw {
   @inline(__always)
   public static func floor<T>(_ input: Tensor<T>) -> Tensor<T> {
     dispatchUnary("floor", input)
+  }
+  
+  
+  
+  @inline(__always)
+  public static func log<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("log", input)
+  }
+  
+  @inline(__always)
+  public static func log1p<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("log1p", input)
+  }
+  
+  @inline(__always)
+  public static func neg<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("neg", input)
+  }
+  
+  @inline(__always)
+  public static func relu<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("relu", input)
+  }
+  
+  @inline(__always)
+  public static func relu6<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("relu6", input)
+  }
+  
+  @inline(__always)
+  public static func round<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("round", input)
   }
 }

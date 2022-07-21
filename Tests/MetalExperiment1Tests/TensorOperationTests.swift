@@ -191,4 +191,56 @@ final class TensorOperationTests: XCTestCase {
       testFloat(floor, floor, input: input)
     }
   }
+  
+  // Operations with codes 40 - 48
+  func testOperations40Series() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    func swift_relu(_ x: Float) -> Float {
+      max(x, 0)
+    }
+    func swift_relu6(_ x: Float) -> Float {
+      min(max(x, 0), 6)
+    }
+    
+    for input in [Float(-0.42), 0.42] {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      let input_f16 = Float16(input)
+      if input > 0 {
+        testFloat16(log, log, input: input_f16)
+      }
+      testFloat16(log1p, log1p, input: input_f16)
+      testFloat16(-, -, input: input_f16)
+      testFloat16(relu, swift_relu, input: input_f16)
+      testFloat16(relu6, swift_relu6, input: input_f16)
+      testFloat16(round, rint, input: input_f16)
+      #endif
+      if input > 0 {
+        testFloat(log, log, input: input, accuracy: 1e-5)
+      }
+      testFloat(log1p, log1p, input: input, accuracy: 1e-5)
+      testFloat(-, -, input: input)
+      testFloat(relu, swift_relu, input: input)
+      testFloat(relu6, swift_relu6, input: input)
+      testFloat(round, rint, input: input)
+    }
+    
+    test(-, input: Int8(127), expected: Int8(-127))
+    test(-, input: Int16.max, expected: -Int16.max)
+    test(-, input: Int32.max, expected: -Int32.max)
+    
+    // Test overflow of integers.
+    test(-, input: Int8(-128), expected: Int8(-128))
+    test(-, input: Int16.min, expected: Int16.min)
+    test(-, input: Int32.min, expected: Int32.min)
+    
+    // The `round` operator in Swift does not round to nearest even.
+    for input in [Float(-1.5), -0.5, 0.5, 1.5] {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      testFloat16(round, rint, input: Float16(input))
+      #endif
+      testFloat(round, rint, input: input)
+    }
+  }
 }
