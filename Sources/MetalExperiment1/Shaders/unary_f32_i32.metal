@@ -26,8 +26,14 @@ using namespace metal;
 //
 // Sticking to two vector components in the u32_i64_u64 ubershader means u32 should also have 2
 // vector components, otherwise operations can't be fused. When reading from f32/i32 and casting to
-// u32/i64/u64, it also reads two scalars per shader. This may degrade performance, but it can't be
-// helped.
+// u32/i64/u64, it also reads two scalars per shader. This may degrade performance for u32.
+//
+// The second option (4 x u32) prevents 32-bit operations from being fused with 64-bit operations.
+// Such large integers are so rare that I can get away with not fusing anything that touches them.
+// That simplifies the shader's implementation, and I can always change my mind.
+//
+// The third option is checking the index, and either reading/writing 2 or 4 elements from memory.
+// That would require storing 4 64-bit types in memory registers.
 
 enum MemoryCast: ushort {
   f32_i32_native = 0,
