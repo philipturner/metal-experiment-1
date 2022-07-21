@@ -49,8 +49,9 @@ enum UnaryOperationType: UInt8, CaseIterable {
   case relu6_f32 = 47
   case round_f32 = 48 // rounds to nearest even
   
+  // TODO: - Support metadata
   case rsqrt_f32 = 50
-  case selu_f32 = 51
+//  case selu_f32 = 51
   case sigmoid_f32 = 52
   case sign_f32 = 53
   case sign_i32 = 54 // integer operation

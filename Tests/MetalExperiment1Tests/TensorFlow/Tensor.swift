@@ -50,7 +50,7 @@ public class PluggableDeviceTensorHandle {
 
 // MARK: - TensorHandle
 
-public struct TensorHandle<Scalar> {
+public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @usableFromInline let handle: PluggableDeviceTensorHandle
   
   public var _cTensorHandle: UInt64 { handle._cTensorHandle }
@@ -112,7 +112,7 @@ public struct TensorHandle<Scalar> {
 
 // MARK: - Tensor
 
-public struct Tensor<Scalar> {
+public struct Tensor<Scalar: TensorFlowScalar> {
   public let handle: TensorHandle<Scalar>
   
   @usableFromInline
@@ -152,116 +152,5 @@ public struct Tensor<Scalar> {
       $0.initialize(repeating: repeatedValue, count: shape.contiguousSize)
     }
     self.init(handle: handle)
-  }
-  
-  @inlinable
-  public func incremented() -> Tensor {
-    return _Raw.increment(self)
-  }
-}
-
-// MARK: - _Raw
-
-// TODO: A shared function for unary F32 types
-// TODO: A shared function for unary F32/I32 types
-// TODO: A shared function for unary I32 types
-
-// Differs from the old S4TF in that the function bodies aren't emitted into the client.
-public enum _Raw {
-  @inline(__always)
-  public static func increment<T>(_ input: Tensor<T>) -> Tensor<T> {
-    return decodeOutputs { outputs in
-      encodeInputs(input) { inputs in
-        let name = encodeName("increment")
-        let attributes = encodeAttributes()
-        Context.executeOperation(name, attributes, inputs, outputs)
-      }
-    }
-  }
-}
-
-@inline(__always)
-fileprivate func encodeName(_ name: StaticString) -> UnsafeRawBufferPointer {
-  let start = name.utf8Start
-  let count = name.utf8CodeUnitCount
-  return UnsafeRawBufferPointer(start: start, count: count)
-}
-
-@inline(__always)
-fileprivate func encodeAttributes() -> UnsafeRawBufferPointer {
-  return UnsafeRawBufferPointer(start: nil, count: 0)
-}
-
-@inline(__always)
-fileprivate func encodeInputs<T0>(
-  _ input1: Tensor<T0>,
-  _ body: (UnsafeBufferPointer<UInt64>) -> Void
-) {
-  withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 1) { bufferPointer in
-    bufferPointer[0] = input1._rawTensorHandle
-    body(UnsafeBufferPointer(bufferPointer))
-  }
-}
-
-@inline(__always)
-fileprivate func encodeInputs<T0, T1>(
-  _ input1: Tensor<T0>,
-  _ input2: Tensor<T1>,
-  _ body: (UnsafeBufferPointer<UInt64>) -> Void
-) {
-  withUnsafeTemporaryAllocation(of: UInt64.self, capacity: 2) { bufferPointer in
-    bufferPointer[0] = input1._rawTensorHandle
-    bufferPointer[1] = input2._rawTensorHandle
-    body(UnsafeBufferPointer(bufferPointer))
-  }
-}
-
-@inline(__always)
-fileprivate func decodeOutputAtom<T>(
-  _ ptr: UnsafeMutableBufferPointer<(UInt64, Int)>, _ index: Int
-) -> Tensor<T> {
-  let handle = TensorHandle<T>(_owning: ptr[index].0, rank: ptr[index].1)
-  return Tensor(handle: handle)
-}
-
-@inline(__always)
-fileprivate func decodeOutputs<T0>(
-  _ body: (UnsafeMutableBufferPointer<(UInt64, Int)>) -> Void
-) -> (Tensor<T0>) {
-  withUnsafeTemporaryAllocation(of: (UInt64, Int).self, capacity: 1) { bufferPointer in
-    body(bufferPointer)
-    return (
-      decodeOutputAtom(bufferPointer, 0)
-    )
-  }
-}
-
-
-@inline(__always)
-fileprivate func decodeOutputs<T0, T1>(
-  _ body: (UnsafeMutableBufferPointer<(UInt64, Int)>) -> Void
-) -> (Tensor<T0>, Tensor<T1>) {
-  withUnsafeTemporaryAllocation(of: (UInt64, Int).self, capacity: 2) { bufferPointer in
-    body(bufferPointer)
-    return (
-      decodeOutputAtom(bufferPointer, 0),
-      decodeOutputAtom(bufferPointer, 1)
-    )
-  }
-}
-
-// MARK: - PluggableDeviceEncodable
-
-protocol PluggableDeviceEncodable {
-  func createAtom() -> (UInt64, UInt64)
-}
-
-// TODO: Set the `Float` TF_DataType enumeration as an attribute's value. The raw value of this
-// enumeration is `Int32`.
-
-extension Int32: PluggableDeviceEncodable {
-  @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(truncatingIfNeeded: self), 0)
   }
 }

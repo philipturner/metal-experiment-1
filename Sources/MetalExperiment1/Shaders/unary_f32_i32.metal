@@ -326,6 +326,7 @@ constant void* get_metadata(constant void *metadata, thread ushort &index) {
 
 namespace metal {
   namespace precise {
+    // `inline` prevents symbol duplication errors in Xcode.
     inline float4 expm1(float4 x) {
       return precise::exp(x) - 1;
     }
@@ -417,7 +418,7 @@ kernel void unary_f32_i32(
   // pc = program counter
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
     UnaryOperationType operation = operations[pc];
-    if (operation <= atan_f32) {
+    if (operation <= atanh_f32) {
       switch (operation) {
         case abs_f32: {
           GET_SET_F32(precise::abs)

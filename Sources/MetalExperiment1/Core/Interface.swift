@@ -153,6 +153,14 @@ struct OperationRegistry {
 
 extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
+    "abs": abs,
+    "acos": acos,
+    "acosh": acosh,
+    "asin": asin,
+    "asinh": asinh,
+    "atan": atan,
+    "atanh": atanh,
+    
     "increment": increment
   ]
 }
@@ -215,6 +223,37 @@ extension OperationRegistry {
 
 // TODO: Watch out for SELU, which requires metadata.
 extension OperationRegistry {
+  // Codes 0 - 7
+  static let abs = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .abs_f32, .abs_i32)
+  }
+  static let acos = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .acos_f32, nil)
+  }
+  static let acosh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .acosh_f32, nil)
+  }
+  static let asin = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .asin_f32, nil)
+  }
+  static let asinh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .asinh_f32, nil)
+  }
+  static let atan = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .atan_f32, nil)
+  }
+  static let atanh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .atanh_f32, nil)
+  }
+
+  // Codes 70 - 71
   static let increment = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .increment_f32, .increment_i32)
