@@ -356,7 +356,7 @@ namespace metal {
 //
 // Overhead for `increment`: (#49 -> 3 + 1 + 2 = 6)/4 = 1.5 clock cycles
 // Amortized sequential throughput for `increment_f32`: ??? µs
-  
+
 kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
