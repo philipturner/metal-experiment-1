@@ -335,28 +335,45 @@ namespace metal {
 
 // MARK: - Shader Function
 
-// Performance of original, naively bucketed loop:
+// Performance of existing bucketed loop:
 // Iteration and instruction fetching: >=2 clock cycles
-// First switch statement: 1 - 8 comparisons
-// Second switch statement: 1 - 9 comparisons
-// Overhead range: 4 - 19 clock cycles
-// Overhead per element: 1 - 4.75 clock cycles
-// Average overhead: 2.875 clock cycles
+// First switch statement: 1 - 7 comparisons (8 execution paths)
+// Second switch statement: 1 - 8 comparisons (2 - 9 execution paths)
+// Overhead range: 4 - 17 clock cycles
+// Overhead per element: 1 - 4.25 clock cycles
+// Average overhead: (2 + (1+2+...7+7)/8 + (1+2+...5+5)/6 + 0.25)/4 = 2.49 clock cycles
+// - The '6' in the second series comes from ((#operations=50)/(1st switch=8)) = 6.25 ≈ 6. The
+//   '0.25' makes up for the rounding-down during addition.
 //
-// Overhead for `increment`: 9/4 = 2.25 clock cycles
-// Amortized sequential throughput for `increment_f32`: 2.7 µs
+// Overhead for `increment`: 8/4 = 2 clock cycles
+// Amortized sequential throughput for `increment_f32`: 2.6 µs
 
-// Performance of radix-4 dispatch:
+// Performance of perfect radix-4 dispatch:
 // Iteration and instruction fetching: >=2 clock cycles
 // <=64 operators, so 3 levels of recursion
-// Overhead per level of recursion: 1 - 3 comparisons
+// Overhead per level of recursion: 1 - 3 comparisons (4 execution paths)
 // Overhead range: 5 - 11 clock cycles
 // Overhead per element: 1.25 - 2.75 clock cycles
-// Average overhead: 2 clock cycles
+// Average overhead: (2 + 3 * (1+2+3+3)/4)/4 = 2.19 clock cycles
 //
 // Overhead for `increment`: (#49 -> 3 + 1 + 2 = 6)/4 = 1.5 clock cycles
-// Amortized sequential throughput for `increment_f32`: ??? µs
- 
+// Amortized sequential throughput for `increment_f32`: 2.3 µs
+// - For 1.4 µs, total execution time was (0 overhead) + (2 ALU) = 2
+// - For 2.6 µs, total execution time was (2 overhead) + (2 ALU) = 4
+// - Using a linear interpolation of (1.5=overhead), (25% x 1.4) + (75% x 2.6) = 2.3
+
+// Perfect radix-4 overhead takes an extrapolated 88% of the execution time for `increment`. In a
+// quick calculation that accounted for changes to bandwidth utilization (changing 1.4 -> 0.7 µs),
+// the percentage was 82%. But ignoring the affect of bandwidth, results with different combos:
+// - Horizontal row = overhead reduction
+//   - A = Δ(upper bounds) =
+//   - B = Δ(average) =
+//   - C = Δ(lower bounds) =
+// - Vertical row = clocks/operation
+//   - A = abs_f32 = 1
+//   - B = increment_f32 = 2
+//   - C = estimated trig = 10
+
 kernel void unary_f32_i32(
   device void *input [[buffer(0)]],
   device void *output [[buffer(1)]],
@@ -672,21 +689,17 @@ kernel void unary_f32_i32(
         default:
           return; // This should never happen.
       }
-    } else if (operation <= increment_i32) {
+    } else {
       switch (operation) {
         case increment_f32: {
           auto x = storage.get_f32();
           SET_F32(x + 1);
         }
-        case increment_i32: {
+        default: /*increment_i32*/ {
           auto x = storage.get_i32();
           SET_I32(x + 1);
         }
-        default:
-          return; // This should never happen.
       }
-    } else {
-      return; // This should never happen.
     }
   }
   
