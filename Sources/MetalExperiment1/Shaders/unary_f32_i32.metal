@@ -18,22 +18,9 @@ using namespace metal;
 // 64B - ???
 // 128B - starts to take longer
 
-// Limit write alignment to 16B, taking a slight performance hit on the u32/i64/u64 ubershader. Use
-// vectors of 2 scalars there. 64-bit operations are already ALU heavy, giving the performance
-// characteristics of 4 32-bit types. This also lets me keep the 16B RAM alignment, which is a
-// special number: the alignment of `malloc` pointers and memory alignment of all Swift SIMD types.
-// On x86 with AVX-512 vectors, the alignment might be larger, but not smaller.
-//
-// Sticking to two vector components in the u32_i64_u64 ubershader means u32 should also have 2
-// vector components, otherwise operations can't be fused. When reading from f32/i32 and casting to
-// u32/i64/u64, it also reads two scalars per shader. This may degrade performance for u32.
-//
-// The second option (4 x u32) prevents 32-bit operations from being fused with 64-bit operations.
-// Such large integers are so rare that I can get away with not fusing anything that touches them.
-// That simplifies the shader's implementation, and I can always change my mind.
-//
-// The third option is checking the index, and either reading/writing 2 or 4 elements from memory.
-// That would require storing 4 64-bit types in memory registers.
+// Limit write alignment to 16B, taking a slight performance hit on the u32/i64/u64 ubershader: it
+// processes two elements at once, while the f32/i32 shader processes four. 16B is a special number:
+// the alignment of `malloc` pointers and memory alignment of all Swift SIMD types.
 
 enum MemoryCast: ushort {
   f32_i32_native = 0,

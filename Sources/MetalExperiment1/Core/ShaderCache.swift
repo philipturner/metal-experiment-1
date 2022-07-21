@@ -36,11 +36,13 @@ enum ShaderCache {
     // takes longer to compile shaders on the first load if you use multiple threads. I guess the
     // system has a global lock on its Metal compiler, which degrades performance.
     enqueue(name: "unary_f32_i32", asynchronous: false)
-    enqueue(name: "binary", asynchronous: false)
-    DispatchQueue.global().async {
-      enqueue(name: "unary_u32_i64_u64", asynchronous: false)
-      enqueue(name: "ternary", asynchronous: false)
-    }
+    enqueue(name: "binary_f32_i32", asynchronous: false)
+    enqueue(name: "ternary_f32_i32", asynchronous: false)
+    
+    // Rarely used operations.
+    enqueue(name: "unary_u32_i64_u64", asynchronous: true)
+    enqueue(name: "binary_u32_i64_u64", asynchronous: true)
+    enqueue(name: "ternary_u32_i64_u64", asynchronous: true)
   }
   
   @inline(__always)
@@ -108,6 +110,8 @@ enum ShaderCache {
 extension ShaderCache {
   static let unary_f32_i32 = Self.wait(name: "unary_f32_i32")
   static let unary_u32_i64_u64 = Self.wait(name: "unary_u32_i64_u64")
-  static let binary = Self.wait(name: "binary")
-  static let ternary = Self.wait(name: "tertiary")
+  static let binary_f32_i32 = Self.wait(name: "binary_f32_i32")
+  static let binary_u32_i64_u64 = Self.wait(name: "binary_u32_i64_u64")
+  static let ternary_f32_i32 = Self.wait(name: "tertiary_f32_i32")
+  static let ternary_u32_i64_u64 = Self.wait(name: "tertiary_u32_i64_u64")
 }
