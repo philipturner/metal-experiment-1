@@ -468,10 +468,44 @@ final class MemoryTests: XCTestCase {
   func testUnusedOperationRemoval() throws {
     testHeader()
     
-    for _ in 0..<2 {
-      func doNothing() {
+    func basicTestNothing(checking: Bool) {
+      for _ in 0..<2 {
+        func doNothing<T: Numeric>(_ input: Tensor<T>) {
+          let unused1 = input.incremented()
+          let unused2 = unused1.incremented()
+          _ = unused2.incremented()
+        }
         
+        let input = Tensor<Float>(repeating: 8, shape: [2])
+        doNothing(input)
+        if checking {
+          XCTAssertEqual(input.scalars, [8, 8])
+        }
       }
     }
+    
+    basicTestNothing(checking: false)
+    
+    for _ in 0..<2 {
+      _ = Tensor<Float>(repeating: 4, shape: [2]).incremented()
+      
+      func doNothingDivergent<T: SignedNumeric>(_ input: Tensor<T>) -> Tensor<T> {
+        let unused1 = input.incremented()
+        let unused2 = unused1.incremented()
+        let unused3 = unused2.incremented()
+        _ = unused3.incremented()
+        
+        // `unused2` still materializes because the minus operation below holds its reference. The
+        // operations that increment `unused2` and `unused3` are aborted.
+        return -unused2
+      }
+      
+      let input = Tensor<Float>(repeating: 8, shape: [2])
+      let output = doNothingDivergent(input)
+      XCTAssertEqual(input.scalars, [8, 8])
+      XCTAssertEqual(output.scalars, [-10, -10])
+    }
+    
+    basicTestNothing(checking: true)
   }
 }

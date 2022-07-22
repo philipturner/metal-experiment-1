@@ -65,6 +65,17 @@ extension Context {
         fatalError("Something went wrong while fusing operations.")
       }
       
+      // The frontend will never read this operation's results, so abort it. This may make
+      // benchmarks difficult, because not every dispatched operation actually executes.
+      //
+      // When fusing non-adjacent operation chains, the reference count is no longer a 100% reliable
+      // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
+      // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
+      // to anything that fuses with it.
+      if fusionTail.referenceCount == 0 {
+        return
+      }
+      
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
       // in a later compiler pass; that's the job of `referenceCount`.
       fusionTail.initialized = true
@@ -89,32 +100,38 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         var input: Allocation
-        var startedNewFusion = false
+        var startingNewFusion = false
         
         if unary.input == fusionTailID {
           // In the middle of an operation fusion.
+          precondition(pendingOperationFusionExists())
           input = fusionTail!
           
           // The tail was the output of previous operation. Something initialized by the frontend
           // can't be an operation's output; only an input.
           precondition(!input.initialized)
+          startingNewFusion = input.referenceCount > 1
         } else {
-          // At the start of an operation fusion.
+          // At the start of an operation fusion. A previous fusion may already be in progress.
           input = _internalFetch(unary.input)
+          
           precondition(input.referenceCount > 0)
-          startedNewFusion = true
+          startingNewFusion = true
         }
         _internalRelease(input)
         
-        if input.referenceCount > 0 && pendingOperationFusionExists() {
-          // Finish the previous operation fusion. When fusing non-adjacent operations, don't
-          // check whether the output needs to be computed. It might make the JIT graph compiler
-          // take longer, or make benchmarks difficult. TODO: Revisit this decision after more
-          // complex fusions are implemented.
-          appendOperationFusion()
+        if startingNewFusion {
+          if pendingOperationFusionExists() {
+            // Finish the previous operation fusion. When fusing non-adjacent operations, don't
+            // check whether the output needs to be computed. It might make the JIT graph compiler
+            // take longer, or make benchmarks difficult. TODO: Revisit this decision after more
+            // complex fusions are implemented.
+            appendOperationFusion()
+          }
+          
           fusionHead = input
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
-        } else if startedNewFusion {
+        } else if false {
           // `input.referenceCount` could be zero.
           precondition(!pendingOperationFusionExists())
           fusionHead = input
