@@ -10,12 +10,12 @@ import MetalExperiment1
 // MARK: - _Raw Helpers
 
 @inlinable @inline(__always)
-func dispatchUnary<T>(
+func dispatchUnary<T0>(
   _ name: StaticString,
-  _ input: Tensor<T>
-) -> Tensor<T> {
+  _ input1: Tensor<T0>
+) -> Tensor<T0> {
   return decodeOutputs { outputs in
-    encodeInputs(input) { inputs in
+    encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
       Context.executeOperation(name, attributes, inputs, outputs)
@@ -24,13 +24,13 @@ func dispatchUnary<T>(
 }
 
 @inlinable @inline(__always)
-func dispatchUnary<T, A0: PluggableDeviceEncodable>(
+func dispatchUnary<T0, U0: Numeric>(
   _ name: StaticString,
-  _ input: Tensor<T>,
-  _ attribute1: A0
-) -> Tensor<T> {
+  _ input1: Tensor<T0>,
+  _ attribute1: U0
+) -> Tensor<T0> {
   return decodeOutputs { outputs in
-    encodeInputs(input) { inputs in
+    encodeInputs(input1) { inputs in
       encodeAttributes(attribute1) { attributes in
         let name = encodeName(name)
         Context.executeOperation(name, attributes, inputs, outputs)
@@ -40,12 +40,12 @@ func dispatchUnary<T, A0: PluggableDeviceEncodable>(
 }
 
 @inlinable @inline(__always)
-func dispatchUnaryRelational<T>(
+func dispatchUnaryRelational<T0>(
   _ name: StaticString,
-  _ input: Tensor<T>
+  _ input1: Tensor<T0>
 ) -> Tensor<Bool> {
   return decodeOutputs { outputs in
-    encodeInputs(input) { inputs in
+    encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
       Context.executeOperation(name, attributes, inputs, outputs)
@@ -66,12 +66,15 @@ func encodeAttributes() -> UnsafeRawBufferPointer {
 }
 
 @inlinable @inline(__always)
-func encodeAttributes<T0: PluggableDeviceEncodable>(
+func encodeAttributes<T0: Numeric>(
   _ input1: T0,
   _ body: (UnsafeRawBufferPointer) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: (UInt64, UInt64).self, capacity: 1) { bufferPointer in
-    bufferPointer[0] = input1.createAtom()
+    bufferPointer[0] = (0, 0)
+    let baseAddress = bufferPointer.baseAddress.unsafelyUnwrapped
+    let rawAddress = UnsafeMutablePointer<T0>(OpaquePointer(baseAddress))
+    rawAddress[0] = input1
     body(UnsafeRawBufferPointer(bufferPointer))
   }
 }
@@ -133,64 +136,15 @@ func decodeOutputs<T0, T1>(
   }
 }
 
-// MARK: - PluggableDeviceEncodable
+// MARK: - _Raw
 
 @usableFromInline
-protocol PluggableDeviceEncodable {
+protocol _RawEncodable {
   @inlinable
   func createAtom() -> (UInt64, UInt64)
 }
 
-extension Float: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(bitPattern), 0)
-  }
-}
-
-extension Double: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(bitPattern), 0)
-  }
-}
-
-extension Int32: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(truncatingIfNeeded: self), 0)
-  }
-}
-
-extension Int64: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(truncatingIfNeeded: self), 0)
-  }
-}
-
-extension UInt32: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(self), 0)
-  }
-}
-
-extension UInt64: PluggableDeviceEncodable {
-  @inlinable @inline(__always)
-  func createAtom() -> (UInt64, UInt64) {
-    (UInt64(self), 0)
-  }
-}
-
-// MARK: - _Raw
-
 public enum _Raw {
-  @inlinable @inline(__always)
-  public static func increment<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("Increment", input)
-  }
-  
   // Unary
   
   @inlinable @inline(__always)
@@ -335,8 +289,8 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func selu<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("Selu", input)
+  public static func selu<T>(features: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Selu", features)
   }
   
   @inlinable @inline(__always)
@@ -360,7 +314,25 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func softplus<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("Softplus", input)
+  public static func softplus<T>(features: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Softplus", features)
+  }
+  
+  
+  
+  @inlinable @inline(__always)
+  public static func scalarAdd<T: Numeric>(
+    _ input: Tensor<T>,
+    rhs: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarAdd", input, rhs)
+  }
+  
+  @inlinable @inline(__always)
+  public static func scalarMul<T: Numeric>(
+    _ input: Tensor<T>,
+    rhs: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarMul", input, rhs)
   }
 }

@@ -62,8 +62,10 @@ enum UnaryOperationType: UInt16 {
   case tan_f32 = 64
   case tanh_f32 = 65
   
-  case increment_f32 = 70 // for testing purposes only
-  case increment_i32 = 71 // for testing purposes only
+  case scalar_add_f32 = 70 // requires metadata
+  case scalar_add_i32 = 71 // requires metadata
+  case scalar_mul_f32 = 72 // requires metadata
+  case scalar_mul_i32 = 73 // requires metadata
 }
 
 enum UnaryOperationType2: UInt8 {
@@ -91,7 +93,9 @@ enum UnaryOperationType2: UInt8 {
   case cast_u64_to_u16 = 26
   case cast_u64_to_u32 = 27
   
-  case increment_i64 = 30 // for testing purposes only
+  case scalar_add_i64 = 30 // requires metadata
+  case scalar_mul_i64 = 31 // requires metadata
+  case scalar_mul_u64 = 32 // requires metadata
   
   init?(type32: UnaryOperationType, dataType: DataType) {
     guard !dataType.representableByInt32 else {
@@ -113,8 +117,10 @@ enum UnaryOperationType2: UInt8 {
       }
     case .sign_i32:
       self = (dataType == .uint64) ? .sign_u64 : .sign_i64
-    case .increment_i32:
-      self = .increment_i64
+    case .scalar_add_i32:
+      self = .scalar_add_i64
+    case .scalar_mul_i32:
+      self = (dataType == .uint64) ? .scalar_mul_u64 : .scalar_mul_i64
     default:
       return nil
     }

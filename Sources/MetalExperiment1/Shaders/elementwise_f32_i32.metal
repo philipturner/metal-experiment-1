@@ -148,8 +148,10 @@ enum ElementwiseOperationType: ushort {
   tan_f32 = 64,
   tanh_f32 = 65,
   
-  increment_f32 = 70, // for testing purposes only
-  increment_i32 = 71, // for testing purposes only
+  scalar_add_f32 = 70, // requires metadata
+  scalar_add_i32 = 71, // requires metadata
+  scalar_mul_f32 = 72, // requires metadata
+  scalar_mul_i32 = 73, // requires metadata
   
   // Binary (1000 - 1999)
   
@@ -396,6 +398,10 @@ namespace metal {
 // radix-4 could reduce by a factor of 10. If 2 operations were fused (the most common case), the
 // benefits reduce by a factor of 50.
 //
+// Update: The `increment` operation was changed to a `scalar_add` operation that fetches its right-
+// hand side from metadata. This will be used in real-world code, speeding up some addition
+// operations. The sequential throughput benchmark now reads 3.2 µs instead of 2.6 µs.
+//
 //===------------------------------------------------------------------------------------------===//
 //
 // Future plans for this shader:
@@ -415,8 +421,6 @@ kernel void elementwise_f32_i32(
 ) {
   CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
-    // Scalar broadcasting is unused now. Once I start fusing binary operations into unary operation
-    // chains, it will be used. Also, it's a fast way to encode some broadcasting operations.
     uint mem_slice_u32 = ((device uint*)input)[0];
     switch (params.read_size) {
       case 1: {
@@ -709,14 +713,28 @@ kernel void elementwise_f32_i32(
           }
         }
       } else {
+        auto operation_metadata = get_metadata(metadata, metadata_index);
+        uint rhs_mask = ((constant uint*)operation_metadata)[0];
         switch (operation) {
-          case increment_f32: {
+          case scalar_add_f32: {
             auto x = storage.get_f32();
-            SET_F32(x + 1);
+            x += as_type<float>(rhs_mask);
+            SET_F32(x);
           }
-          default: /*increment_i32*/ {
+          case scalar_add_i32: {
             auto x = storage.get_i32();
-            SET_I32(x + 1);
+            x += as_type<int>(rhs_mask);
+            SET_I32(x);
+          }
+          case scalar_mul_f32: {
+            auto x = storage.get_f32();
+            x *= as_type<float>(rhs_mask);
+            SET_F32(x);
+          }
+          default: /*scalar_mul_i32*/ {
+            auto x = storage.get_i32();
+            x *= as_type<int>(rhs_mask);
+            SET_I32(x);
           }
         }
       }

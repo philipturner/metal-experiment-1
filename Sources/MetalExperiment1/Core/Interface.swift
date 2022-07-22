@@ -39,7 +39,7 @@ extension Context {
   ) {
     let string = StringWrapper(wrapping: name)
     guard let function = OperationRegistry.registry[string] else {
-      fatalError("Could not find operation '\(name)'.")
+      fatalError("Could not find operation '\(string.makeString())'.")
     }
     function.call(attributes, inputs, outputs)
     self.maybeFlushStream()
@@ -121,6 +121,13 @@ struct OperationRegistry {
   
   // Data decoding
   
+  // An optimization that prevents duplicating the assembly instructions for `advanceAtom`.
+  @inline(__always)
+  static func nonmutatingReadScalar<T: SIMDScalar>(_ ptr: UnsafeRawBufferPointer) -> T {
+    let value = ptr.assumingMemoryBound(to: T.self)[0]
+    return value
+  }
+  
   @inline(__always)
   static func decodeScalar<T: SIMDScalar>(_ ptr: inout UnsafeRawBufferPointer) -> T {
     let value = ptr.assumingMemoryBound(to: T.self)[0]
@@ -153,8 +160,6 @@ struct OperationRegistry {
 
 extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
-    "Increment": increment,
-    
     // Unary
     
     "Abs": abs,
@@ -193,6 +198,9 @@ extension OperationRegistry {
     "Sin": sin,
     "Sinh": sinh,
     "Softplus": softplus,
+    
+    "ScalarAdd": scalarAdd,
+    "ScalarMul": scalarMul,
   ]
 }
 
@@ -298,6 +306,92 @@ extension OperationRegistry {
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
       operation: operation, input: input_id, output: output_id)))
+  }
+  
+  static func dispatchUnaryScalar(
+    _ args: inout Arguments,
+    _ operation_f32: UnaryOperationType,
+    _ operation_i32: UnaryOperationType
+  ) {
+    let ctx = Context.global
+    precondition(args.inputs.count == 1)
+    precondition(args.outputs.count == 1)
+    
+    // Fetch input.
+    let input_id = decodeInput(&args.inputs)
+    let input_alloc = ctx._internalFetch(input_id)
+    ctx._internalRetain(input_alloc)
+    
+    // Generate output.
+    let (output_id, output_alloc) = ctx._internalAllocate(input_alloc)
+    ctx._internalRetain(output_alloc)
+    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
+    
+    // Fetch data type.
+    let dataType = input_alloc.dataType
+    func dataMismatch(_ operation: UnaryOperationType) -> String {
+      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+    }
+    precondition(dataType != .bool, dataMismatch(operation_f32))
+    
+    // Fetch metadata.
+    var metadata: UInt64
+    var isNoOp: Bool
+    if dataType.isFloatingPoint {
+      var rhs: Float
+      switch dataType {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      case .float16:
+        rhs = Float(nonmutatingReadScalar(args.attributes) as Float16)
+      #endif
+      case .float32:
+        rhs = Float(nonmutatingReadScalar(args.attributes) as Float)
+      default:
+        fatalError("This should never happen.")
+      }
+      metadata = UInt64(rhs.bitPattern)
+      isNoOp = rhs == 0
+    } else if dataType.representableByInt32 {
+      var rhs: Int32
+      switch dataType {
+      case .int8:
+        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int8)
+      case .int16:
+        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int16)
+      case .int32:
+        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int32)
+      case .uint8:
+        rhs = Int32(nonmutatingReadScalar(args.attributes) as UInt8)
+      case .uint16:
+        rhs = Int32(nonmutatingReadScalar(args.attributes) as UInt16)
+      default:
+        fatalError("This should never happen.")
+      }
+      metadata = UInt64(truncatingIfNeeded: rhs)
+      isNoOp = rhs == 0
+    } else {
+      switch dataType {
+      case .uint32:
+        metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt32)
+      default:
+        metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt64)
+      }
+      isNoOp = metadata == 0
+    }
+    advanceAtom(&args.attributes)
+    
+    // Select operation type.
+    var operation: UnaryOperationType
+    if dataType.isFloatingPoint {
+      operation = operation_f32
+    } else {
+      operation = operation_i32
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.unary(.init(
+      metadata: metadata, isNoOp: isNoOp, operation: operation, input: input_id,
+      output: output_id)))
   }
 }
 
@@ -441,10 +535,14 @@ extension OperationRegistry {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .softplus_f32, nil, nil)
   }
-
-  // Codes 70 - 71
-  static let increment = Function {
+  
+  // Codes 70 - 73
+  static let scalarAdd = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchUnary(&args, .increment_f32, .increment_i32, nil)
+    dispatchUnaryScalar(&args, .scalar_add_f32, .scalar_add_i32)
+  }
+  static let scalarMul = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryScalar(&args, .scalar_mul_f32, .scalar_mul_i32)
   }
 }

@@ -36,7 +36,9 @@ enum ElementwiseOperationType2: ushort {
   cast_u64_to_u16 = 26,
   cast_u64_to_u32 = 27,
   
-  increment_i64 = 30, // for testing purposes only
+  scalar_add_i64 = 30, // requires metadata
+  scalar_mul_i64 = 31, // requires metadata
+  scalar_mul_u64 = 32, // requires metadata
 };
 
 kernel void elementwise_u32_i64_u64(

@@ -8,7 +8,7 @@
 extension Tensor where Scalar: Numeric {
   @inlinable
   public func incremented() -> Tensor {
-    return _Raw.increment(self)
+    return _Raw.scalarAdd(self, rhs: 1)
   }
 }
 
@@ -144,3 +144,41 @@ public func relu6<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 public func round<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.round(x)
 }
+
+
+
+@inlinable
+public func rsqrt<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.rsqrt(x)
+}
+
+@inlinable
+public func selu<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.selu(features: x)
+}
+
+@inlinable
+public func sigmoid<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.sigmoid(x)
+}
+
+@inlinable
+public func sign<T: Numeric>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.sign(x)
+}
+
+@inlinable
+public func sin<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.sin(x)
+}
+
+@inlinable
+public func sinh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.sinh(x)
+}
+
+@inlinable
+public func softplus<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.softplus(features: x)
+}
+

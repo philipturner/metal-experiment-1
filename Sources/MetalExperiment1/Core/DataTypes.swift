@@ -197,6 +197,11 @@ enum DataType: UInt16, CustomStringConvertible {
   }
   
   @inline(__always)
+  var representableByInt64: Bool {
+    rawValue >= 2 && rawValue <= 9
+  }
+  
+  @inline(__always)
   func contiguousSize(byteCount: Int) -> Int {
     let stridePowerOf2 = self.stride.trailingZeroBitCount
     return byteCount >> stridePowerOf2
