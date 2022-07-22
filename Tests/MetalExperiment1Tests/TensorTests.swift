@@ -62,4 +62,3 @@ final class TensorTests: XCTestCase {
     // after reading scalars, prove they are fused.
   }
 }
-
