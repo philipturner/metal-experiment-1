@@ -143,17 +143,18 @@ struct OperationRegistry {
   }
   
   @inline(__always)
-  static func decodeInput(_ ptr: inout UnsafeBufferPointer<OpaquePointer>) -> OpaquePointer {
+  static func decodeInput(_ ptr: inout UnsafeBufferPointer<OpaquePointer>) -> AllocationHandle {
     let value = ptr[0]
     advanceInput(&ptr)
-    return value
+    return AllocationHandle(value)
   }
   
   @inline(__always)
   static func encodeOutput(
     _ ptr: inout UnsafeMutableBufferPointer<(OpaquePointer, Int)>,
-    _ output: (OpaquePointer, Int)) {
-    ptr[0] = output
+    _ output: (AllocationHandle, Int)
+  ) {
+    ptr[0] = (output.0._cHandle, output.1)
     advanceOutput(&ptr)
   }
 }
@@ -219,15 +220,13 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let inputHandle = decodeInput(&args.inputs)
-    let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(inputHandle)
+    let input = decodeInput(&args.inputs)
+    ctx._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input)
-    let outputHandle = output.handle
-    encodeOutput(&args.outputs, (outputHandle, output.rank))
+    let output = ctx._internalAllocate(2, input).handle
+    encodeOutput(&args.outputs, (output, output.rank))
     
     // Fetch data type.
     let dataType = input.dataType
@@ -268,7 +267,7 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, operation: operation, input: inputHandle, output: outputHandle)))
+      metadata: metadata, operation: operation, input: input, output: output)))
   }
   
   // Named after the Metal Standard Library header, `metal_relational`.
@@ -281,9 +280,8 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let inputHandle = decodeInput(&args.inputs)
-    let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(inputHandle)
+    let input = decodeInput(&args.inputs)
+    ctx._internalRetain(input)
     
     // Fetch data type.
     let dataType = input.dataType
@@ -295,17 +293,12 @@ extension OperationRegistry {
     let byteCount = input.byteCount >> stridePowerOf2
     
     // Generate output.
-    let output = withUnsafeTemporaryAllocation(of: Int.self, capacity: input.rank) { shape in
-      // Setting initial refcount to 2 creates an imbalanced retain.
-      input.shape.copy(into: shape)
-      return ctx._internalAllocate(2, .bool, UnsafeBufferPointer(shape), byteCount)
-    }
-    let outputHandle = output.handle
-    encodeOutput(&args.outputs, (outputHandle, output.rank))
+    let output = ctx._internalAllocate(2, .bool, byteCount, input.shape).handle
+    encodeOutput(&args.outputs, (output, output.rank))
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation: operation, input: inputHandle, output: outputHandle)))
+      operation: operation, input: input, output: output)))
   }
   
   static func dispatchUnaryScalar(
@@ -318,15 +311,13 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let inputHandle = decodeInput(&args.inputs)
-    let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(inputHandle)
+    let input = decodeInput(&args.inputs)
+    ctx._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input)
-    let outputHandle = output.handle
-    encodeOutput(&args.outputs, (outputHandle, output.rank))
+    let output = ctx._internalAllocate(2, input).handle
+    encodeOutput(&args.outputs, (output, output.rank))
     
     // Fetch data type.
     let dataType = input.dataType
@@ -391,8 +382,7 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, isNoOp: isNoOp, operation: operation, input: inputHandle,
-      output: outputHandle)))
+      metadata: metadata, isNoOp: isNoOp, operation: operation, input: input, output: output)))
   }
 }
 

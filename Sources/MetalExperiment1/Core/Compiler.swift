@@ -40,7 +40,7 @@ extension Context {
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
-    var fusionTailHandle: OpaquePointer?
+    var fusionTailHandle: AllocationHandle?
     var fusionSize = -1
     @inline(__always)
     func pendingOperationFusionExists() -> Bool {
@@ -61,6 +61,7 @@ extension Context {
       }
       guard let fusionHead = fusionHead,
             let fusionTail = fusionTail,
+            let fusionTailHandle = fusionTailHandle,
             fusionSize >= 0 else {
         fatalError("Something went wrong while fusing operations.")
       }
@@ -72,7 +73,7 @@ extension Context {
       // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
       // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
       // to anything that fuses with it.
-      if fusionTail.referenceCount.load(ordering: .sequentiallyConsistent) == 0 {
+      if fusionTailHandle.referenceCount.load(ordering: .sequentiallyConsistent) == 0 {
         return
       }
       
@@ -125,7 +126,7 @@ extension Context {
             appendOperationFusion()
           }
           fusionHead = input
-          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+          fusionSize = unary.input.dataType.contiguousSize(byteCount: unary.input.byteCount)
         }
         if !unary.isNoOp {
           fusionOperations.append(unary.operation.rawValue)
@@ -136,7 +137,7 @@ extension Context {
         
         let output = _internalFetch(unary.output)
         _internalRelease(unary.output)
-        precondition(input.shape.elementsEqual(output.shape))
+        precondition(unary.input.shape.elementsEqual(unary.output.shape))
         fusionTail = output
         fusionTailHandle = unary.output
         
@@ -145,17 +146,18 @@ extension Context {
           appendOperationFusion()
         }
         
-        let input = _internalFetch(explicitCopy.input)
-        let output = _internalFetch(explicitCopy.output)
-        _internalRelease(explicitCopy.input)
-        _internalRelease(explicitCopy.output)
+        let (input, output) = (explicitCopy.input, explicitCopy.output)
+        let inputAllocation = _internalFetch(input)
+        let outputAllocation = _internalFetch(output)
+        _internalRelease(input)
+        _internalRelease(output)
         precondition(input.dataType == output.dataType)
-        let byteCount = input.byteCount
-        precondition(byteCount == output.byteCount)
+        let byteCount = explicitCopy.input.byteCount
+        precondition(byteCount == explicitCopy.output.byteCount)
         
-        output.initialized = true
+        outputAllocation.initialized = true
         let explicitCopy = CompiledOperation.ExplicitCopy(
-          input: input, output: output, byteCount: byteCount)
+          input: inputAllocation, output: outputAllocation, byteCount: byteCount)
         compiledOperations.append(.explicitCopy(explicitCopy))
       }
     }

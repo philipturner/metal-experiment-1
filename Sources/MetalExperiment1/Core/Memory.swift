@@ -21,7 +21,7 @@ extension Context {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = withDispatchQueue {
-      Context.global._allocateBuffer(1, dataType, shape, byteCount)
+      Context.global._allocateBuffer(1, dataType, byteCount, shape)
     }
     return (handle, shape.count)
   }
@@ -68,11 +68,11 @@ private extension Context {
   func _allocateBuffer(
     _ referenceCount: Int,
     _ dataType: DataType,
-    _ shape: UnsafeBufferPointer<Int>,
-    _ byteCount: Int
+    _ byteCount: Int,
+    _ shape: UnsafeBufferPointer<Int>
   ) -> OpaquePointer {
-    let allocation = _internalAllocate(referenceCount, dataType, shape, byteCount)
-    return allocation.handle
+    let allocation = _internalAllocate(referenceCount, dataType, byteCount, shape)
+    return allocation.handle._cHandle
   }
   
   @inline(__always)
@@ -80,7 +80,7 @@ private extension Context {
     _ handle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
-    let allocation = _internalFetch(handle)
+    let allocation = _internalFetch(AllocationHandle(handle))
     allocation.initialize(body)
   }
   
@@ -89,40 +89,44 @@ private extension Context {
     _ handle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
-    let allocation = _internalFetch(handle)
+    let allocation = _internalFetch(AllocationHandle(handle))
     allocation.read(body)
   }
   
+  // TODO: Remove this; it will soon become obsolete.
   @inline(__always)
   func _copyBufferShape(
     _ handle: OpaquePointer,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
-    let allocation = _internalFetch(handle)
-    allocation.shape.copy(into: shape)
+    let allocation = _internalFetch(AllocationHandle(handle))
+    _ = shape.initialize(from: allocation.handle.shape)
   }
   
   @inline(__always)
   func _releaseBuffer(
     _ handle: OpaquePointer
   ) {
-    _internalRelease(handle)
+    _internalRelease(AllocationHandle(handle))
   }
 }
 
 extension Context {
+  // TODO: Return the allocation handle instead of the allocation. In the functions that create
+  // temporary buffers for CPU-GPU copying, use the handle to fetch the allocation.
   @inline(__always)
   func _internalAllocate(
     _ referenceCount: Int,
     _ dataType: DataType,
+    _ byteCount: Int,
     _ shape: UnsafeBufferPointer<Int>,
-    _ byteCount: Int
+    _ isShared: Bool? = nil
   ) -> Allocation {
     let id = nextAllocationID
-    let allocation = Allocation(
-      id: id, referenceCount: referenceCount, dataType: dataType, shape: shape,
-      byteCount: byteCount)
     nextAllocationID = id + 1
+    let allocation = Allocation(
+      id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
+      shape: shape, isShared: isShared)
     allocations[allocation.handle] = allocation
     return allocation
   }
@@ -130,31 +134,35 @@ extension Context {
   @inline(__always)
   func _internalAllocate(
     _ referenceCount: Int,
-    _ other: Allocation,
-    isShared: Bool? = nil
+    _ other: AllocationHandle,
+    _ isShared: Bool? = nil
   ) -> Allocation {
     let id = nextAllocationID
-    let allocation = Allocation(other, id: id, referenceCount: referenceCount, isShared: isShared)
     nextAllocationID = id + 1
+    let allocation = Allocation(
+      id: id, referenceCount: referenceCount, replicating: other, isShared: isShared)
     allocations[allocation.handle] = allocation
     return allocation
   }
   
+  // TODO: Remove the dictionary and instead place unmanaged reference at tail end of handle. This
+  // removes the need to cache the allocation during compilation. It also requires careful
+  // management of ARC pointers.
+  //
+  // `_internalFetch` will change to just retain/release the tail end of the handle.
   @inline(__always)
-  func _internalFetch(_ handle: OpaquePointer) -> Allocation {
+  func _internalFetch(_ handle: AllocationHandle) -> Allocation {
     guard let allocation = allocations[handle] else {
       fatalError("Tried to retrieve an allocation that does not exist.")
     }
     return allocation
   }
   
-  // TODO: Rework retain/release to not require the allocation being present, optimize the compiler
-  // accordingly.
   @discardableResult
   @inline(__always)
-  func _internalRetain(_ handle: OpaquePointer) -> Int {
-    let atomic = UnsafeAtomic<Int>(at: UnsafeMutablePointer(handle))
-    let referenceCount = atomic.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
+  func _internalRetain(_ handle: AllocationHandle) -> Int {
+    // TODO: Use relaxed ordering.
+    let referenceCount = handle.referenceCount.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
     if Allocation.debugInfoEnabled {
       _internalRetainSlowPath(handle, referenceCount)
     }
@@ -162,16 +170,16 @@ extension Context {
   }
   
   @inline(never)
-  private func _internalRetainSlowPath(_ handle: OpaquePointer, _ referenceCount: Int) {
+  private func _internalRetainSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
     let id = _internalFetch(handle).id
     print("Allocation #\(id) jumped to a reference count of \(referenceCount)")
   }
   
   @discardableResult
   @inline(__always)
-  func _internalRelease(_ handle: OpaquePointer) -> Int {
-    let atomic = UnsafeAtomic<Int>(at: UnsafeMutablePointer(handle))
-    let referenceCount = atomic.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
+  func _internalRelease(_ handle: AllocationHandle) -> Int {
+    // TODO: Use relaxed ordering.
+    let referenceCount = handle.referenceCount.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
     if Allocation.debugInfoEnabled {
       _internalReleaseSlowPath(handle, referenceCount)
     }
@@ -182,7 +190,7 @@ extension Context {
   }
   
   @inline(never)
-  private func _internalReleaseSlowPath(_ handle: OpaquePointer, _ referenceCount: Int) {
+  private func _internalReleaseSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
     let allocation = _internalFetch(handle)
     let id = allocation.id
     if referenceCount == 0 {
@@ -205,22 +213,8 @@ class Allocation {
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
   
-  // (Internal member layout) 0B boundary
   let id: UInt64
-  var referenceCount: UnsafeAtomic<Int>
-  @inline(__always)
-  var handle: OpaquePointer { unsafeBitCast(referenceCount, to: OpaquePointer.self) }
-  
-  // (Internal member layout) 16B boundary
-  //
-  // Most tensors have a rank <= 4. 5D tensors are rare and typically used for 3D convolutions.
-  var shape: SmallVector<SIMD4<Int>> = .init()
-  @inline(__always)
-  var rank: Int { shape.count }
-  
-  // (Internal member layout) 64B boundary
-  var byteCount: Int
-  var dataType: DataType
+  var handle: AllocationHandle
   
   // A copy of `Context.global.preferSharedStorage`, unless this is a transient allocation for
   // reading/writing to discrete GPU memory.
@@ -243,8 +237,6 @@ class Allocation {
   // memory. You may have to copy that CPU-backed memory to the `MTLBuffer`, but it's a very small
   // overhead. Take the overhead of a CPU function call + 2 * (4096 / (main memory bandwidth)).
   
-  // (Internal member layout) 80B boundary
-  //
   // TODO: Investigate a zero-cost reshape by transferring all resources over to another allocation.
   var mtlBuffer: MTLBuffer?
   var mpsMatrix: MPSMatrix?
@@ -257,29 +249,24 @@ class Allocation {
     id: UInt64,
     referenceCount: Int,
     dataType: DataType,
+    byteCount: Int,
     shape: UnsafeBufferPointer<Int>,
-    byteCount: Int
-  ) {
-    self.id = id
-    self.referenceCount = .create(referenceCount)
-    self.shape = SmallVector(shape)
-    self.byteCount = byteCount
-    self.dataType = dataType
-    self.isShared = Context.global.preferSharedStorage
-  }
-  
-  init(
-    _ other: Allocation,
-    id: UInt64,
-    referenceCount: Int,
     isShared: Bool? = nil
   ) {
     self.id = id
-    self.referenceCount = .create(referenceCount)
-    self.shape = other.shape
-    self.byteCount = other.byteCount
-    self.dataType = other.dataType
+    self.handle = AllocationHandle(
+      referenceCount: referenceCount, dataType: dataType, byteCount: byteCount, shape: shape)
     self.isShared = isShared ?? Context.global.preferSharedStorage
+  }
+  
+  @inline(__always)
+  convenience init(
+    id: UInt64,
+    referenceCount: Int,
+    replicating handle: AllocationHandle,
+    isShared: Bool? = nil
+  ) {
+    self.init(id: id, referenceCount: referenceCount, dataType: handle.dataType, byteCount: handle.byteCount, shape: handle.shape, isShared: isShared)
   }
   
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
@@ -315,7 +302,7 @@ class Allocation {
         #else
         let threshold = (device.maxBufferLength * 7) / 8
         #endif
-        if allocatedSize + byteCount <= threshold {
+        if allocatedSize + handle.byteCount <= threshold {
           if HeapAllocator.debugInfoEnabled {
             print("Memory allocation returned to something smaller than system RAM.")
           }
@@ -327,7 +314,7 @@ class Allocation {
         #else
         let maxWorkingSize = device.maxBufferLength
         #endif
-        if allocatedSize + byteCount > maxWorkingSize {
+        if allocatedSize + handle.byteCount > maxWorkingSize {
           if HeapAllocator.debugInfoEnabled {
             print("""
               Memory allocation reached limit of system RAM. Clearing GPU command stream to free \
@@ -340,7 +327,7 @@ class Allocation {
       }
     }
     
-    let mtlBuffer = HeapAllocator.malloc(size: byteCount, usingShared: isShared)
+    let mtlBuffer = HeapAllocator.malloc(size: handle.byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
       fatalError("An attempt to allocate a 'MTLBuffer' returned 'nil'.")
     }
@@ -369,22 +356,22 @@ class Allocation {
       }
       
       let contents = mtlBuffer!.contents()
-      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: byteCount)
+      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: handle.byteCount)
       body(ptr)
     } else {
-      sourceAllocation = ctx._internalAllocate(1, self, isShared: true)
+      sourceAllocation = ctx._internalAllocate(1, handle, true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
-      ctx._internalRetain(self.handle)
+      ctx._internalRetain(handle)
       let sourceHandle = sourceAllocation.handle
       let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     let contents = sourceAllocation.mtlBuffer!.contents()
-    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: byteCount)
+    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: handle.byteCount)
     body(ptr)
     sourceAllocation.initialized = true
   }
@@ -406,7 +393,7 @@ class Allocation {
     if isShared {
       sourceAllocation = self
     } else {
-      sourceAllocation = Context.global._internalAllocate(1, self, isShared: true)
+      sourceAllocation = Context.global._internalAllocate(1, handle, true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       ctx._internalRetain(self.handle)
@@ -441,7 +428,7 @@ class Allocation {
     precondition(initialized, "Cannot read from an uninitialized allocation.")
     
     let contents = sourceAllocation.mtlBuffer!.contents()
-    let ptr = UnsafeRawBufferPointer(start: contents, count: byteCount)
+    let ptr = UnsafeRawBufferPointer(start: contents, count: handle.byteCount)
     body(ptr)
   }
   
@@ -449,7 +436,7 @@ class Allocation {
   // completion handler.
   deinit {
     // Catch memory management bugs.
-    precondition(referenceCount.destroy() == 0)
+    precondition(handle.referenceCount.destroy() == 0)
     
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in release mode because it's very costly.
@@ -469,13 +456,13 @@ class Allocation {
   }
 }
 
-public struct AllocationHandle {
+public struct AllocationHandle: Hashable {
   @usableFromInline
   internal var baseAddress: UnsafeMutablePointer<Int>
   
   @inlinable @inline(__always)
-  public init(_ handle: OpaquePointer) {
-    baseAddress = UnsafeMutablePointer(handle)
+  public init(_ cHandle: OpaquePointer) {
+    baseAddress = UnsafeMutablePointer(cHandle)
   }
   
   @inline(__always)
@@ -504,13 +491,19 @@ public struct AllocationHandle {
   }
   
   @inlinable @inline(__always)
-  public var handle: OpaquePointer {
+  public var _cHandle: OpaquePointer {
     OpaquePointer(baseAddress)
   }
   
   @inlinable @inline(__always)
   public var referenceCount: UnsafeAtomic<Int> {
-    UnsafeAtomic(at: UnsafeMutablePointer(handle))
+    UnsafeAtomic(at: UnsafeMutablePointer(_cHandle))
+  }
+  
+  @inline(__always)
+  internal var dataType: DataType {
+    let rawValue = UInt16(truncatingIfNeeded: baseAddress[1])
+    return DataType(rawValue: rawValue).unsafelyUnwrapped
   }
   
   @inlinable @inline(__always)

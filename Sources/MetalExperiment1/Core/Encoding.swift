@@ -147,7 +147,8 @@ private extension Context {
     
     let numOperations = operation.operations.count
     var params = DispatchParams(
-      inputDataType: input.dataType, numOperations: numOperations, outputDataType: output.dataType)
+      inputDataType: input.handle.dataType, numOperations: numOperations,
+      outputDataType: output.handle.dataType)
     encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 2)
     
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in

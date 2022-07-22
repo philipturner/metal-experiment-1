@@ -135,14 +135,14 @@ enum EagerOperation {
     var metadata: UInt64? = nil
     var isNoOp: Bool = false
     var operation: UnaryOperationType
-    var input: OpaquePointer
-    var output: OpaquePointer
+    var input: AllocationHandle
+    var output: AllocationHandle
   }
   case unary(Unary)
   
   struct ExplicitCopy {
-    var input: OpaquePointer
-    var output: OpaquePointer
+    var input: AllocationHandle
+    var output: AllocationHandle
   }
   case explicitCopy(ExplicitCopy)
 }
