@@ -32,12 +32,10 @@ enum UnaryOperationType: UInt16 {
   case expm1_f32 = 25
   case floor_f32 = 26
   
-  // TODO: - Support casting, boolean operations
-//  case is_finite_f32 = 30 // returns bool/u8
-//  case is_inf_f32 = 31 // returns bool/u8
-//  case is_nan_f32 = 32 // returns bool/u8
+  case is_finite_f32 = 30 // returns bool/u8
+  case is_inf_f32 = 31 // returns bool/u8
+  case is_nan_f32 = 32 // returns bool/u8
   
-  // TODO: - Support boolean operations, metadata
   case leaky_relu_f32 = 40 // requires metadata
   case log_f32 = 41
   case log1p_f32 = 42

@@ -153,34 +153,38 @@ struct OperationRegistry {
 
 extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
-    "increment": increment,
+    "Increment": increment,
     
     // Unary
     
-    "abs": abs,
-    "acos": acos,
-    "acosh": acosh,
-    "asin": asin,
-    "asinh": asinh,
-    "atan": atan,
-    "atanh": atanh,
+    "Abs": abs,
+    "Acos": acos,
+    "Acosh": acosh,
+    "Asin": asin,
+    "Asinh": asinh,
+    "Atan": atan,
+    "Atanh": atanh,
     
-    "ceil": ceil,
-    "cos": cos,
-    "cosh": cosh,
-    "elu": elu,
-    "exp": exp,
-    "expm1": expm1,
-    "floor": floor,
+    "Ceil": ceil,
+    "Cos": cos,
+    "Cosh": cosh,
+    "Elu": elu,
+    "Exp": exp,
+    "Expm1": expm1,
+    "Floor": floor,
     
-    "leakyRelu": leakyRelu,
-    "log": log,
-    "log1p": log1p,
-    "logicalNot": logicalNot,
-    "neg": neg,
-    "relu": relu,
-    "relu6": relu6,
-    "round": round,
+    "IsFinite": isFinite,
+    "IsInf": isInf,
+    "IsNan": isNan,
+    
+    "LeakyRelu": leakyRelu,
+    "Log": log,
+    "Log1p": log1p,
+    "LogicalNot": logicalNot,
+    "Neg": neg,
+    "Relu": relu,
+    "Relu6": relu6,
+    "Round": round,
   ]
 }
 
@@ -250,6 +254,7 @@ extension OperationRegistry {
       metadata: metadata, operation: operation, input: input_id, output: output_id)))
   }
   
+  // Named after the Metal Standard Library header, `metal_relational`.
   static func dispatchUnaryRelational(
     _ args: inout Arguments,
     _ operation: UnaryOperationType
@@ -277,7 +282,7 @@ extension OperationRegistry {
       of: Int.self, capacity: input_alloc.rank
     ) { shape in
       input_alloc.shape.copy(into: shape)
-      return ctx._internalAllocate(dataType, UnsafeBufferPointer(shape), byteCount)
+      return ctx._internalAllocate(.bool, UnsafeBufferPointer(shape), byteCount)
     }
     ctx._internalRetain(output_alloc)
     encodeOutput(&args.outputs, (output_id, output_alloc.rank))
@@ -350,6 +355,18 @@ extension OperationRegistry {
   }
   
   // Codes 30 - 32
+  static let isFinite = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryRelational(&args, .is_finite_f32)
+  }
+  static let isInf = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryRelational(&args, .is_inf_f32)
+  }
+  static let isNan = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryRelational(&args, .is_nan_f32)
+  }
   
   // Codes 40 - 48
   static let leakyRelu = Function {

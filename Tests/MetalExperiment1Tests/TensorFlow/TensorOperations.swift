@@ -88,6 +88,16 @@ public func floor<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 
 
+extension Tensor where Scalar: TensorFlowFloatingPoint {
+  @inlinable public var isFinite: Tensor<Bool> { _Raw.isFinite(self) }
+  
+  @inlinable public var isInfinite: Tensor<Bool> { _Raw.isInf(self) }
+  
+  @inlinable public var isNaN: Tensor<Bool> { _Raw.isNan(self) }
+}
+
+
+
 @inlinable
 public func leakyRelu<T: TensorFlowFloatingPoint>(
   _ x: Tensor<T>,

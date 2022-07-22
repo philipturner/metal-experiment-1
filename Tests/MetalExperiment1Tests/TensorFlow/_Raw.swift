@@ -40,6 +40,20 @@ func dispatchUnary<T, A0: PluggableDeviceEncodable>(
 }
 
 @inlinable @inline(__always)
+func dispatchUnaryRelational<T>(
+  _ name: StaticString,
+  _ input: Tensor<T>
+) -> Tensor<Bool> {
+  return decodeOutputs { outputs in
+    encodeInputs(input) { inputs in
+      let name = encodeName(name)
+      let attributes = encodeAttributes()
+      Context.executeOperation(name, attributes, inputs, outputs)
+    }
+  }
+}
+
+@inlinable @inline(__always)
 func encodeName(_ name: StaticString) -> UnsafeRawBufferPointer {
   let start = name.utf8Start
   let count = name.utf8CodeUnitCount
@@ -174,81 +188,98 @@ extension UInt64: PluggableDeviceEncodable {
 public enum _Raw {
   @inlinable @inline(__always)
   public static func increment<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("increment", input)
+    dispatchUnary("Increment", input)
   }
   
   // Unary
   
   @inlinable @inline(__always)
   public static func abs<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("abs", input)
+    dispatchUnary("Abs", input)
   }
   
   @inlinable @inline(__always)
   public static func acos<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("acos", input)
+    dispatchUnary("Acos", input)
   }
   
   @inlinable @inline(__always)
   public static func acosh<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("acosh", input)
+    dispatchUnary("Acosh", input)
   }
   
   @inlinable @inline(__always)
   public static func asin<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("asin", input)
+    dispatchUnary("Asin", input)
   }
   
   @inlinable @inline(__always)
   public static func asinh<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("asinh", input)
+    dispatchUnary("Asinh", input)
   }
   
   @inlinable @inline(__always)
   public static func atan<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("atan", input)
+    dispatchUnary("Atan", input)
   }
   
   @inlinable @inline(__always)
   public static func atanh<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("atanh", input)
+    dispatchUnary("Atanh", input)
   }
   
   
   
   @inlinable @inline(__always)
   public static func ceil<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("ceil", input)
+    dispatchUnary("Ceil", input)
   }
   
   @inlinable @inline(__always)
   public static func cos<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("cos", input)
+    dispatchUnary("Cos", input)
   }
   
   @inlinable @inline(__always)
   public static func cosh<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("cosh", input)
+    dispatchUnary("Cosh", input)
   }
   
   @inlinable @inline(__always)
   public static func elu<T>(features: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("elu", features)
+    dispatchUnary("Elu", features)
   }
   
   @inlinable @inline(__always)
   public static func exp<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("exp", input)
+    dispatchUnary("Exp", input)
   }
   
   @inlinable @inline(__always)
   public static func expm1<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("expm1", input)
+    dispatchUnary("Expm1", input)
   }
   
   @inlinable @inline(__always)
   public static func floor<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("floor", input)
+    dispatchUnary("Floor", input)
+  }
+  
+  
+  
+  @inlinable @inline(__always)
+  public static func isFinite<T>(_ input: Tensor<T>) -> Tensor<Bool> {
+    dispatchUnaryRelational("IsFinite", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func isInf<T>(_ input: Tensor<T>) -> Tensor<Bool> {
+    dispatchUnaryRelational("IsInf", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func isNan<T>(_ input: Tensor<T>) -> Tensor<Bool> {
+    dispatchUnaryRelational("IsNan", input)
   }
   
   
@@ -258,41 +289,41 @@ public enum _Raw {
     features: Tensor<T>,
     alpha: Double = 0.2
   ) -> Tensor<T> {
-    dispatchUnary("leakyRelu", features, alpha)
+    dispatchUnary("LeakyRelu", features, alpha)
   }
   
   @inlinable @inline(__always)
   public static func log<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("log", input)
+    dispatchUnary("Log", input)
   }
   
   @inlinable @inline(__always)
   public static func log1p<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("log1p", input)
+    dispatchUnary("Log1p", input)
   }
   
   @inlinable @inline(__always)
   public static func logicalNot<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("logicalNot", input)
+    dispatchUnary("LogicalNot", input)
   }
   
   @inlinable @inline(__always)
   public static func neg<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("neg", input)
+    dispatchUnary("Neg", input)
   }
   
   @inlinable @inline(__always)
   public static func relu<T>(features: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("relu", features)
+    dispatchUnary("Relu", features)
   }
   
   @inlinable @inline(__always)
   public static func relu6<T>(features: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("relu6", features)
+    dispatchUnary("Relu6", features)
   }
   
   @inlinable @inline(__always)
   public static func round<T>(_ input: Tensor<T>) -> Tensor<T> {
-    dispatchUnary("round", input)
+    dispatchUnary("Round", input)
   }
 }

@@ -192,6 +192,32 @@ final class TensorOperationTests: XCTestCase {
     }
   }
   
+  func testRelational() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    func test<T: TensorFlowFloatingPoint>(_ type: T.Type) {
+      let tensor1 = Tensor<T>(repeating: T(2), shape: [5])
+      XCTAssertEqual(tensor1.isFinite.scalars, [Bool](repeating: true, count: 5))
+      XCTAssertEqual(tensor1.isInfinite.scalars, [Bool](repeating: false, count: 5))
+      XCTAssertEqual(tensor1.isNaN.scalars, [Bool](repeating: false, count: 5))
+      
+      let tensor2 = Tensor<T>(repeating: -T.infinity, shape: [5])
+      XCTAssertEqual(tensor2.isFinite.scalars, [Bool](repeating: false, count: 5))
+      XCTAssertEqual(tensor2.isInfinite.scalars, [Bool](repeating: true, count: 5))
+      XCTAssertEqual(tensor2.isNaN.scalars, [Bool](repeating: false, count: 5))
+      
+      let tensor3 = Tensor<T>(repeating: T.signalingNaN, shape: [5])
+      XCTAssertEqual(tensor3.isFinite.scalars, [Bool](repeating: false, count: 5))
+      XCTAssertEqual(tensor3.isInfinite.scalars, [Bool](repeating: false, count: 5))
+      XCTAssertEqual(tensor3.isNaN.scalars, [Bool](repeating: true, count: 5))
+    }
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Float16.self)
+    #endif
+    test(Float.self)
+  }
+  
   // Operations with codes 40 - 48
   func testOperations40Series() throws {
     tensorOperationHeader()
