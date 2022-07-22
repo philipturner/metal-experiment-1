@@ -185,6 +185,14 @@ extension OperationRegistry {
     "Relu": relu,
     "Relu6": relu6,
     "Round": round,
+    
+    "Rsqrt": rsqrt,
+    "Selu": selu,
+    "Sigmoid": sigmoid,
+    "Sign": sign,
+    "Sin": sin,
+    "Sinh": sinh,
+    "Softplus": softplus,
   ]
 }
 
@@ -402,6 +410,36 @@ extension OperationRegistry {
   static let round = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .round_f32, nil, nil)
+  }
+  
+  // Codes 50 - 57
+  static let rsqrt = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .rsqrt_f32, nil, nil)
+  }
+  static let selu = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .selu_f32, nil, nil)
+  }
+  static let sigmoid = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .sigmoid_f32, nil, nil)
+  }
+  static let sign = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .sign_f32, .sign_i32, nil)
+  }
+  static let sin = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .sin_f32, nil, nil)
+  }
+  static let sinh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .sinh_f32, nil, nil)
+  }
+  static let softplus = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .softplus_f32, nil, nil)
   }
 
   // Codes 70 - 71

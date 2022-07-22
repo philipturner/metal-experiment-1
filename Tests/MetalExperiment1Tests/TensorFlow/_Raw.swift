@@ -326,4 +326,41 @@ public enum _Raw {
   public static func round<T>(_ input: Tensor<T>) -> Tensor<T> {
     dispatchUnary("Round", input)
   }
+  
+  
+  
+  @inlinable @inline(__always)
+  public static func rsqrt<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Rsqrt", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func selu<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Selu", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func sigmoid<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Sigmoid", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func sign<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Sign", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func sin<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Sin", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func sinh<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Sinh", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func softplus<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Softplus", input)
+  }
 }

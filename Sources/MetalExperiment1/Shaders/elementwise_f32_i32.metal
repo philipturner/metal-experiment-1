@@ -154,9 +154,12 @@ enum ElementwiseOperationType: ushort {
   // Binary (1000 - 1999)
   
   add_f32 = 1000,
-  add_i32 = 2000,
+  add_i32 = 1001,
   
   // Ternary (2000 - 2999)
+  
+  clip_by_value_f32 = 2000,
+  clip_by_value_i32_bool = 2001,
 };
 
 // MARK: - Classes
