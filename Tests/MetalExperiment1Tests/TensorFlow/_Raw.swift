@@ -104,34 +104,34 @@ func encodeInputs<T0, T1>(
 }
 
 @inlinable @inline(__always)
-func decodeOutputAtom<T>(
-  _ ptr: UnsafeMutableBufferPointer<(CTensorHandle, Int)>, _ index: Int
+func decodeOutput<T>(
+  _ ptr: UnsafeMutableBufferPointer<CTensorHandle>, _ index: Int
 ) -> Tensor<T> {
-  let handle = TensorHandle<T>(_owning: ptr[index].0, rank: ptr[index].1)
+  let handle = TensorHandle<T>(_owning: ptr[index])
   return Tensor(handle: handle)
 }
 
 @inlinable @inline(__always)
 func decodeOutputs<T0>(
-  _ body: (UnsafeMutableBufferPointer<(CTensorHandle, Int)>) -> Void
+  _ body: (UnsafeMutableBufferPointer<CTensorHandle>) -> Void
 ) -> (Tensor<T0>) {
-  withUnsafeTemporaryAllocation(of: (CTensorHandle, Int).self, capacity: 1) { bufferPointer in
+  withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 1) { bufferPointer in
     body(bufferPointer)
     return (
-      decodeOutputAtom(bufferPointer, 0)
+      decodeOutput(bufferPointer, 0)
     )
   }
 }
 
 @inlinable @inline(__always)
 func decodeOutputs<T0, T1>(
-  _ body: (UnsafeMutableBufferPointer<(CTensorHandle, Int)>) -> Void
+  _ body: (UnsafeMutableBufferPointer<CTensorHandle>) -> Void
 ) -> (Tensor<T0>, Tensor<T1>) {
-  withUnsafeTemporaryAllocation(of: (CTensorHandle, Int).self, capacity: 2) { bufferPointer in
+  withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 2) { bufferPointer in
     body(bufferPointer)
     return (
-      decodeOutputAtom(bufferPointer, 0),
-      decodeOutputAtom(bufferPointer, 1)
+      decodeOutput(bufferPointer, 0),
+      decodeOutput(bufferPointer, 1)
     )
   }
 }

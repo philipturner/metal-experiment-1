@@ -9,6 +9,15 @@ fileprivate func allocate(capacity: Int) -> OpaquePointer {
   }
 }
 
+fileprivate func releaseBuffer(_ handle: CTensorHandle) {
+  let atomic = AllocationHandle(handle).referenceCount
+  if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
+    Context.deallocateBuffer(handle)
+  } else {
+    fatalError("Could not deallocate handle.")
+  }
+}
+
 // TODO: Finish swapping 'id' for 'handle' throughput the test suite
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
@@ -18,8 +27,8 @@ final class MemoryTests: XCTestCase {
     do {
       let firstHandle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
       let secondHandle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-      Context.releaseBuffer(firstHandle)
-      Context.releaseBuffer(secondHandle)
+      releaseBuffer(firstHandle)
+      releaseBuffer(secondHandle)
     }
     
     do {
@@ -27,7 +36,7 @@ final class MemoryTests: XCTestCase {
       let numHandles = 100
       for _ in 0..<numHandles {
         let handle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-        Context.releaseBuffer(handle)
+        releaseBuffer(handle)
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(numHandles)
@@ -36,7 +45,7 @@ final class MemoryTests: XCTestCase {
     
     do {
       let handle = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
-      defer { Context.releaseBuffer(handle) }
+      defer { releaseBuffer(handle) }
       
       Context.initializeBuffer(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
@@ -103,7 +112,7 @@ final class MemoryTests: XCTestCase {
         Context.initializeBuffer(handle) { _ in }
       }
       for handle in handles {
-        Context.releaseBuffer(handle)
+        releaseBuffer(handle)
       }
     }
     func fakeAllocateDeallocate(numBuffers: Int) {
@@ -137,7 +146,7 @@ final class MemoryTests: XCTestCase {
         }
       }
       for handle in handles {
-        Context.releaseBuffer(handle)
+        releaseBuffer(handle)
       }
     }
     
@@ -183,7 +192,7 @@ final class MemoryTests: XCTestCase {
       return handle
     }
     func deallocate(handle: OpaquePointer) {
-      Context.releaseBuffer(handle)
+      releaseBuffer(handle)
     }
     
     let handle1 = allocate(byteCount: 8_000_000)
@@ -346,8 +355,8 @@ final class MemoryTests: XCTestCase {
     let bufferID1 = allocate(capacity: bufferSize1  / MemoryLayout<Float>.stride)
     let bufferID2 = allocate(capacity: bufferSize2 / MemoryLayout<Float>.stride)
     defer {
-      Context.releaseBuffer(bufferID1)
-      Context.releaseBuffer(bufferID2)
+      releaseBuffer(bufferID1)
+      releaseBuffer(bufferID2)
     }
     
     var tensor3: Tensor<Float>?

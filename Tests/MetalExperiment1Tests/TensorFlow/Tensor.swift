@@ -15,35 +15,39 @@ public typealias CTensorHandle = OpaquePointer
 public class PluggableDeviceTensorHandle {
   public let _cTensorHandle: CTensorHandle
   
-  public let rank: Int
-  
   @usableFromInline
   internal var _shape: [Int]?
   
-  public init(_owning base: CTensorHandle, rank: Int) {
+  public init(_owning base: CTensorHandle) {
     self._cTensorHandle = base
-    self.rank = rank
   }
   
-  public init(_owning base: CTensorHandle, rank: Int, shape: [Int]) {
+  public init(_owning base: CTensorHandle, shape: [Int]) {
     self._cTensorHandle = base
-    self.rank = rank
     self._shape = shape
   }
   
   deinit {
-    Context.releaseBuffer(_cTensorHandle)
+    let atomic = AllocationHandle(_cTensorHandle).referenceCount
+    if atomic.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent) == 0 {
+      Context.deallocateBuffer(_cTensorHandle)
+    }
+  }
+  
+  @inlinable
+  public var rank: Int {
+    @_semantics("autodiff.nonvarying")
+    get {
+      AllocationHandle(_cTensorHandle).rank
+    }
   }
   
   @inlinable
   public var shape: TensorShape {
     @_semantics("autodiff.nonvarying")
     get {
-      if _shape == nil {
-        _shape = Array(unsafeUninitializedCapacity: rank) { bufferPointer, count in
-          count = rank
-          Context.copyBufferShape(_cTensorHandle, bufferPointer)
-        }
+      if _slowPath(_shape == nil) {
+        _shape = Array(AllocationHandle(_cTensorHandle).shape)
       }
       return TensorShape(_shape.unsafelyUnwrapped)
     }
@@ -57,12 +61,12 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   
   public var _cTensorHandle: CTensorHandle { handle._cTensorHandle }
   
-  public init(_owning cTensorHandle: CTensorHandle, rank: Int) {
-    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank)
+  public init(_owning cTensorHandle: CTensorHandle) {
+    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle)
   }
   
-  public init(_owning cTensorHandle: CTensorHandle, rank: Int, shape: [Int]) {
-    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank, shape: shape)
+  public init(_owning cTensorHandle: CTensorHandle, shape: [Int]) {
+    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, shape: shape)
   }
   
   public init(handle: PluggableDeviceTensorHandle) {
@@ -74,14 +78,14 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     shape: [Int],
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
-    let (cTensorHandle, rank) = shape.withUnsafeBufferPointer {
+    let (cTensorHandle, _) = shape.withUnsafeBufferPointer {
       Context.allocateBuffer(Scalar.self, $0)
     }
     Context.initializeBuffer(cTensorHandle) { buffer in
       let pointer = buffer.assumingMemoryBound(to: Scalar.self)
       scalarsInitializer(pointer.baseAddress!)
     }
-    self.init(_owning: cTensorHandle, rank: rank, shape: shape)
+    self.init(_owning: cTensorHandle, shape: shape)
   }
   
   @inlinable

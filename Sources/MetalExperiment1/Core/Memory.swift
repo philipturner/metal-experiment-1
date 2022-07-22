@@ -21,93 +21,41 @@ extension Context {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = withDispatchQueue {
-      Context.global._allocateBuffer(1, dataType, byteCount, shape)
+      Context.global._internalAllocate(1, dataType, byteCount, shape)
     }
-    return (handle, shape.count)
+    return (handle._cHandle, shape.count)
   }
   
   public static func initializeBuffer(
-    _ handle: OpaquePointer,
+    _ cHandle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._initializeBuffer(handle, body)
+      let allocation = Context.global._internalFetch(AllocationHandle(cHandle))
+      allocation.initialize(body)
     }
   }
   
   public static func readBuffer(
-    _ handle: OpaquePointer,
+    _ cHandle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._readBuffer(handle, body)
+      let allocation = Context.global._internalFetch(AllocationHandle(cHandle))
+      allocation.read(body)
     }
   }
   
-  public static func copyBufferShape(
-    _ handle: OpaquePointer,
-    _ shape: UnsafeMutableBufferPointer<Int>
+  public static func deallocateBuffer(
+    _ cHandle: OpaquePointer
   ) {
     withDispatchQueue {
-      Context.global._copyBufferShape(handle, shape)
+      let handle = AllocationHandle(cHandle)
+      precondition(
+        handle.referenceCount.load(ordering: .sequentiallyConsistent) == 0,
+        "Deallocated a buffer with a reference count not equal to zero.")
+      Context.global.allocations[handle] = nil
     }
-  }
-  
-  // TODO: Avoid calling into `withDispatchQueue` if possible.
-  public static func releaseBuffer(
-    _ handle: OpaquePointer
-  ) {
-    withDispatchQueue {
-      Context.global._releaseBuffer(handle)
-    }
-  }
-}
-
-private extension Context {
-  @inline(__always)
-  func _allocateBuffer(
-    _ referenceCount: Int,
-    _ dataType: DataType,
-    _ byteCount: Int,
-    _ shape: UnsafeBufferPointer<Int>
-  ) -> OpaquePointer {
-    let handle = _internalAllocate(referenceCount, dataType, byteCount, shape)
-    return handle._cHandle
-  }
-  
-  @inline(__always)
-  func _initializeBuffer(
-    _ handle: OpaquePointer,
-    _ body: (UnsafeMutableRawBufferPointer) -> Void
-  ) {
-    let allocation = _internalFetch(AllocationHandle(handle))
-    allocation.initialize(body)
-  }
-  
-  @inline(__always)
-  func _readBuffer(
-    _ handle: OpaquePointer,
-    _ body: (UnsafeRawBufferPointer) -> Void
-  ) {
-    let allocation = _internalFetch(AllocationHandle(handle))
-    allocation.read(body)
-  }
-  
-  // TODO: Remove this; it will soon become obsolete.
-  @inline(__always)
-  func _copyBufferShape(
-    _ handle: OpaquePointer,
-    _ shape: UnsafeMutableBufferPointer<Int>
-  ) {
-    let allocation = _internalFetch(AllocationHandle(handle))
-    _ = shape.initialize(from: allocation.handle.shape)
-  }
-  
-  @inline(__always)
-  func _releaseBuffer(
-    _ handle: OpaquePointer
-  ) {
-    _internalRelease(AllocationHandle(handle))
   }
 }
 
@@ -489,6 +437,7 @@ public struct AllocationHandle: Hashable {
     _ = shapeBuffer.initialize(from: shape)
   }
   
+  // TODO: Aggressively optimize everything for debug mode performance.
   @inlinable @inline(__always)
   public var _cHandle: OpaquePointer {
     OpaquePointer(baseAddress)

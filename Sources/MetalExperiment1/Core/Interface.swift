@@ -10,10 +10,6 @@ import Darwin
 // MARK: - Operation Execution
 
 extension Context {
-  // The output is a buffer of interleaved (ID, rank). This eliminates the need to send a virtual
-  // function call afterwards, just to ask "what was this output's rank?" For the shape or size in
-  // bytes you need one virtual function call to materialize them on the frontend.
-  //
   // Rules for encoding attributes:
   //
   // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
@@ -23,7 +19,7 @@ extension Context {
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<OpaquePointer>,
-    _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
+    _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
     withDispatchQueue {
       Context.global._executeOperation(name, attributes, inputs, outputs)
@@ -35,7 +31,7 @@ extension Context {
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<OpaquePointer>,
-    _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
+    _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
     let string = StringWrapper(wrapping: name)
     guard let function = OperationRegistry.registry[string] else {
@@ -55,7 +51,7 @@ struct OperationRegistry {
   struct Arguments {
     var attributes: UnsafeRawBufferPointer
     var inputs: UnsafeBufferPointer<OpaquePointer>
-    var outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
+    var outputs: UnsafeMutableBufferPointer<OpaquePointer>
     
     @inline(__always)
     init(
@@ -84,7 +80,7 @@ struct OperationRegistry {
     func call(
       _ attributes: UnsafeRawBufferPointer,
       _ inputs: UnsafeBufferPointer<OpaquePointer>,
-      _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
+      _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
     ) {
       body(
         .init(attributes.baseAddress), attributes.count,
@@ -112,7 +108,7 @@ struct OperationRegistry {
   }
   
   @inline(__always)
-  static func advanceOutput(_ ptr: inout UnsafeMutableBufferPointer<(OpaquePointer, Int)>) {
+  static func advanceOutput(_ ptr: inout UnsafeMutableBufferPointer<OpaquePointer>) {
     let baseAddress = ptr.baseAddress.unsafelyUnwrapped
     let start = baseAddress.advanced(by: 1)
     let count = ptr.count - 1
@@ -151,10 +147,10 @@ struct OperationRegistry {
   
   @inline(__always)
   static func encodeOutput(
-    _ ptr: inout UnsafeMutableBufferPointer<(OpaquePointer, Int)>,
-    _ output: (AllocationHandle, Int)
+    _ ptr: inout UnsafeMutableBufferPointer<OpaquePointer>,
+    _ output: AllocationHandle
   ) {
-    ptr[0] = (output.0._cHandle, output.1)
+    ptr[0] = output._cHandle
     advanceOutput(&ptr)
   }
 }
@@ -226,7 +222,7 @@ extension OperationRegistry {
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
     let output = ctx._internalAllocate(2, input)
-    encodeOutput(&args.outputs, (output, output.rank))
+    encodeOutput(&args.outputs, output)
     
     // Fetch data type.
     let dataType = input.dataType
@@ -294,7 +290,7 @@ extension OperationRegistry {
     
     // Generate output.
     let output = ctx._internalAllocate(2, .bool, byteCount, input.shape)
-    encodeOutput(&args.outputs, (output, output.rank))
+    encodeOutput(&args.outputs, output)
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
@@ -317,7 +313,7 @@ extension OperationRegistry {
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
     let output = ctx._internalAllocate(2, input)
-    encodeOutput(&args.outputs, (output, output.rank))
+    encodeOutput(&args.outputs, output)
     
     // Fetch data type.
     let dataType = input.dataType
