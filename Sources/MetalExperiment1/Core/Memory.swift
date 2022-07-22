@@ -106,8 +106,7 @@ private extension Context {
   func _releaseBuffer(
     _ handle: OpaquePointer
   ) {
-    let allocation = _internalFetch(handle)
-    _internalRelease(allocation)
+    _internalRelease(handle)
   }
 }
 
@@ -144,53 +143,47 @@ extension Context {
   @inline(__always)
   func _internalFetch(_ handle: OpaquePointer) -> Allocation {
     guard let allocation = allocations[handle] else {
-      _internalFetchSlowPath(handle)
+      fatalError("Tried to retrieve an allocation that does not exist.")
     }
     return allocation
-  }
-  
-  @inline(never)
-  func _internalFetchSlowPath(_ handle: OpaquePointer) -> Never {
-    preconditionFailure("""
-      Allocation with handle '\(handle)' was either deallocated or never existed in the first place.
-      """)
   }
   
   // TODO: Rework retain/release to not require the allocation being present, optimize the compiler
   // accordingly.
   @discardableResult
   @inline(__always)
-  func _internalRetain(_ allocation: Allocation) -> Int {
-    let referenceCount = allocation.referenceCount
-      .wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
+  func _internalRetain(_ handle: OpaquePointer) -> Int {
+    let atomic = UnsafeAtomic<Int>(at: UnsafeMutablePointer(handle))
+    let referenceCount = atomic.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
     if Allocation.debugInfoEnabled {
-      _internalRetainSlowPath(allocation, referenceCount)
+      _internalRetainSlowPath(handle, referenceCount)
     }
     return referenceCount
   }
   
   @inline(never)
-  private func _internalRetainSlowPath(_ allocation: Allocation, _ referenceCount: Int) {
-    let id = allocation.id
-    print("Allocation #\(id) jumped to a reference count of \(referenceCount).")
+  private func _internalRetainSlowPath(_ handle: OpaquePointer, _ referenceCount: Int) {
+    let id = _internalFetch(handle).id
+    print("Allocation #\(id) jumped to a reference count of \(referenceCount)")
   }
   
   @discardableResult
   @inline(__always)
-  func _internalRelease(_ allocation: Allocation) -> Int {
-    let referenceCount = allocation.referenceCount
-      .wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
-    if referenceCount == 0 {
-      allocations[allocation.handle] = nil
-    }
+  func _internalRelease(_ handle: OpaquePointer) -> Int {
+    let atomic = UnsafeAtomic<Int>(at: UnsafeMutablePointer(handle))
+    let referenceCount = atomic.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
     if Allocation.debugInfoEnabled {
-      _internalReleaseSlowPath(allocation, referenceCount)
+      _internalReleaseSlowPath(handle, referenceCount)
+    }
+    if referenceCount == 0 {
+      allocations[handle] = nil
     }
     return referenceCount
   }
   
   @inline(never)
-  private func _internalReleaseSlowPath(_ allocation: Allocation, _ referenceCount: Int) {
+  private func _internalReleaseSlowPath(_ handle: OpaquePointer, _ referenceCount: Int) {
+    let allocation = _internalFetch(handle)
     let id = allocation.id
     if referenceCount == 0 {
       if allocation.initialized {
@@ -384,7 +377,7 @@ class Allocation {
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
-      ctx._internalRetain(self)
+      ctx._internalRetain(self.handle)
       let sourceHandle = sourceAllocation.handle
       let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
@@ -416,7 +409,7 @@ class Allocation {
       sourceAllocation = Context.global._internalAllocate(1, self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
-      ctx._internalRetain(self)
+      ctx._internalRetain(self.handle)
       let sourceHandle = sourceAllocation.handle
       let explicitCopy = EagerOperation.ExplicitCopy(input: handle, output: sourceHandle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
@@ -473,5 +466,65 @@ class Allocation {
       return
     }
     HeapAllocator.free(self.mtlBuffer!)
+  }
+}
+
+public struct AllocationHandle {
+  @usableFromInline
+  internal var baseAddress: UnsafeMutablePointer<Int>
+  
+  @inlinable @inline(__always)
+  public init(_ handle: OpaquePointer) {
+    baseAddress = UnsafeMutablePointer(handle)
+  }
+  
+  @inline(__always)
+  internal init(
+    referenceCount: Int,
+    dataType: DataType,
+    byteCount: Int,
+    shape: UnsafeBufferPointer<Int>
+  ) {
+    var bufferSize = 0
+    bufferSize += 1 // referenceCount
+    bufferSize += 1 // dataType
+    bufferSize += 1 // byteCount
+    bufferSize += 1 // rank
+    bufferSize += shape.count // shape
+    bufferSize *= MemoryLayout<Int>.stride
+    baseAddress = malloc(bufferSize)!.assumingMemoryBound(to: Int.self)
+    
+    baseAddress[0] = referenceCount
+    baseAddress[1] = Int(dataType.rawValue)
+    baseAddress[2] = byteCount
+    baseAddress[3] = shape.count
+    
+    let shapeBuffer = UnsafeMutableBufferPointer(start: baseAddress + 4, count: shape.count)
+    _ = shapeBuffer.initialize(from: shape)
+  }
+  
+  @inlinable @inline(__always)
+  public var handle: OpaquePointer {
+    OpaquePointer(baseAddress)
+  }
+  
+  @inlinable @inline(__always)
+  public var referenceCount: UnsafeAtomic<Int> {
+    UnsafeAtomic(at: UnsafeMutablePointer(handle))
+  }
+  
+  @inlinable @inline(__always)
+  public var byteCount: Int {
+    baseAddress[2]
+  }
+  
+  @inlinable @inline(__always)
+  public var rank: Int {
+    baseAddress[3]
+  }
+  
+  @inlinable @inline(__always)
+  public var shape: UnsafeBufferPointer<Int> {
+    UnsafeBufferPointer(start: baseAddress + 4, count: rank)
   }
 }

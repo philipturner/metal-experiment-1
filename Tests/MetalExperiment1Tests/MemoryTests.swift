@@ -161,13 +161,13 @@ final class MemoryTests: XCTestCase {
     emptyAllocateDeallocate(bufferSize: 2000, numBuffers: 5)
     emptyAllocateDeallocate(bufferSize: 3000, numBuffers: 5)
     emptyAllocateDeallocate(bufferSize: 4092, numBuffers: 5)
-    let idCycleTime = Profiler.checkpoint()
+    let handleCycleTime = Profiler.checkpoint()
     
     let totalThroughput = Double(totalTime) / 20
     print("Memory recycling throughput: \(totalThroughput) \(Profiler.timeUnit)")
     let nonGCDThroughput = Double(totalTime - gcdTime) / 20
     print("Time excluding GCD: \(nonGCDThroughput) \(Profiler.timeUnit)")
-    let allocationThroughput = Double(totalTime - idCycleTime) / 20
+    let allocationThroughput = Double(totalTime - handleCycleTime) / 20
     print("Time inside HeapAllocator: \(allocationThroughput) \(Profiler.timeUnit)")
   }
   

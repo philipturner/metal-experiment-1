@@ -542,7 +542,6 @@ kernel void elementwise_f32_i32(
             auto casted = bool4(x);
             SET_I32(int4(casted));
           }
-            // TODO: cast_i32_to_bool
           case cast_i32_to_f16: {
             auto x = storage.get_i32();
             auto casted = half4(x);

@@ -221,7 +221,7 @@ extension OperationRegistry {
     // Fetch input.
     let inputHandle = decodeInput(&args.inputs)
     let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(input)
+    ctx._internalRetain(inputHandle)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
@@ -283,7 +283,7 @@ extension OperationRegistry {
     // Fetch input.
     let inputHandle = decodeInput(&args.inputs)
     let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(input)
+    ctx._internalRetain(inputHandle)
     
     // Fetch data type.
     let dataType = input.dataType
@@ -320,7 +320,7 @@ extension OperationRegistry {
     // Fetch input.
     let inputHandle = decodeInput(&args.inputs)
     let input = ctx._internalFetch(inputHandle)
-    ctx._internalRetain(input)
+    ctx._internalRetain(inputHandle)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.

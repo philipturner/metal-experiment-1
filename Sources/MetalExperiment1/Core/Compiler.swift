@@ -116,7 +116,7 @@ extension Context {
           startingNewFusion =  true
         }
         
-        let referenceCount = _internalRelease(input)
+        let referenceCount = _internalRelease(unary.input)
         if !startingNewFusion {
           startingNewFusion = referenceCount > 0
         }
@@ -135,7 +135,7 @@ extension Context {
         }
         
         let output = _internalFetch(unary.output)
-        _internalRelease(output)
+        _internalRelease(unary.output)
         precondition(input.shape.elementsEqual(output.shape))
         fusionTail = output
         fusionTailHandle = unary.output
@@ -147,8 +147,8 @@ extension Context {
         
         let input = _internalFetch(explicitCopy.input)
         let output = _internalFetch(explicitCopy.output)
-        _internalRelease(input)
-        _internalRelease(output)
+        _internalRelease(explicitCopy.input)
+        _internalRelease(explicitCopy.output)
         precondition(input.dataType == output.dataType)
         let byteCount = input.byteCount
         precondition(byteCount == output.byteCount)

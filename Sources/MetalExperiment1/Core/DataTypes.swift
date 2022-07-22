@@ -89,10 +89,8 @@ enum DataType: UInt16, CustomStringConvertible {
     fatalError("Did not recognize data type '\(type)'.")
   }
   
-  // TODO: A way to initialize from `TF_DataType` raw values.
-  
-  init(tensorflowDataType: TF_DataType) {
-    switch tensorflowDataType {
+  init(tensorFlowDataType: TF_DataType) {
+    switch tensorFlowDataType {
     case TF_HALF:
       self = .float16
     case TF_FLOAT:
@@ -116,7 +114,7 @@ enum DataType: UInt16, CustomStringConvertible {
     case TF_UINT64:
       self = .uint64
     default:
-      fatalError("Did not recognize 'TF_DataType' with raw value '\(tensorflowDataType)'.")
+      fatalError("Did not recognize 'TF_DataType' with raw value '\(tensorFlowDataType)'.")
     }
   }
   
