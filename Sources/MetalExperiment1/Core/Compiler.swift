@@ -131,11 +131,6 @@ extension Context {
           
           fusionHead = input
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
-        } else if false {
-          // `input.referenceCount` could be zero.
-          precondition(!pendingOperationFusionExists())
-          fusionHead = input
-          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         } else {
           // Waiting for tests to trigger this assertion failure. I don't know why this is always
           // true.
