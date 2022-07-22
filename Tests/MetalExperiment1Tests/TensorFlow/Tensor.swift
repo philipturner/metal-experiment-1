@@ -7,23 +7,26 @@
 
 import MetalExperiment1
 
+// TODO: Mark all `OpaquePointer` here as `CTensorHandle`.
+public typealias CTensorHandle = OpaquePointer
+
 // MARK: - PluggableDeviceTensorHandle
 
 // Mirrors the functionality of `TFETensorHandle`.
 public class PluggableDeviceTensorHandle {
-  public let _cTensorHandle: UInt64
+  public let _cTensorHandle: CTensorHandle
   
   public let rank: Int
   
   @usableFromInline
   internal var _shape: [Int]?
   
-  public init(_owning base: UInt64, rank: Int) {
+  public init(_owning base: CTensorHandle, rank: Int) {
     self._cTensorHandle = base
     self.rank = rank
   }
   
-  public init(_owning base: UInt64, rank: Int, shape: [Int]) {
+  public init(_owning base: CTensorHandle, rank: Int, shape: [Int]) {
     self._cTensorHandle = base
     self.rank = rank
     self._shape = shape
@@ -53,13 +56,13 @@ public class PluggableDeviceTensorHandle {
 public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @usableFromInline let handle: PluggableDeviceTensorHandle
   
-  public var _cTensorHandle: UInt64 { handle._cTensorHandle }
+  public var _cTensorHandle: CTensorHandle { handle._cTensorHandle }
   
-  public init(_owning cTensorHandle: UInt64, rank: Int) {
+  public init(_owning cTensorHandle: CTensorHandle, rank: Int) {
     self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank)
   }
   
-  public init(_owning cTensorHandle: UInt64, rank: Int, shape: [Int]) {
+  public init(_owning cTensorHandle: CTensorHandle, rank: Int, shape: [Int]) {
     self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, rank: rank, shape: shape)
   }
   
@@ -123,7 +126,7 @@ public struct Tensor<Scalar: TensorFlowScalar> {
     self.handle = handle
   }
   
-  public var _rawTensorHandle: UInt64 { return handle._cTensorHandle }
+  public var _rawTensorHandle: CTensorHandle { return handle._cTensorHandle }
   public var scalarType: Any.Type { return Scalar.self }
   
   public var rank: Int {

@@ -22,8 +22,8 @@ extension Context {
   public static func executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
-    _ inputs: UnsafeBufferPointer<UInt64>,
-    _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
+    _ inputs: UnsafeBufferPointer<OpaquePointer>,
+    _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
   ) {
     withDispatchQueue {
       Context.global._executeOperation(name, attributes, inputs, outputs)
@@ -34,8 +34,8 @@ extension Context {
   private func _executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
-    _ inputs: UnsafeBufferPointer<UInt64>,
-    _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
+    _ inputs: UnsafeBufferPointer<OpaquePointer>,
+    _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
   ) {
     let string = StringWrapper(wrapping: name)
     guard let function = OperationRegistry.registry[string] else {
@@ -54,8 +54,8 @@ struct OperationRegistry {
   
   struct Arguments {
     var attributes: UnsafeRawBufferPointer
-    var inputs: UnsafeBufferPointer<UInt64>
-    var outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
+    var inputs: UnsafeBufferPointer<OpaquePointer>
+    var outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
     
     @inline(__always)
     init(
@@ -83,8 +83,8 @@ struct OperationRegistry {
     @inline(__always)
     func call(
       _ attributes: UnsafeRawBufferPointer,
-      _ inputs: UnsafeBufferPointer<UInt64>,
-      _ outputs: UnsafeMutableBufferPointer<(UInt64, Int)>
+      _ inputs: UnsafeBufferPointer<OpaquePointer>,
+      _ outputs: UnsafeMutableBufferPointer<(OpaquePointer, Int)>
     ) {
       body(
         .init(attributes.baseAddress), attributes.count,
@@ -104,7 +104,7 @@ struct OperationRegistry {
   }
   
   @inline(__always)
-  static func advanceInput(_ ptr: inout UnsafeBufferPointer<UInt64>) {
+  static func advanceInput(_ ptr: inout UnsafeBufferPointer<OpaquePointer>) {
     let baseAddress = ptr.baseAddress.unsafelyUnwrapped
     let start = baseAddress.advanced(by: 1)
     let count = ptr.count - 1
@@ -112,7 +112,7 @@ struct OperationRegistry {
   }
   
   @inline(__always)
-  static func advanceOutput(_ ptr: inout UnsafeMutableBufferPointer<(UInt64, Int)>) {
+  static func advanceOutput(_ ptr: inout UnsafeMutableBufferPointer<(OpaquePointer, Int)>) {
     let baseAddress = ptr.baseAddress.unsafelyUnwrapped
     let start = baseAddress.advanced(by: 1)
     let count = ptr.count - 1
@@ -143,7 +143,7 @@ struct OperationRegistry {
   }
   
   @inline(__always)
-  static func decodeInput(_ ptr: inout UnsafeBufferPointer<UInt64>) -> UInt64 {
+  static func decodeInput(_ ptr: inout UnsafeBufferPointer<OpaquePointer>) -> OpaquePointer {
     let value = ptr[0]
     advanceInput(&ptr)
     return value
@@ -151,8 +151,8 @@ struct OperationRegistry {
   
   @inline(__always)
   static func encodeOutput(
-    _ ptr: inout UnsafeMutableBufferPointer<(UInt64, Int)>,
-    _ output: (UInt64, Int)) {
+    _ ptr: inout UnsafeMutableBufferPointer<(OpaquePointer, Int)>,
+    _ output: (OpaquePointer, Int)) {
     ptr[0] = output
     advanceOutput(&ptr)
   }
@@ -219,17 +219,18 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let input_id = decodeInput(&args.inputs)
-    let input_alloc = ctx._internalFetch(input_id)
-    ctx._internalRetain(input_alloc)
+    let inputHandle = decodeInput(&args.inputs)
+    let input = ctx._internalFetch(inputHandle)
+    ctx._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let (output_id, output_alloc) = ctx._internalAllocate(2, input_alloc)
-    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
+    let output = ctx._internalAllocate(2, input)
+    let outputHandle = output.handle
+    encodeOutput(&args.outputs, (outputHandle, output.rank))
     
     // Fetch data type.
-    let dataType = input_alloc.dataType
+    let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
@@ -267,7 +268,7 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, operation: operation, input: input_id, output: output_id)))
+      metadata: metadata, operation: operation, input: inputHandle, output: outputHandle)))
   }
   
   // Named after the Metal Standard Library header, `metal_relational`.
@@ -280,32 +281,31 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let input_id = decodeInput(&args.inputs)
-    let input_alloc = ctx._internalFetch(input_id)
-    ctx._internalRetain(input_alloc)
+    let inputHandle = decodeInput(&args.inputs)
+    let input = ctx._internalFetch(inputHandle)
+    ctx._internalRetain(input)
     
     // Fetch data type.
-    let dataType = input_alloc.dataType
+    let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
     precondition(dataType.isFloatingPoint, dataMismatch(operation))
     let stridePowerOf2 = (dataType == .float16) ? 2.trailingZeroBitCount : 4.trailingZeroBitCount
-    let byteCount = input_alloc.byteCount >> stridePowerOf2
+    let byteCount = input.byteCount >> stridePowerOf2
     
     // Generate output.
-    let (output_id, output_alloc) = withUnsafeTemporaryAllocation(
-      of: Int.self, capacity: input_alloc.rank
-    ) { shape in
+    let output = withUnsafeTemporaryAllocation(of: Int.self, capacity: input.rank) { shape in
       // Setting initial refcount to 2 creates an imbalanced retain.
-      input_alloc.shape.copy(into: shape)
+      input.shape.copy(into: shape)
       return ctx._internalAllocate(2, .bool, UnsafeBufferPointer(shape), byteCount)
     }
-    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
+    let outputHandle = output.handle
+    encodeOutput(&args.outputs, (outputHandle, output.rank))
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation: operation, input: input_id, output: output_id)))
+      operation: operation, input: inputHandle, output: outputHandle)))
   }
   
   static func dispatchUnaryScalar(
@@ -318,17 +318,18 @@ extension OperationRegistry {
     precondition(args.outputs.count == 1)
     
     // Fetch input.
-    let input_id = decodeInput(&args.inputs)
-    let input_alloc = ctx._internalFetch(input_id)
-    ctx._internalRetain(input_alloc)
+    let inputHandle = decodeInput(&args.inputs)
+    let input = ctx._internalFetch(inputHandle)
+    ctx._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let (output_id, output_alloc) = ctx._internalAllocate(2, input_alloc)
-    encodeOutput(&args.outputs, (output_id, output_alloc.rank))
+    let output = ctx._internalAllocate(2, input)
+    let outputHandle = output.handle
+    encodeOutput(&args.outputs, (outputHandle, output.rank))
     
     // Fetch data type.
-    let dataType = input_alloc.dataType
+    let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
@@ -390,8 +391,8 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, isNoOp: isNoOp, operation: operation, input: input_id,
-      output: output_id)))
+      metadata: metadata, isNoOp: isNoOp, operation: operation, input: inputHandle,
+      output: outputHandle)))
   }
 }
 

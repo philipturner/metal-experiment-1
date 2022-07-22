@@ -9,7 +9,7 @@ import Atomics
 import MetalPerformanceShadersGraph
 
 extension Context {
-  // Returns (ID, rank) to match the style of other function calls.
+  // Returns (handle, rank) to match the style of other function calls.
   //
   // Avoids a possible second virtual function call by transforming the generic parameter into
   // something statically typed. There is already massive overhead from calling into
@@ -17,47 +17,48 @@ extension Context {
   public static func allocateBuffer(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>
-  ) -> (UInt64, Int) {
+  ) -> (OpaquePointer, Int) {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
-    let id = withDispatchQueue {
+    let handle = withDispatchQueue {
       Context.global._allocateBuffer(1, dataType, shape, byteCount)
     }
-    return (id, shape.count)
+    return (handle, shape.count)
   }
   
   public static func initializeBuffer(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._initializeBuffer(id, body)
+      Context.global._initializeBuffer(handle, body)
     }
   }
   
   public static func readBuffer(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      Context.global._readBuffer(id, body)
+      Context.global._readBuffer(handle, body)
     }
   }
   
   public static func copyBufferShape(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
     withDispatchQueue {
-      Context.global._copyBufferShape(id, shape)
+      Context.global._copyBufferShape(handle, shape)
     }
   }
   
+  // TODO: Avoid calling into `withDispatchQueue` if possible.
   public static func releaseBuffer(
-    _ id: UInt64
+    _ handle: OpaquePointer
   ) {
     withDispatchQueue {
-      Context.global._releaseBuffer(id)
+      Context.global._releaseBuffer(handle)
     }
   }
 }
@@ -69,43 +70,43 @@ private extension Context {
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
-  ) -> UInt64 {
-    let (id, _) = _internalAllocate(referenceCount, dataType, shape, byteCount)
-    return id
+  ) -> OpaquePointer {
+    let allocation = _internalAllocate(referenceCount, dataType, shape, byteCount)
+    return allocation.handle
   }
   
   @inline(__always)
   func _initializeBuffer(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
-    let allocation = _internalFetch(id)
+    let allocation = _internalFetch(handle)
     allocation.initialize(body)
   }
   
   @inline(__always)
   func _readBuffer(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
-    let allocation = _internalFetch(id)
+    let allocation = _internalFetch(handle)
     allocation.read(body)
   }
   
   @inline(__always)
   func _copyBufferShape(
-    _ id: UInt64,
+    _ handle: OpaquePointer,
     _ shape: UnsafeMutableBufferPointer<Int>
   ) {
-    let allocation = _internalFetch(id)
+    let allocation = _internalFetch(handle)
     allocation.shape.copy(into: shape)
   }
   
   @inline(__always)
   func _releaseBuffer(
-    _ id: UInt64
+    _ handle: OpaquePointer
   ) {
-    let allocation = _internalFetch(id)
+    let allocation = _internalFetch(handle)
     _internalRelease(allocation)
   }
 }
@@ -117,14 +118,14 @@ extension Context {
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
-  ) -> (UInt64, Allocation) {
+  ) -> Allocation {
     let id = nextAllocationID
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, dataType: dataType, shape: shape,
       byteCount: byteCount)
     nextAllocationID = id + 1
-    allocations[id] = allocation
-    return (id, allocation)
+    allocations[allocation.handle] = allocation
+    return allocation
   }
   
   @inline(__always)
@@ -132,31 +133,31 @@ extension Context {
     _ referenceCount: Int,
     _ other: Allocation,
     isShared: Bool? = nil
-  ) -> (UInt64, Allocation) {
+  ) -> Allocation {
     let id = nextAllocationID
     let allocation = Allocation(other, id: id, referenceCount: referenceCount, isShared: isShared)
     nextAllocationID = id + 1
-    allocations[id] = allocation
-    return (id, allocation)
+    allocations[allocation.handle] = allocation
+    return allocation
   }
   
   @inline(__always)
-  func _internalFetch(_ id: UInt64) -> Allocation {
-    guard let allocation = allocations[id] else {
-      _internalFetchSlowPath(id)
+  func _internalFetch(_ handle: OpaquePointer) -> Allocation {
+    guard let allocation = allocations[handle] else {
+      _internalFetchSlowPath(handle)
     }
     return allocation
   }
   
   @inline(never)
-  func _internalFetchSlowPath(_ id: UInt64) -> Never {
-    if id >= nextAllocationID {
-      preconditionFailure("No memory has ever been allocated with ID #\(id).")
-    } else {
-      preconditionFailure("Allocation #\(id) has already been deallocated.")
-    }
+  func _internalFetchSlowPath(_ handle: OpaquePointer) -> Never {
+    preconditionFailure("""
+      Allocation with handle '\(handle)' was either deallocated or never existed in the first place.
+      """)
   }
   
+  // TODO: Rework retain/release to not require the allocation being present, optimize the compiler
+  // accordingly.
   @discardableResult
   @inline(__always)
   func _internalRetain(_ allocation: Allocation) -> Int {
@@ -180,7 +181,7 @@ extension Context {
     let referenceCount = allocation.referenceCount
       .wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
     if referenceCount == 0 {
-      allocations[allocation.id] = nil
+      allocations[allocation.handle] = nil
     }
     if Allocation.debugInfoEnabled {
       _internalReleaseSlowPath(allocation, referenceCount)
@@ -208,11 +209,14 @@ enum AllocationError: Error {
 }
 
 class Allocation {
+  static var debugInfoEnabled = fetchEnvironmentBoolean(
+    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
+  
   // (Internal member layout) 0B boundary
   let id: UInt64
   var referenceCount: UnsafeAtomic<Int>
-  static var debugInfoEnabled = fetchEnvironmentBoolean(
-    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
+  @inline(__always)
+  var handle: OpaquePointer { unsafeBitCast(referenceCount, to: OpaquePointer.self) }
   
   // (Internal member layout) 16B boundary
   //
@@ -375,14 +379,14 @@ class Allocation {
       let ptr = UnsafeMutableRawBufferPointer(start: contents, count: byteCount)
       body(ptr)
     } else {
-      var sourceID: UInt64
-      (sourceID, sourceAllocation) = ctx._internalAllocate(1, self, isShared: true)
+      sourceAllocation = ctx._internalAllocate(1, self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
       ctx._internalRetain(self)
-      let explicitCopy = EagerOperation.ExplicitCopy(input: sourceID, output: id)
+      let sourceHandle = sourceAllocation.handle
+      let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
@@ -409,12 +413,12 @@ class Allocation {
     if isShared {
       sourceAllocation = self
     } else {
-      var sourceID: UInt64
-      (sourceID, sourceAllocation) = Context.global._internalAllocate(1, self, isShared: true)
+      sourceAllocation = Context.global._internalAllocate(1, self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       ctx._internalRetain(self)
-      let explicitCopy = EagerOperation.ExplicitCopy(input: id, output: sourceID)
+      let sourceHandle = sourceAllocation.handle
+      let explicitCopy = EagerOperation.ExplicitCopy(input: handle, output: sourceHandle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     

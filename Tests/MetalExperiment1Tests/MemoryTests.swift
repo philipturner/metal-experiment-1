@@ -1,48 +1,49 @@
 import XCTest
 @testable import MetalExperiment1
 
-fileprivate func allocate(capacity: Int) -> UInt64 {
+fileprivate func allocate(capacity: Int) -> OpaquePointer {
   withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
     shape[0] = capacity
-    let (id, _) = Context.allocateBuffer(Float.self, UnsafeBufferPointer(shape))
-    return id
+    let (handle, _) = Context.allocateBuffer(Float.self, UnsafeBufferPointer(shape))
+    return handle
   }
 }
 
+// TODO: Finish swapping 'id' for 'handle' throughput the test suite
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")
     HeapAllocator._releaseCachedBufferBlocks()
     
     do {
-      let firstID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-      let secondID = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-      Context.releaseBuffer(firstID)
-      Context.releaseBuffer(secondID)
+      let firstHandle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
+      let secondHandle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
+      Context.releaseBuffer(firstHandle)
+      Context.releaseBuffer(secondHandle)
     }
     
     do {
       Profiler.checkpoint()
-      let numIds = 100
-      for _ in 0..<numIds {
-        let id = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
-        Context.releaseBuffer(id)
+      let numHandles = 100
+      for _ in 0..<numHandles {
+        let handle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
+        Context.releaseBuffer(handle)
       }
       let totalTime = Profiler.checkpoint()
-      let throughput = Double(totalTime) / Double(numIds)
+      let throughput = Double(totalTime) / Double(numHandles)
       print("Unused ID creation throughput: \(throughput) \(Profiler.timeUnit)")
     }
     
     do {
-      let id = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
-      defer { Context.releaseBuffer(id) }
+      let handle = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
+      defer { Context.releaseBuffer(handle) }
       
-      Context.initializeBuffer(id) { bufferPointer in
+      Context.initializeBuffer(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      Context.readBuffer(id) { bufferPointer in
+      Context.readBuffer(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)
@@ -93,50 +94,50 @@ final class MemoryTests: XCTestCase {
     HeapAllocator._releaseCachedBufferBlocks()
     
     func allocateDeallocate(bufferSize: Int, numBuffers: Int) {
-      var ids: [UInt64] = []
+      var handles: [OpaquePointer] = []
       for _ in 0..<numBuffers {
-        let id = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
-        ids.append(id)
+        let handle = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
+        handles.append(handle)
       }
-      for id in ids {
-        Context.initializeBuffer(id) { _ in }
+      for handle in handles {
+        Context.initializeBuffer(handle) { _ in }
       }
-      for id in ids {
-        Context.releaseBuffer(id)
+      for handle in handles {
+        Context.releaseBuffer(handle)
       }
     }
     func fakeAllocateDeallocate(numBuffers: Int) {
-      var ids: [UInt64] = []
+      var handles: [OpaquePointer?] = []
       for _ in 0..<numBuffers {
-        let id = Context.withDispatchQueue {
-          return UInt64(2)
+        let handle = Context.withDispatchQueue {
+          return OpaquePointer?(nil)
         }
-        ids.append(id)
+        handles.append(handle)
       }
-      for id in ids {
+      for handle in handles {
         Context.withDispatchQueue {
-          _ = id
+          _ = handle
         }
       }
-      for id in ids {
+      for handle in handles {
         Context.withDispatchQueue {
-          _ = id
+          _ = handle
         }
       }
     }
     func emptyAllocateDeallocate(bufferSize: Int, numBuffers: Int) {
-      var ids: [UInt64] = []
+      var handles: [OpaquePointer] = []
       for _ in 0..<numBuffers {
-        let id = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
-        ids.append(id)
+        let handle = allocate(capacity: bufferSize / MemoryLayout<Float>.stride)
+        handles.append(handle)
       }
-      for id in ids {
+      for handle in handles {
         Context.withDispatchQueue {
-          _ = id
+          _ = handle
         }
       }
-      for id in ids {
-        Context.releaseBuffer(id)
+      for handle in handles {
+        Context.releaseBuffer(handle)
       }
     }
     
@@ -174,36 +175,36 @@ final class MemoryTests: XCTestCase {
     testHeader()
     HeapAllocator._releaseCachedBufferBlocks()
     
-    func allocate(byteCount: Int) -> UInt64 {
+    func allocate(byteCount: Int) -> OpaquePointer {
       // The compiler mistakes this for `allocate(byteCount:)`.
       let _avoidNameCollision = allocate(capacity:)
-      let id = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
-      Context.initializeBuffer(id) { _ in }
-      return id
+      let handle = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
+      Context.initializeBuffer(handle) { _ in }
+      return handle
     }
-    func deallocate(id: UInt64) {
-      Context.releaseBuffer(id)
+    func deallocate(handle: OpaquePointer) {
+      Context.releaseBuffer(handle)
     }
     
-    let id1 = allocate(byteCount: 8_000_000)
-    let id2 = allocate(byteCount: 12_000_000)
-    let id3 = allocate(byteCount: 12_000_000)
-    deallocate(id: id1)
-    deallocate(id: id2)
-    deallocate(id: id3)
+    let handle1 = allocate(byteCount: 8_000_000)
+    let handle2 = allocate(byteCount: 12_000_000)
+    let handle3 = allocate(byteCount: 12_000_000)
+    deallocate(handle: handle1)
+    deallocate(handle: handle2)
+    deallocate(handle: handle3)
     
-    let id4 = allocate(byteCount: 999_000)
-    deallocate(id: id4)
+    let handle4 = allocate(byteCount: 999_000)
+    deallocate(handle: handle4)
     
-    let id5 = allocate(byteCount: 2_000_000)
-    deallocate(id: id5)
+    let handle5 = allocate(byteCount: 2_000_000)
+    deallocate(handle: handle5)
     
     // Test mechanism for dealing with excessive memory allocation.
     
     do {
       HeapAllocator._releaseCachedBufferBlocks()
-      let smallBufferID1 = allocate(byteCount: 1_000)
-      defer { deallocate(id: smallBufferID1) }
+      let smallBufferHandle1 = allocate(byteCount: 1_000)
+      defer { deallocate(handle: smallBufferHandle1) }
       Context.withDispatchQueue {
         Context.global.permitExceedingSystemRAM = true
       }
@@ -211,15 +212,15 @@ final class MemoryTests: XCTestCase {
       // This part of the test causes a massive bottleneck on discrete GPUs.
       if Context.global.preferSharedStorage {
         let largeBufferSize = Context.global.device.maxBufferLength
-        let largeBufferID1 = allocate(byteCount: largeBufferSize)
-        defer { deallocate(id: largeBufferID1) }
+        let largeBufferHandle1 = allocate(byteCount: largeBufferSize)
+        defer { deallocate(handle: largeBufferHandle1) }
         Context.withDispatchQueue {
           XCTAssertTrue(Context.global.permitExceedingSystemRAM)
         }
       }
       
-      let smallBufferID2 = allocate(byteCount: 1_000)
-      defer { deallocate(id: smallBufferID2) }
+      let smallBufferHandle2 = allocate(byteCount: 1_000)
+      defer { deallocate(handle: smallBufferHandle2) }
       Context.withDispatchQueue {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
@@ -229,8 +230,8 @@ final class MemoryTests: XCTestCase {
     }
     
     do {
-      let smallBufferID3 = allocate(byteCount: 1_000)
-      defer { deallocate(id: smallBufferID3) }
+      let smallBufferHandle3 = allocate(byteCount: 1_000)
+      defer { deallocate(handle: smallBufferHandle3) }
       Context.withDispatchQueue {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
@@ -242,8 +243,8 @@ final class MemoryTests: XCTestCase {
         Context.barrier()
       }
       
-      let smallBufferID4 = allocate(byteCount: 1_000)
-      defer { deallocate(id: smallBufferID4) }
+      let smallBufferHandle4 = allocate(byteCount: 1_000)
+      defer { deallocate(handle: smallBufferHandle4) }
       Context.withDispatchQueue {
         XCTAssertFalse(Context.global.permitExceedingSystemRAM)
       }

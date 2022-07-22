@@ -40,7 +40,7 @@ extension Context {
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionHead: Allocation?
     var fusionTail: Allocation?
-    var fusionTailID: UInt64 = .max
+    var fusionTailHandle: OpaquePointer?
     var fusionSize = -1
     @inline(__always)
     func pendingOperationFusionExists() -> Bool {
@@ -56,7 +56,7 @@ extension Context {
         fusionMetadata = .init()
         fusionHead = nil
         fusionTail = nil
-        fusionTailID = .max
+        fusionTailHandle = nil
         fusionSize = -1
       }
       guard let fusionHead = fusionHead,
@@ -101,7 +101,7 @@ extension Context {
       case .unary(let unary):
         var input: Allocation
         var startingNewFusion: Bool
-        if unary.input == fusionTailID {
+        if unary.input == fusionTailHandle {
           // In the middle of an operation fusion.
           precondition(pendingOperationFusionExists())
           input = fusionTail!
@@ -138,7 +138,7 @@ extension Context {
         _internalRelease(output)
         precondition(input.shape.elementsEqual(output.shape))
         fusionTail = output
-        fusionTailID = unary.output
+        fusionTailHandle = unary.output
         
       case .explicitCopy(let explicitCopy):
         if pendingOperationFusionExists() {

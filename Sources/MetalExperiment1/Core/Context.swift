@@ -24,7 +24,7 @@ public class Context {
   var numCompletedBatches: UnsafeAtomic<Int>
   var eagerOperations: [EagerOperation] = []
   
-  var allocations: [UInt64: Allocation] = [:]
+  var allocations: [OpaquePointer: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
   var permitExceedingSystemRAM = false
   var preferSharedStorage: Bool

@@ -102,8 +102,9 @@ enum ElementwiseOperationType: ushort {
   atan_f32 = 6,
   atanh_f32 = 7,
   
+  // TODO: Reorder `cast_i32_to_bool` to go alongside u8/u16, same with `cast_i64/u64_to_bool`.
   cast_f32_to_f16 = 10,
-  cast_f32_to_i32 = 11, // requires metadata
+  cast_f32_to_i32 = 11, // requires metadata, INCLUDES F32 -> BOOL
   cast_i32_to_bool = 12,
   cast_i32_to_f16 = 13,
   cast_i32_to_f32 = 14,
