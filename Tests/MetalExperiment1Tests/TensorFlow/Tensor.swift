@@ -7,7 +7,6 @@
 
 import MetalExperiment1
 
-// TODO: Mark all `OpaquePointer` here as `CTensorHandle`.
 public typealias CTensorHandle = OpaquePointer
 
 // MARK: - PluggableDeviceTensorHandle

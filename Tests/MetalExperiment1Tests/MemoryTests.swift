@@ -31,7 +31,7 @@ final class MemoryTests: XCTestCase {
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(numHandles)
-      print("Unused ID creation throughput: \(throughput) \(Profiler.timeUnit)")
+      print("Unused handle creation throughput: \(throughput) \(Profiler.timeUnit)")
     }
     
     do {
