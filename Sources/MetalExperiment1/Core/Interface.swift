@@ -224,8 +224,8 @@ extension OperationRegistry {
     ctx._internalRetain(input_alloc)
     
     // Generate output.
-    let (output_id, output_alloc) = ctx._internalAllocate(input_alloc)
-    ctx._internalRetain(output_alloc)
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let (output_id, output_alloc) = ctx._internalAllocate(2, input_alloc)
     encodeOutput(&args.outputs, (output_id, output_alloc.rank))
     
     // Fetch data type.
@@ -297,10 +297,10 @@ extension OperationRegistry {
     let (output_id, output_alloc) = withUnsafeTemporaryAllocation(
       of: Int.self, capacity: input_alloc.rank
     ) { shape in
+      // Setting initial refcount to 2 creates an imbalanced retain.
       input_alloc.shape.copy(into: shape)
-      return ctx._internalAllocate(.bool, UnsafeBufferPointer(shape), byteCount)
+      return ctx._internalAllocate(2, .bool, UnsafeBufferPointer(shape), byteCount)
     }
-    ctx._internalRetain(output_alloc)
     encodeOutput(&args.outputs, (output_id, output_alloc.rank))
     
     // Append operation.
@@ -323,8 +323,8 @@ extension OperationRegistry {
     ctx._internalRetain(input_alloc)
     
     // Generate output.
-    let (output_id, output_alloc) = ctx._internalAllocate(input_alloc)
-    ctx._internalRetain(output_alloc)
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let (output_id, output_alloc) = ctx._internalAllocate(2, input_alloc)
     encodeOutput(&args.outputs, (output_id, output_alloc.rank))
     
     // Fetch data type.

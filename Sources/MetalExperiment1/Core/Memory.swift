@@ -5,6 +5,7 @@
 //  Created by Philip Turner on 7/10/22.
 //
 
+import Atomics
 import MetalPerformanceShadersGraph
 
 extension Context {
@@ -20,7 +21,7 @@ extension Context {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
     let id = withDispatchQueue {
-      Context.global._allocateBuffer(dataType, shape, byteCount)
+      Context.global._allocateBuffer(1, dataType, shape, byteCount)
     }
     return (id, shape.count)
   }
@@ -64,11 +65,12 @@ extension Context {
 private extension Context {
   @inline(__always)
   func _allocateBuffer(
+    _ referenceCount: Int,
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
   ) -> UInt64 {
-    let (id, _) = _internalAllocate(dataType, shape, byteCount)
+    let (id, _) = _internalAllocate(referenceCount, dataType, shape, byteCount)
     return id
   }
   
@@ -111,12 +113,15 @@ private extension Context {
 extension Context {
   @inline(__always)
   func _internalAllocate(
+    _ referenceCount: Int,
     _ dataType: DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ byteCount: Int
   ) -> (UInt64, Allocation) {
     let id = nextAllocationID
-    let allocation = Allocation(id: id, dataType: dataType, shape: shape, byteCount: byteCount)
+    let allocation = Allocation(
+      id: id, referenceCount: referenceCount, dataType: dataType, shape: shape,
+      byteCount: byteCount)
     nextAllocationID = id + 1
     allocations[id] = allocation
     return (id, allocation)
@@ -124,11 +129,12 @@ extension Context {
   
   @inline(__always)
   func _internalAllocate(
+    _ referenceCount: Int,
     _ other: Allocation,
     isShared: Bool? = nil
   ) -> (UInt64, Allocation) {
     let id = nextAllocationID
-    let allocation = Allocation(other, id: id, isShared: isShared)
+    let allocation = Allocation(other, id: id, referenceCount: referenceCount, isShared: isShared)
     nextAllocationID = id + 1
     allocations[id] = allocation
     return (id, allocation)
@@ -151,37 +157,40 @@ extension Context {
     }
   }
   
+  @discardableResult
   @inline(__always)
-  func _internalRetain(_ allocation: Allocation) {
-    allocation.referenceCount &+= 1
+  func _internalRetain(_ allocation: Allocation) -> Int {
+    let referenceCount = allocation.referenceCount
+      .wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
     if Allocation.debugInfoEnabled {
-      _internalRetainSlowPath(allocation)
+      _internalRetainSlowPath(allocation, referenceCount)
     }
+    return referenceCount
   }
   
   @inline(never)
-  private func _internalRetainSlowPath(_ allocation: Allocation) {
+  private func _internalRetainSlowPath(_ allocation: Allocation, _ referenceCount: Int) {
     let id = allocation.id
-    let referenceCount = allocation.referenceCount
     print("Allocation #\(id) jumped to a reference count of \(referenceCount).")
   }
   
+  @discardableResult
   @inline(__always)
-  func _internalRelease(_ allocation: Allocation) {
-    let referenceCount = allocation.referenceCount &- 1
-    allocation.referenceCount = referenceCount
+  func _internalRelease(_ allocation: Allocation) -> Int {
+    let referenceCount = allocation.referenceCount
+      .wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
     if referenceCount == 0 {
       allocations[allocation.id] = nil
     }
     if Allocation.debugInfoEnabled {
-      _internalReleaseSlowPath(allocation)
+      _internalReleaseSlowPath(allocation, referenceCount)
     }
+    return referenceCount
   }
   
   @inline(never)
-  private func _internalReleaseSlowPath(_ allocation: Allocation) {
+  private func _internalReleaseSlowPath(_ allocation: Allocation, _ referenceCount: Int) {
     let id = allocation.id
-    let referenceCount = allocation.referenceCount
     if referenceCount == 0 {
       if allocation.initialized {
         print("Allocation #\(id) was deallocated after being initialized.")
@@ -201,7 +210,7 @@ enum AllocationError: Error {
 class Allocation {
   // (Internal member layout) 0B boundary
   let id: UInt64
-  var referenceCount: Int
+  var referenceCount: UnsafeAtomic<Int>
   static var debugInfoEnabled = fetchEnvironmentBoolean(
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
   
@@ -247,22 +256,33 @@ class Allocation {
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int = -1
   
-  init(_ other: Allocation, id: UInt64, isShared: Bool? = nil) {
+  init(
+    id: UInt64,
+    referenceCount: Int,
+    dataType: DataType,
+    shape: UnsafeBufferPointer<Int>,
+    byteCount: Int
+  ) {
     self.id = id
-    self.referenceCount = 1
-    self.shape = other.shape
-    self.byteCount = other.byteCount
-    self.dataType = other.dataType
-    self.isShared = isShared ?? Context.global.preferSharedStorage
-  }
-  
-  init(id: UInt64, dataType: DataType, shape: UnsafeBufferPointer<Int>, byteCount: Int) {
-    self.id = id
-    self.referenceCount = 1
+    self.referenceCount = .create(referenceCount)
     self.shape = SmallVector(shape)
     self.byteCount = byteCount
     self.dataType = dataType
     self.isShared = Context.global.preferSharedStorage
+  }
+  
+  init(
+    _ other: Allocation,
+    id: UInt64,
+    referenceCount: Int,
+    isShared: Bool? = nil
+  ) {
+    self.id = id
+    self.referenceCount = .create(referenceCount)
+    self.shape = other.shape
+    self.byteCount = other.byteCount
+    self.dataType = other.dataType
+    self.isShared = isShared ?? Context.global.preferSharedStorage
   }
   
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
@@ -356,7 +376,7 @@ class Allocation {
       body(ptr)
     } else {
       var sourceID: UInt64
-      (sourceID, sourceAllocation) = ctx._internalAllocate(self, isShared: true)
+      (sourceID, sourceAllocation) = ctx._internalAllocate(1, self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
@@ -390,7 +410,7 @@ class Allocation {
       sourceAllocation = self
     } else {
       var sourceID: UInt64
-      (sourceID, sourceAllocation) = Context.global._internalAllocate(self, isShared: true)
+      (sourceID, sourceAllocation) = Context.global._internalAllocate(1, self, isShared: true)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       ctx._internalRetain(self)
@@ -432,7 +452,7 @@ class Allocation {
   // completion handler.
   deinit {
     // Catch memory management bugs.
-    precondition(referenceCount == 0)
+    precondition(referenceCount.destroy() == 0)
     
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in release mode because it's very costly.

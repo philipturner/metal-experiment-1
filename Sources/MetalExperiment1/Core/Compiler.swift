@@ -72,7 +72,7 @@ extension Context {
       // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
       // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
       // to anything that fuses with it.
-      if fusionTail.referenceCount == 0 {
+      if fusionTail.referenceCount.load(ordering: .sequentiallyConsistent) == 0 {
         return
       }
       
@@ -100,43 +100,33 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         var input: Allocation
-        var startingNewFusion = false
-        
+        var startingNewFusion: Bool
         if unary.input == fusionTailID {
           // In the middle of an operation fusion.
           precondition(pendingOperationFusionExists())
           input = fusionTail!
+          startingNewFusion = false
           
           // The tail was the output of previous operation. Something initialized by the frontend
           // can't be an operation's output; only an input.
           precondition(!input.initialized)
-          startingNewFusion = input.referenceCount > 1
         } else {
           // At the start of an operation fusion. A previous fusion may already be in progress.
           input = _internalFetch(unary.input)
-          
-          precondition(input.referenceCount > 0)
-          startingNewFusion = true
+          startingNewFusion =  true
         }
-        _internalRelease(input)
         
+        let referenceCount = _internalRelease(input)
+        if !startingNewFusion {
+          startingNewFusion = referenceCount > 0
+        }
         if startingNewFusion {
           if pendingOperationFusionExists() {
-            // Finish the previous operation fusion. When fusing non-adjacent operations, don't
-            // check whether the output needs to be computed. It might make the JIT graph compiler
-            // take longer, or make benchmarks difficult. TODO: Revisit this decision after more
-            // complex fusions are implemented.
             appendOperationFusion()
           }
-          
           fusionHead = input
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
-        } else {
-          // Waiting for tests to trigger this assertion failure. I don't know why this is always
-          // true.
-          precondition(input.referenceCount == 0)
         }
-        
         if !unary.isNoOp {
           fusionOperations.append(unary.operation.rawValue)
           if let metadata = unary.metadata {
@@ -157,13 +147,13 @@ extension Context {
         
         let input = _internalFetch(explicitCopy.input)
         let output = _internalFetch(explicitCopy.output)
+        _internalRelease(input)
+        _internalRelease(output)
         precondition(input.dataType == output.dataType)
         let byteCount = input.byteCount
         precondition(byteCount == output.byteCount)
         
         output.initialized = true
-        _internalRelease(input)
-        _internalRelease(output)
         let explicitCopy = CompiledOperation.ExplicitCopy(
           input: input, output: output, byteCount: byteCount)
         compiledOperations.append(.explicitCopy(explicitCopy))
