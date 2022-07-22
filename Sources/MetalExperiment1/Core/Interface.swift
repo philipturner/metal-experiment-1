@@ -225,7 +225,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input).handle
+    let output = ctx._internalAllocate(2, input)
     encodeOutput(&args.outputs, (output, output.rank))
     
     // Fetch data type.
@@ -293,7 +293,7 @@ extension OperationRegistry {
     let byteCount = input.byteCount >> stridePowerOf2
     
     // Generate output.
-    let output = ctx._internalAllocate(2, .bool, byteCount, input.shape).handle
+    let output = ctx._internalAllocate(2, .bool, byteCount, input.shape)
     encodeOutput(&args.outputs, (output, output.rank))
     
     // Append operation.
@@ -316,7 +316,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input).handle
+    let output = ctx._internalAllocate(2, input)
     encodeOutput(&args.outputs, (output, output.rank))
     
     // Fetch data type.

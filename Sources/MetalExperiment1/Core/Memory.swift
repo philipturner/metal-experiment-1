@@ -71,8 +71,8 @@ private extension Context {
     _ byteCount: Int,
     _ shape: UnsafeBufferPointer<Int>
   ) -> OpaquePointer {
-    let allocation = _internalAllocate(referenceCount, dataType, byteCount, shape)
-    return allocation.handle._cHandle
+    let handle = _internalAllocate(referenceCount, dataType, byteCount, shape)
+    return handle._cHandle
   }
   
   @inline(__always)
@@ -112,8 +112,6 @@ private extension Context {
 }
 
 extension Context {
-  // TODO: Return the allocation handle instead of the allocation. In the functions that create
-  // temporary buffers for CPU-GPU copying, use the handle to fetch the allocation.
   @inline(__always)
   func _internalAllocate(
     _ referenceCount: Int,
@@ -121,14 +119,14 @@ extension Context {
     _ byteCount: Int,
     _ shape: UnsafeBufferPointer<Int>,
     _ isShared: Bool? = nil
-  ) -> Allocation {
+  ) -> AllocationHandle {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
       shape: shape, isShared: isShared)
     allocations[allocation.handle] = allocation
-    return allocation
+    return allocation.handle
   }
   
   @inline(__always)
@@ -136,18 +134,19 @@ extension Context {
     _ referenceCount: Int,
     _ other: AllocationHandle,
     _ isShared: Bool? = nil
-  ) -> Allocation {
+  ) -> AllocationHandle {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, replicating: other, isShared: isShared)
     allocations[allocation.handle] = allocation
-    return allocation
+    return allocation.handle
   }
   
   // TODO: Remove the dictionary and instead place unmanaged reference at tail end of handle. This
   // removes the need to cache the allocation during compilation. It also requires careful
-  // management of ARC pointers.
+  // management of ARC pointers. Do debug memory leaks here, log to the console when every
+  // `Allocation` deinitializes.
   //
   // `_internalFetch` will change to just retain/release the tail end of the handle.
   @inline(__always)
@@ -359,13 +358,13 @@ class Allocation {
       let ptr = UnsafeMutableRawBufferPointer(start: contents, count: handle.byteCount)
       body(ptr)
     } else {
-      sourceAllocation = ctx._internalAllocate(1, handle, true)
+      let sourceHandle = ctx._internalAllocate(1, handle, true)
+      sourceAllocation = ctx._internalFetch(sourceHandle)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
       ctx._internalRetain(handle)
-      let sourceHandle = sourceAllocation.handle
       let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
@@ -393,11 +392,11 @@ class Allocation {
     if isShared {
       sourceAllocation = self
     } else {
-      sourceAllocation = Context.global._internalAllocate(1, handle, true)
+      let sourceHandle = Context.global._internalAllocate(1, handle, true)
+      sourceAllocation = ctx._internalFetch(sourceHandle)
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
-      ctx._internalRetain(self.handle)
-      let sourceHandle = sourceAllocation.handle
+      ctx._internalRetain(handle)
       let explicitCopy = EagerOperation.ExplicitCopy(input: handle, output: sourceHandle)
       Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
     }
