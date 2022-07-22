@@ -65,7 +65,8 @@ extension Context {
         fatalError("Something went wrong while fusing operations.")
       }
       
-      // Make the fusion tail valid to read from.
+      // Make the fusion tail valid to read from. This does not prevent it from being optimized away
+      // in a later compiler pass; that's the job of `referenceCount`.
       fusionTail.initialized = true
       
       let elementwise = CompiledOperation.Elementwise(
@@ -88,25 +89,40 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         var input: Allocation
+        var startedNewFusion = false
+        
         if unary.input == fusionTailID {
           // In the middle of an operation fusion.
           input = fusionTail!
           
-          // The tail was the output of previous operation. Something that's initialized by the
-          // frontend can't be the output of an operation, only the input.
+          // The tail was the output of previous operation. Something initialized by the frontend
+          // can't be an operation's output; only an input.
           precondition(!input.initialized)
         } else {
           // At the start of an operation fusion.
-          if pendingOperationFusionExists() {
-            // Finish the previous operation fusion. When fusing non-adjacent operations, don't
-            // check whether the output needs to be computed. It might make the JIT graph compiler
-            // take longer, or make benchmarks difficult. TODO: Revisit this decision after more
-            // complex fusions are implemented.
-            appendOperationFusion()
-          }
           input = _internalFetch(unary.input)
+          precondition(input.referenceCount > 0)
+          startedNewFusion = true
+        }
+        _internalRelease(input)
+        
+        if input.referenceCount > 0 && pendingOperationFusionExists() {
+          // Finish the previous operation fusion. When fusing non-adjacent operations, don't
+          // check whether the output needs to be computed. It might make the JIT graph compiler
+          // take longer, or make benchmarks difficult. TODO: Revisit this decision after more
+          // complex fusions are implemented.
+          appendOperationFusion()
           fusionHead = input
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+        } else if startedNewFusion {
+          // `input.referenceCount` could be zero.
+          precondition(!pendingOperationFusionExists())
+          fusionHead = input
+          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+        } else {
+          // Waiting for tests to trigger this assertion failure. I don't know why this is always
+          // true.
+          precondition(input.referenceCount == 0)
         }
         
         if !unary.isNoOp {
@@ -117,11 +133,10 @@ extension Context {
         }
         
         let output = _internalFetch(unary.output)
+        _internalRelease(output)
         precondition(input.shape.elementsEqual(output.shape))
         fusionTail = output
         fusionTailID = unary.output
-        _internalRelease(input)
-        _internalRelease(output)
         
       case .explicitCopy(let explicitCopy):
         if pendingOperationFusionExists() {

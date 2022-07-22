@@ -55,4 +55,10 @@ final class TensorTests: XCTestCase {
     XCTAssertEqual(shape2.dimensions, shape3.dimensions)
     Profiler.log("Tensor shape test execution time")
   }
+  
+  func testFusion() throws {
+    testHeader("Tensor operation fusion")
+    // Tests pairs and triples of unary ops, bypassing automatic submission of the first operation
+    // after reading scalars, prove they are fused.
+  }
 }

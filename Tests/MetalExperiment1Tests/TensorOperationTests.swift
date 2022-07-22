@@ -289,4 +289,40 @@ final class TensorOperationTests: XCTestCase {
       testFloat(round, rint, input: input)
     }
   }
+  
+  func testOperations50Series() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    // Avoiding the `simd_rsqrt` from Apple's "simd" library because that is not reproducible in the
+    // OpenCL backend.
+    func swift_rsqrt(_ x: Float) -> Float {
+      1 / sqrt(x)
+    }
+    
+    func swift_selu(_ x: Float) -> Float {
+      let alpha: Float = 1.6732632423543772848170429916717
+      let scale: Float = 1.0507009873554804934193349852946
+      if x < 0 {
+        return scale * alpha * (exp(x) - 1)
+      } else {
+        return scale * x
+      }
+    }
+    
+    // Inputs include zero to test `rsqrt` and `sign`.
+    for input in [Float(-0.42), 0, 0.42] {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      let input_f16 = Float16(input)
+      if input >= 0 {
+        testFloat16(rsqrt, swift_rsqrt, input: input_f16)
+        testFloat16(selu, swift_selu, input: input_f16)
+      }
+      #endif
+      if input >= 0 {
+        testFloat(rsqrt, swift_rsqrt, input: input)
+        testFloat(selu, swift_selu, input: input)
+      }
+    }
+  }
 }

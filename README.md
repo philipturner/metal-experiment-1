@@ -9,8 +9,6 @@ Metal experiments:
 - 4) Use predictable ARC and pipelined execution to optimize away intermediate tensors inside long chains of operations :white_check_mark:
 - 5) Custom cache and shader archive for command-line SwiftPM builds (will reuse this concept in OpenCL backend which has no system shader cache) :white_check_mark:, create elementwise operation ubershaders
 - 6) Multithreaded and delayed MPSGraph creation for convolution operations
-
-After incorporating this into Swift for TensorFlow:
 - 7) Perform "constant folding" of extremely tiny tensors on the CPU, before submitting to the GPU
 - 8) Generate a graph in-flight, fuse non-adjacent unary operations, fuse binary/ternary operations into unary operation chains
 

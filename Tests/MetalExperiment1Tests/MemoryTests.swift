@@ -448,4 +448,30 @@ final class MemoryTests: XCTestCase {
     
     Profiler.log("Interrupted unary fusion")
   }
+  
+  func testDivergentUnaryFusion() throws {
+    testHeader()
+    
+    for _ in 0..<2 {
+      _ = Tensor<Float>(repeating: 4, shape: [2]).incremented()
+      
+      let fusion_part1 = Tensor<Float>(repeating: 11, shape: [2])
+      let fusion_part2 = fusion_part1.incremented()
+      let fusion_part3 = fusion_part2.incremented()
+      
+      let fusion_divergence = -fusion_part2
+      XCTAssertEqual(fusion_part3.scalars, [13, 13])
+      XCTAssertEqual(fusion_divergence.scalars, [-12, -12])
+    }
+  }
+  
+  func testUnusedOperationRemoval() throws {
+    testHeader()
+    
+    for _ in 0..<2 {
+      func doNothing() {
+        
+      }
+    }
+  }
 }

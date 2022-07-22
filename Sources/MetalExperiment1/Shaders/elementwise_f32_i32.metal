@@ -118,9 +118,9 @@ enum ElementwiseOperationType: ushort {
   expm1_f32 = 25,
   floor_f32 = 26,
   
-  is_finite_f32 = 30, // returns bool/u8
-  is_inf_f32 = 31, // returns bool/u8
-  is_nan_f32 = 32, // returns bool/u8
+  is_finite_f32 = 30, // returns bool
+  is_inf_f32 = 31, // returns bool
+  is_nan_f32 = 32, // returns bool
   
   leaky_relu_f32 = 40, // requires metadata
   log_f32 = 41,
