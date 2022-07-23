@@ -234,4 +234,34 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertEqual(list2[0], 0)
     XCTAssertEqual(list2[1], 0)
   }
+  
+  private static var didDestroyObject = false
+  
+  func testUnmanagedReferences() throws {
+    testHeader()
+    Self.didDestroyObject = false
+    
+    class MyClass {
+      init() {}
+      
+      deinit {
+        MetalExperiment1Tests.didDestroyObject = true
+      }
+    }
+    
+    func getRetained() -> Unmanaged<MyClass> {
+      let instance = MyClass()
+      XCTAssertFalse(Self.didDestroyObject)
+      let retained = Unmanaged.passRetained(instance)
+      XCTAssertFalse(Self.didDestroyObject)
+      return retained
+    }
+    let retained = getRetained()
+    XCTAssertFalse(Self.didDestroyObject)
+    func releaseRetained(_ input: Unmanaged<MyClass>) {
+      let released = input.takeRetainedValue()
+    }
+    releaseRetained(retained)
+    XCTAssertTrue(Self.didDestroyObject)
+  }
 }
