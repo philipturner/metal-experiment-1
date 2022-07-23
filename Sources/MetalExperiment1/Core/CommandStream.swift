@@ -64,8 +64,8 @@ extension Context {
 private extension Context {
   @inline(__always)
   func queryQueueBackPressure() -> Int {
-    let numCommitted = numCommittedBatches.load(ordering: .sequentiallyConsistent)
-    let numScheduled = numScheduledBatches.load(ordering: .sequentiallyConsistent)
+    let numCommitted = numCommittedBatches.load(ordering: .relaxed)
+    let numScheduled = numScheduledBatches.load(ordering: .relaxed)
     return numCommitted - numScheduled
   }
   
@@ -110,8 +110,6 @@ private extension Context {
       return
     }
     
-    // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
-    // never modified by threads other than the encapsulating dispatch queue.
     var commandBufferID = numCommittedBatches.load(ordering: .relaxed)
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
@@ -144,7 +142,7 @@ private extension Context {
       // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
       // atomic.
       commandBufferID += 1
-      numCommittedBatches.store(commandBufferID, ordering: .sequentiallyConsistent)
+      numCommittedBatches.store(commandBufferID, ordering: .relaxed)
       
       // TODO: Look back into the latency here. If the CPU does a control flow operation depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
@@ -162,14 +160,13 @@ private extension Context {
       // `flushStream(precomputedBackpressure:)`.
       encodingContext.commandBuffer.addScheduledHandler { commandBuffer in
         precondition(commandBuffer.status == .scheduled, commandBuffer.errorMessage)
-        self.numScheduledBatches.wrappingIncrement(ordering: .sequentiallyConsistent)
+        self.numScheduledBatches.wrappingIncrement(ordering: .relaxed)
       }
       
       encodingContext.commandBuffer.addCompletedHandler { commandBuffer in
         precondition(commandBuffer.status == .completed, commandBuffer.errorMessage)
-        let numCommitted = self.numCommittedBatches.load(ordering: .sequentiallyConsistent)
-        let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(
-          ordering: .sequentiallyConsistent)
+        let numCommitted = self.numCommittedBatches.load(ordering: .relaxed)
+        let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(ordering: .relaxed)
         
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
@@ -216,7 +213,7 @@ private extension Context {
           }
         }
         if encounteredError {
-          if numCommittedBatches.load(ordering: .sequentiallyConsistent) == 0 {
+          if numCommittedBatches.load(ordering: .relaxed) == 0 {
             if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
               print("""
                 One of the first commands ever submitted was to interact with an exorbitant amount \

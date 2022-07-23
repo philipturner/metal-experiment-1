@@ -73,7 +73,7 @@ extension Context {
       // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
       // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
       // to anything that fuses with it.
-      if fusionTailHandle.referenceCount.load(ordering: .sequentiallyConsistent) == 0 {
+      if fusionTailHandle.referenceCount.load(ordering: .relaxed) == 0 {
         return
       }
       

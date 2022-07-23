@@ -29,7 +29,7 @@ public class PluggableDeviceTensorHandle {
   
   deinit {
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
-    if atomic.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent) == 0 {
+    if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
       Context.deallocateBuffer(_cTensorHandle)
     }
   }

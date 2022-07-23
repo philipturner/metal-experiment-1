@@ -52,7 +52,7 @@ extension Context {
     withDispatchQueue {
       let handle = AllocationHandle(cHandle)
       precondition(
-        handle.referenceCount.load(ordering: .sequentiallyConsistent) == 0,
+        handle.referenceCount.load(ordering: .relaxed) == 0,
         "Deallocated a buffer with a reference count not equal to zero.")
       Context.global.allocations[handle] = nil
     }
@@ -108,8 +108,7 @@ extension Context {
   @discardableResult
   @inline(__always)
   func _internalRetain(_ handle: AllocationHandle) -> Int {
-    // TODO: Use relaxed ordering.
-    let referenceCount = handle.referenceCount.wrappingIncrementThenLoad(ordering: .sequentiallyConsistent)
+    let referenceCount = handle.referenceCount.wrappingIncrementThenLoad(ordering: .relaxed)
     if Allocation.debugInfoEnabled {
       _internalRetainSlowPath(handle, referenceCount)
     }
@@ -125,8 +124,7 @@ extension Context {
   @discardableResult
   @inline(__always)
   func _internalRelease(_ handle: AllocationHandle) -> Int {
-    // TODO: Use relaxed ordering.
-    let referenceCount = handle.referenceCount.wrappingDecrementThenLoad(ordering: .sequentiallyConsistent)
+    let referenceCount = handle.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
     if Allocation.debugInfoEnabled {
       _internalReleaseSlowPath(handle, referenceCount)
     }
