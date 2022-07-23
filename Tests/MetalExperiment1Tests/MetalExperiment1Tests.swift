@@ -259,7 +259,7 @@ final class MetalExperiment1Tests: XCTestCase {
     let retained = getRetained()
     XCTAssertFalse(Self.didDestroyObject)
     func releaseRetained(_ input: Unmanaged<MyClass>) {
-      let released = input.takeRetainedValue()
+      _ = input.takeRetainedValue()
     }
     releaseRetained(retained)
     XCTAssertTrue(Self.didDestroyObject)

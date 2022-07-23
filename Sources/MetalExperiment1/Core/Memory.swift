@@ -235,7 +235,7 @@ class Allocation {
         // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
         // length should be >50% system memory size. If it's hovering above the system RAM size
         // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
-        // command stream. In that case, flushing the command stream constantly as is oscillates
+        // command stream. In that case, flushing the command stream constantly as it oscillates
         // above and below a certain threshold would seriously degrade performance. But if it jumped
         // the threshold because my backend queued up too many commands, most of the memory would
         // quickly deallocate.
