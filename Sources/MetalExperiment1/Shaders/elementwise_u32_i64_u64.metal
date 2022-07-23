@@ -42,8 +42,13 @@ enum ElementwiseOperationType2: ushort {
 };
 
 kernel void elementwise_u32_i64_u64(
-  device float *input [[buffer(0)]],
-  device float *output [[buffer(1)]],
+//  constant DispatchParams &params [[buffer(0)]],
+  constant ElementwiseOperationType2 *operations [[buffer(1)]],
+  constant void *metadata [[buffer(2)]],
+  device void *input1 [[buffer(3)]],
+  device void *input2 [[buffer(4)]],
+  device void *input3 [[buffer(5)]],
+  device void *output [[buffer(6)]],
   uint tid [[thread_position_in_grid]]
 ) {
   

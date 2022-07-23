@@ -67,10 +67,8 @@ public class Context {
   }
   
   // Borrowed from https://github.com/s4tf/s4tf
-  /// Synchronously execute the body, preventing asynchronous computation from corrupting the
-  /// context data.
   @inline(__always)
-  public func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+  internal func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
     #if os(Windows)
     AcquireSRWLockExclusive(&_mutex)
     #else

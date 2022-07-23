@@ -20,7 +20,7 @@ extension Context {
   // This is how I will achieve "constant folding". Alternatively, the encoder can make that
   // decision by querying the allocations' size and whether they're in the special CPU-side storage
   // mode.
-  func compileEagerOperations() -> [CompiledOperation] {
+  func compileEagerOperations() -> [Instruction] {
     if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
     }
@@ -33,13 +33,15 @@ extension Context {
     defer {
       eagerOperations.removeAll(keepingCapacity: true)
     }
-    var compiledOperations: [CompiledOperation] = []
-    compiledOperations.reserveCapacity(eagerOperations.count)
+    var instructions: [Instruction] = []
+    instructions.reserveCapacity(eagerOperations.count)
     
     var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionDataGroup: DataGroup?
-    var fusionHeadAllocation: Allocation?
+    var fusionHeadAllocation1: Allocation?
+    var fusionHeadAllocation2: Allocation?
+    var fusionHeadAllocation3: Allocation?
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
     var fusionSize: Int = -9999
@@ -52,17 +54,24 @@ extension Context {
         fusionOperations = .init()
         fusionMetadata = .init()
         fusionDataGroup = nil
-        fusionHeadAllocation = nil
+        fusionHeadAllocation1 = nil
+        fusionHeadAllocation2 = nil
+        fusionHeadAllocation3 = nil
         fusionTailReferenceCount = -9999
         fusionTail = nil
         fusionSize = -9999
       }
-      guard let fusionHeadAllocation = fusionHeadAllocation,
+      guard let fusionHeadAllocation1 = fusionHeadAllocation1,
             fusionTailReferenceCount >= 0,
             let fusionTail = fusionTail,
             fusionSize >= 0,
             let fusionDataGroup = fusionDataGroup else {
         fatalError("Something went wrong while fusing operations.")
+      }
+      if fusionHeadAllocation2 == nil {
+        guard fusionHeadAllocation3 == nil else {
+          fatalError("Something went wrong while fusing operations.")
+        }
       }
       
       // The frontend will never read this operation's results, so abort it. This may make
@@ -88,10 +97,16 @@ extension Context {
       // in a later compiler pass; that's the job of `referenceCount`.
       fusionTailAllocation.initialized = true
       
-      let elementwise = CompiledOperation.Elementwise(
-        operations: fusionOperations, metadata: fusionMetadata, dataGroup: fusionDataGroup,
-        input: fusionHeadAllocation, output: fusionTailAllocation, size: fusionSize)
-      compiledOperations.append(.elementwise(elementwise))
+      let elementwise = Instruction.Elementwise(
+        operations: fusionOperations,
+        metadata: fusionMetadata,
+        dataGroup: fusionDataGroup,
+        input1: fusionHeadAllocation1,
+        input2: fusionHeadAllocation2,
+        input3: fusionHeadAllocation3,
+        output: fusionTailAllocation,
+        size: fusionSize)
+      instructions.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if fusionOperations.count >= 2 {
           // This number does not include no-ops that were fused.
@@ -141,7 +156,7 @@ extension Context {
           if fusionDataGroup != nil {
             appendOperationFusion()
           }
-          fusionHeadAllocation = input.reference!.takeUnretainedValue()
+          fusionHeadAllocation1 = input.reference!.takeUnretainedValue()
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
           fusionDataGroup = .f32_i32
         }
@@ -181,9 +196,9 @@ extension Context {
         precondition(byteCount == explicitCopy.output.byteCount)
         
         outputAllocation.initialized = true
-        let explicitCopy = CompiledOperation.ExplicitCopy(
+        let explicitCopy = Instruction.ExplicitCopy(
           input: inputAllocation, output: outputAllocation, byteCount: byteCount)
-        compiledOperations.append(.explicitCopy(explicitCopy))
+        instructions.append(.explicitCopy(explicitCopy))
       }
     }
     
@@ -191,6 +206,6 @@ extension Context {
     if fusionDataGroup != nil {
       appendOperationFusion()
     }
-    return compiledOperations
+    return instructions
   }
 }

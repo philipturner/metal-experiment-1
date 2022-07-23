@@ -32,6 +32,7 @@ enum MemoryCast: ushort {
   // `bool` can be masked as either `i8` or `u8`.
 };
 
+// TODO: Rework to include 3 x all reading parameters, packed into 4 bytes.
 struct DispatchParams {
   // Reading
   bool read_scalar_broadcast;
@@ -413,16 +414,18 @@ namespace metal {
 // - Loop over the code for reading
 
 kernel void elementwise_f32_i32(
-  device void *input [[buffer(0)]],
-  device void *output [[buffer(1)]],
-  constant DispatchParams &params [[buffer(2)]],
-  constant ElementwiseOperationType *operations [[buffer(3)]],
-  constant void *metadata [[buffer(4)]],
+  constant DispatchParams &params [[buffer(0)]],
+  constant ElementwiseOperationType *operations [[buffer(1)]],
+  constant void *metadata [[buffer(2)]],
+  device void *input1 [[buffer(3)]],
+  device void *input2 [[buffer(4)]],
+  device void *input3 [[buffer(5)]],
+  device void *output [[buffer(6)]],
   uint tid [[thread_position_in_grid]]
 ) {
   CompressedStorage compressed_storage;
   if (params.read_scalar_broadcast) {
-    uint mem_slice_u32 = ((device uint*)input)[0];
+    uint mem_slice_u32 = ((device uint*)input1)[0];
     switch (params.read_size) {
       case 1: {
         uchar mem_slice = uchar(mem_slice_u32);
@@ -443,17 +446,17 @@ kernel void elementwise_f32_i32(
   } else {
     switch (params.read_size) {
       case 1: {
-        uchar4 mem_slice = ((device uchar4*)input)[tid];
+        uchar4 mem_slice = ((device uchar4*)input1)[tid];
         compressed_storage.set_vector_u8(mem_slice);
         break;
       }
       case 2: {
-        ushort4 mem_slice = ((device ushort4*)input)[tid];
+        ushort4 mem_slice = ((device ushort4*)input1)[tid];
         compressed_storage.set_vector_u16(mem_slice);
         break;
       }
       default: /*4*/ {
-        uint4 mem_slice = ((device uint4*)input)[tid];
+        uint4 mem_slice = ((device uint4*)input1)[tid];
         compressed_storage.set_vector_u32(mem_slice);
         break;
       }

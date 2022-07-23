@@ -51,10 +51,10 @@ struct EncodingContext {
 
 extension Context {
   func encodeCompiledOperation(
-    _ operation: CompiledOperation,
+    _ instruction: Instruction,
     into ectx: inout EncodingContext
   ) throws {
-    switch operation {
+    switch instruction {
     case .elementwise(let elementwise):
       try encodeElementwise(elementwise, into: &ectx)
     case .explicitCopy(let explicitCopy):
@@ -65,24 +65,24 @@ extension Context {
 
 private extension Context {
   func encodeElementwise(
-    _ operation: CompiledOperation.Elementwise,
+    _ instruction: Instruction.Elementwise,
     into ectx: inout EncodingContext
   ) throws {
-    let input = operation.input
-    try input.materialize()
-    let output = operation.output
-    try output.materialize()
-    output.lastModifiedCommandBufferID = ectx.commandBufferID
-    
     let encoder = ectx.makeEncoder()
-    switch operation.dataGroup {
+    switch instruction.dataGroup {
     case .f32_i32:
       ectx.setComputePipelineState(ShaderCache.elementwise_f32_i32)
     case .u32_i64_u64:
       ectx.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
     }
-    encoder.setBuffer(input.mtlBuffer!, offset: 0, index: 0)
-    encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 1)
+    let input1 = instruction.input1
+    try input1.materialize()
+    encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
+    
+    let output = instruction.output
+    try output.materialize()
+    output.lastModifiedCommandBufferID = ectx.commandBufferID
+    encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
     
     enum MemoryCast: UInt16, RawRepresentable {
       case f32_i32_native = 0
@@ -150,50 +150,50 @@ private extension Context {
       }
     }
     
-    let numOperations = operation.operations.count
+    let numOperations = instruction.operations.count
     var params = DispatchParams(
-      inputDataType: input.handle.dataType, numOperations: numOperations,
+      inputDataType: input1.handle.dataType, numOperations: numOperations,
       outputDataType: output.handle.dataType)
-    encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 2)
+    encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 0)
     
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in
       let operations = bufferPointer.baseAddress!
       for i in 0..<numOperations {
-        operations[i] = operation.operations[i]
+        operations[i] = instruction.operations[i]
       }
       let length = numOperations * MemoryLayout<UInt16>.stride
-      encoder.setBytes(operations, length: length, index: 3)
+      encoder.setBytes(operations, length: length, index: 1)
     }
     
     // One unit of metadata, but not exactly one operation's total allocation of metadata.
     typealias Atom = SmallVector<SIMD2<UInt64>>.Scalar
-    let numMetadataAtoms = operation.metadata.count
+    let numMetadataAtoms = instruction.metadata.count
     withUnsafeTemporaryAllocation(of: Atom.self, capacity: numMetadataAtoms) { bufferPointer in
       let metadata = bufferPointer.baseAddress!
       for i in 0..<numMetadataAtoms {
-        metadata[i] = operation.metadata[i]
+        metadata[i] = instruction.metadata[i]
       }
       let length = numMetadataAtoms * MemoryLayout<Atom>.stride
-      encoder.setBytes(metadata, length: length, index: 4)
+      encoder.setBytes(metadata, length: length, index: 2)
     }
     
     var numThreads: Int
-    switch operation.dataGroup {
+    switch instruction.dataGroup {
     case .f32_i32:
-      numThreads = (operation.size + 3) / 4
+      numThreads = (instruction.size + 3) / 4
     case .u32_i64_u64:
-      numThreads = (operation.size + 1) / 2
+      numThreads = (instruction.size + 1) / 2
     }
     encoder.dispatchThreadgroups(MTLSize(numThreads), threadsPerThreadgroup: 1)
   }
   
   func encodeExplicitCopy(
-    _ operation: CompiledOperation.ExplicitCopy,
+    _ instruction: Instruction.ExplicitCopy,
     into ectx: inout EncodingContext
   ) throws {
-    let input = operation.input
+    let input = instruction.input
     try input.materialize()
-    let output = operation.output
+    let output = instruction.output
     try output.materialize()
     output.lastModifiedCommandBufferID = ectx.commandBufferID
     
@@ -214,6 +214,6 @@ private extension Context {
     
     blitEncoder.copy(
       from: input.mtlBuffer!, sourceOffset: 0, to: output.mtlBuffer!, destinationOffset: 0,
-      size: operation.byteCount)
+      size: instruction.byteCount)
   }
 }

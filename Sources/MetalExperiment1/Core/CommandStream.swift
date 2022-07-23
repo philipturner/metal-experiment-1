@@ -80,7 +80,7 @@ private extension Context {
     if Context.profilingEncoding {
       compileStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
-    let compiledOperations = compileEagerOperations()
+    let instructions = compileEagerOperations()
     
     // Start profiling encoding.
     var encodeStartTime: UInt64 = 0
@@ -99,14 +99,14 @@ private extension Context {
           Compile time: \(compileDuration) \(Profiler.timeUnit), \
           Encode time: \(encodeDuration) \(Profiler.timeUnit), \
           Batches in flight: \(previousBackPressure), \
-          #Commands: \(numEagerOperations) -> \(compiledOperations.count)
+          #Commands: \(numEagerOperations) -> \(instructions.count)
           """)
       }
     }
     
     // If the compiler removes all eager operations (by constant folding or eliding no-ops), avoid
     // the overhead of creating a command buffer.
-    if compiledOperations.count == 0 {
+    if instructions.count == 0 {
       return
     }
     
@@ -121,18 +121,17 @@ private extension Context {
       
       // Force the memory allocations to stay alive until the command buffer finishes.
       class Retainer {
-        var operations: [CompiledOperation]
-        init(retaining operations: [CompiledOperation]) {
-          self.operations = operations
+        var instructions: [Instruction]
+        init(retaining instructions: [Instruction]) {
+          self.instructions = instructions
         }
       }
       var retainer: Unmanaged<Retainer>
-      if range == compiledOperations.indices {
-        retainer = .passRetained(Retainer(retaining: compiledOperations))
+      if range == instructions.indices {
+        retainer = .passRetained(Retainer(retaining: instructions))
       } else {
         // Capture only the range of operations encoded in this batch.
-        let submittedOperations = Array(compiledOperations[range])
-        retainer = .passRetained(Retainer(retaining: submittedOperations))
+        retainer = .passRetained(Retainer(retaining: Array(instructions[range])))
       }
       
       // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
@@ -171,6 +170,7 @@ private extension Context {
         let shouldFlush = numCommitted == numCompleted
         DispatchQueue.global().async {
           Context.global.sync {
+            // Captured `currentCommandBufferID` declared above.
             let ctx = Context.global
             ctx.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()
@@ -186,7 +186,7 @@ private extension Context {
     var i = 0
     var rangeStart = 0
     repeat {
-      let operation = compiledOperations[i]
+      let operation = instructions[i]
       var encounteredError = false
       do {
         try encodeCompiledOperation(operation, into: &encodingContext)
@@ -201,7 +201,7 @@ private extension Context {
       }
       
       let nextIterator = i + 1
-      let isLoopEnd = nextIterator == compiledOperations.count
+      let isLoopEnd = (nextIterator == instructions.count)
       if encounteredError || isLoopEnd {
         if nextIterator > rangeStart {
           // This function increments the command buffer ID.
@@ -228,6 +228,6 @@ private extension Context {
       }
       i = nextIterator
     }
-    while i < compiledOperations.count
+    while i < instructions.count
   }
 }
