@@ -115,18 +115,18 @@ final class MemoryTests: XCTestCase {
     func fakeAllocateDeallocate(numBuffers: Int) {
       var handles: [OpaquePointer?] = []
       for _ in 0..<numBuffers {
-        let handle = Context.withDispatchQueue {
+        let handle = Context.sync {
           return OpaquePointer?(nil)
         }
         handles.append(handle)
       }
       for handle in handles {
-        Context.withDispatchQueue {
+        Context.sync {
           _ = handle
         }
       }
       for handle in handles {
-        Context.withDispatchQueue {
+        Context.sync {
           _ = handle
         }
       }
@@ -138,7 +138,7 @@ final class MemoryTests: XCTestCase {
         handles.append(handle)
       }
       for handle in handles {
-        Context.withDispatchQueue {
+        Context.sync {
           _ = handle
         }
       }
@@ -211,7 +211,7 @@ final class MemoryTests: XCTestCase {
       HeapAllocator._releaseCachedBufferBlocks()
       let smallBufferHandle1 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle1) }
-      Context.withDispatchQueue {
+      Context.sync {
         Context.global.permitExceedingSystemRAM = true
       }
       
@@ -220,25 +220,25 @@ final class MemoryTests: XCTestCase {
         let largeBufferSize = Context.global.device.maxBufferLength
         let largeBufferHandle1 = allocate(byteCount: largeBufferSize)
         defer { deallocate(handle: largeBufferHandle1) }
-        Context.withDispatchQueue {
+        Context.sync {
           XCTAssertTrue(Context.global.permitExceedingSystemRAM)
         }
       }
       
       let smallBufferHandle2 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle2) }
-      Context.withDispatchQueue {
+      Context.sync {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
     }
-    Context.withDispatchQueue {
+    Context.sync {
       XCTAssertTrue(Context.global.permitExceedingSystemRAM)
     }
     
     do {
       let smallBufferHandle3 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle3) }
-      Context.withDispatchQueue {
+      Context.sync {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
@@ -251,7 +251,7 @@ final class MemoryTests: XCTestCase {
       
       let smallBufferHandle4 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle4) }
-      Context.withDispatchQueue {
+      Context.sync {
         XCTAssertFalse(Context.global.permitExceedingSystemRAM)
       }
     }
@@ -259,7 +259,7 @@ final class MemoryTests: XCTestCase {
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
-    Context.withDispatchQueue {
+    Context.sync {
       // Already overrode the environment variable for this in `testHeader`.
       Allocation.debugInfoEnabled = true
     }
@@ -299,7 +299,7 @@ final class MemoryTests: XCTestCase {
       print("End of function")
     }
     
-    Context.withDispatchQueue {
+    Context.sync {
       Allocation.debugInfoEnabled = false
     }
     
@@ -331,11 +331,11 @@ final class MemoryTests: XCTestCase {
     }
     
     let device = Context.global.device
-    #if os(macOS)
+#if os(macOS)
     var maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
-    #else
+#else
     var maxWorkingSize = device.maxBufferLength
-    #endif
+#endif
     var maxBufferLength = device.maxBufferLength
     
     // If most of the device's memory is allocated, this causes a command buffer abortion on
@@ -357,17 +357,13 @@ final class MemoryTests: XCTestCase {
     }
     
     var tensor3: Tensor<Float>?
-    Context.withDispatchQueue {
-      Context.global.permitExceedingSystemRAM = true
-      Context.initializeBuffer(bufferID1) { _ in }
-      
-      Context.global.permitExceedingSystemRAM = true
-      Context.initializeBuffer(bufferID2) { _ in }
-      
-      Context.global.permitExceedingSystemRAM = true
-      tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
-      Context.global.permitExceedingSystemRAM = false
-    }
+    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    Context.initializeBuffer(bufferID1) { _ in }
+    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    Context.initializeBuffer(bufferID2) { _ in }
+    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
+    Context.sync { Context.global.permitExceedingSystemRAM = false }
     guard let tensor3 = tensor3 else {
       fatalError("This should never happen.")
     }
@@ -425,12 +421,12 @@ final class MemoryTests: XCTestCase {
     
     // Don't override the environment variable for other tests.
     var previousProfilingEncoding = false
-    Context.withDispatchQueue {
+    Context.sync {
       previousProfilingEncoding = Context.profilingEncoding
       Context.profilingEncoding = true
     }
     defer {
-      Context.withDispatchQueue {
+      Context.sync {
         Context.profilingEncoding = previousProfilingEncoding
       }
     }

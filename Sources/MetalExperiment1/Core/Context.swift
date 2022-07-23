@@ -19,9 +19,9 @@ public class Context {
     "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
   
   static var maxCommandsPerBatch = 128
-  var numCommittedBatches: UnsafeAtomic<Int>
-  var numScheduledBatches: UnsafeAtomic<Int>
-  var numCompletedBatches: UnsafeAtomic<Int>
+  var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
+  var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
+  var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
   var eagerOperations: [EagerOperation] = []
   
   var nextAllocationID: UInt64 = 0
@@ -29,14 +29,24 @@ public class Context {
   var permitExceedingSystemRAM = false
   var preferSharedStorage: Bool
   
+  // Using mutex locks instead of GCD for fast synchronization across processes.
+  #if os(Windows)
+  private var _mutex: SRWLOCK
+  #else
+  private var _mutex: pthread_mutex_t
+  #endif
+  
   init() {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
     self.preferSharedStorage = device.hasUnifiedMemory
     
-    numCommittedBatches = .create(0)
-    numScheduledBatches = .create(0)
-    numCompletedBatches = .create(0)
+    self._mutex = .init()
+    #if os(Windows)
+    InitializeSRWLock(&_mutex)
+    #else
+    pthread_mutex_init(&_mutex, nil)
+    #endif
     
     // Loads all commonly used shaders. Operations that reference these SHOULD NOT call
     // `enqueue(_:)` on the shader cache, because that's redundant and wastes clock cycles. I don't
@@ -48,5 +58,33 @@ public class Context {
     numCommittedBatches.destroy()
     numScheduledBatches.destroy()
     numCompletedBatches.destroy()
+    
+    #if os(Windows)
+    // SRWLOCKs do not need explicit destruction
+    #else
+    pthread_mutex_destroy(&_mutex)
+    #endif
+  }
+  
+  // Borrowed from https://github.com/s4tf/s4tf
+  /// Synchronously execute the body, preventing asynchronous computation from corrupting the
+  /// context data.
+  @inline(__always) // Only inlines internally
+  public static func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+    let ctx = Context.global
+    #if os(Windows)
+    AcquireSRWLockExclusive(&ctx._mutex)
+    #else
+    precondition(pthread_mutex_lock(&ctx._mutex) == 0)
+    #endif
+    
+    defer {
+      #if os(Windows)
+      ReleaseSRWLockExclusive(&ctx._mutex)
+      #else
+      precondition(pthread_mutex_unlock(&ctx._mutex) == 0)
+      #endif
+    }
+    return try body()
   }
 }

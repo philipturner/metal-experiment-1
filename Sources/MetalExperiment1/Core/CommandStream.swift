@@ -9,7 +9,7 @@ import Metal
 
 extension Context {
   static func barrier() {
-    withDispatchQueue {
+    sync {
       let ctx = Context.global
       ctx._internalFlushStream()
       ctx._internalBarrier()
@@ -138,6 +138,17 @@ private extension Context {
         }
       }
       
+      // TODO: Fix up this memory management scheme to have lower overhead.
+      class Retainer {
+        var body: () -> Void
+        init(_ body: @escaping () -> Void) {
+          self.body = body
+        }
+        func call() {
+          body()
+        }
+      }
+      
       // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
       // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
       // atomic.
@@ -168,15 +179,22 @@ private extension Context {
         let numCommitted = self.numCommittedBatches.load(ordering: .relaxed)
         let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(ordering: .relaxed)
         
+        let retainer = Retainer(retainClosure)
+        let ref = Unmanaged.passRetained(retainer)
+        
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
-        if numCommitted == numCompleted {
-          Context._dispatchQueue.async {
-            retainClosure()
-            Context.global.flushStream()
+        let shouldFlush = numCommitted == numCompleted
+        DispatchQueue.global().async { [ref = ref] in
+          Context.sync { [ref = ref] in
+            let retainer = ref.takeUnretainedValue()
+            retainer.call()
+            ref.release()
+            
+            if shouldFlush {
+              Context.global.flushStream()
+            }
           }
-        } else {
-          Context._dispatchQueue.async(execute: retainClosure)
         }
       }
       encodingContext.commandBuffer.commit()

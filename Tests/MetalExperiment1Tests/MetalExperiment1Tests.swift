@@ -3,7 +3,8 @@ import XCTest
 
 func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()
-  Context.withDispatchQueue {
+  Context.sync {
+    // The caller initializes `Context.global`, but keeping this code statement for clarity.
     _ = Context.global
   }
   let startupTime = Profiler.checkpoint()
@@ -19,46 +20,35 @@ func testHeader(_ message: String? = nil) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Context.withDispatchQueue {
+  Context.sync {
     Allocation.debugInfoEnabled = false
   }
   Context.barrier()
 }
 
 final class MetalExperiment1Tests: XCTestCase {
-  func testGCDLatency() throws {
-    testHeader("Dispatch queue latency")
+  func testSynchronizationLatency() throws {
+    testHeader("Synchronization latency")
     
     for _ in 0..<2 {
       Profiler.checkpoint()
-      _ = Context.withDispatchQueue {
+      _ = Context.sync {
         Bool.random()
       }
-      Profiler.log("Dispatch queue latency")
+      Profiler.log("Synchronization latency")
     }
     
     do {
       Profiler.checkpoint()
       let iterations = 100
       for _ in 0..<iterations {
-        _ = Context.withDispatchQueue {
+        _ = Context.sync {
           Bool.random()
         }
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(iterations)
-      print("Dispatch queue throughput: \(throughput) \(Profiler.timeUnit)")
-    }
-    
-    do {
-      Profiler.checkpoint()
-      let iterations = 1000
-      for _ in 0..<iterations {
-        Context.testSynchronizationOverhead()
-      }
-      let totalTime = Profiler.checkpoint()
-      let throughput = Double(totalTime) / Double(iterations)
-      print("Synchronization throughput: \(throughput) \(Profiler.timeUnit)")
+      print("Mutex throughput: \(throughput) \(Profiler.timeUnit)")
     }
     
     do {
@@ -107,13 +97,10 @@ final class MetalExperiment1Tests: XCTestCase {
     func profileStream(length: Int) {
       print("--- Stream size: \(length)")
       Profiler.checkpoint()
-//      let handle = Context.withDispatchQueue {
-        var handle = Tensor<Float>(repeating: 0, shape: [10])
-        for _ in 0..<length {
-          handle = handle.incremented()
-        }
-//        return handle
-//      }
+      var handle = Tensor<Float>(repeating: 0, shape: [10])
+      for _ in 0..<length {
+        handle = handle.incremented()
+      }
       let latency = Profiler.checkpoint()
       validate(handle, value: Float(length))
       

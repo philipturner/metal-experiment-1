@@ -66,7 +66,7 @@ fileprivate var profilingEncoding = false
 
 func tensorOperationHeader(_ message: String? = nil) {
   Profiler.checkpoint()
-  Context.withDispatchQueue {
+  Context.sync {
     _ = Context.global
   }
   let startupTime = Profiler.checkpoint()
@@ -82,7 +82,7 @@ func tensorOperationHeader(_ message: String? = nil) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Context.withDispatchQueue {
+  Context.sync {
     Allocation.debugInfoEnabled = false
     profilingEncoding = Context.profilingEncoding
     Context.profilingEncoding = false
@@ -91,7 +91,7 @@ func tensorOperationHeader(_ message: String? = nil) {
 }
 
 func tensorOperationFooter() {
-  Context.withDispatchQueue {
+  Context.sync {
     Context.profilingEncoding = profilingEncoding
   }
 }
