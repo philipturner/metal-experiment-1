@@ -38,8 +38,8 @@ extension Context {
     
     var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
-    var fusionHead: Allocation?
-    var fusionTail: Allocation?
+    var fusionHeadAllocation: Allocation?
+    var fusionTailAllocation: Allocation?
     var fusionTailHandle: AllocationHandle?
     var fusionSize = -1
     @inline(__always)
@@ -54,13 +54,13 @@ extension Context {
       defer {
         fusionOperations = .init()
         fusionMetadata = .init()
-        fusionHead = nil
-        fusionTail = nil
+        fusionHeadAllocation = nil
+        fusionTailAllocation = nil
         fusionTailHandle = nil
         fusionSize = -1
       }
-      guard let fusionHead = fusionHead,
-            let fusionTail = fusionTail,
+      guard let fusionHeadAllocation = fusionHeadAllocation,
+            let fusionTailAllocation = fusionTailAllocation,
             let fusionTailHandle = fusionTailHandle,
             fusionSize >= 0 else {
         fatalError("Something went wrong while fusing operations.")
@@ -79,11 +79,11 @@ extension Context {
       
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
       // in a later compiler pass; that's the job of `referenceCount`.
-      fusionTail.initialized = true
+      fusionTailAllocation.initialized = true
       
       let elementwise = CompiledOperation.Elementwise(
-        operations: fusionOperations, metadata: fusionMetadata, input: fusionHead,
-        output: fusionTail, size: fusionSize)
+        operations: fusionOperations, metadata: fusionMetadata, input: fusionHeadAllocation,
+        output: fusionTailAllocation, size: fusionSize)
       compiledOperations.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if fusionOperations.count >= 2 {
@@ -100,34 +100,48 @@ extension Context {
       let eagerOperation = eagerOperations[i]
       switch eagerOperation {
       case .unary(let unary):
-        var input: Allocation
-        var startingNewFusion: Bool
-        if unary.input == fusionTailHandle {
+        let (input, output) = (unary.input, unary.output)
+        var restartingFusion: Bool
+        if input == fusionTailHandle {
           // In the middle of an operation fusion.
           precondition(pendingOperationFusionExists())
-          input = fusionTail!
-          startingNewFusion = false
+          let inputAllocation = fusionTailAllocation!
+          restartingFusion = false
           
           // The tail was the output of previous operation. Something initialized by the frontend
           // can't be an operation's output; only an input.
-          precondition(!input.initialized)
+          precondition(!inputAllocation.initialized)
         } else {
           // At the start of an operation fusion. A previous fusion may already be in progress.
-          input = _internalFetch(unary.input)
-          startingNewFusion =  true
+          restartingFusion =  true
         }
         
-        let referenceCount = _internalRelease(unary.input)
-        if !startingNewFusion {
-          startingNewFusion = referenceCount > 0
+        // Decrement input's reference count.
+        let referenceCount = input.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        if Allocation.debugInfoEnabled {
+          _internalReleaseSlowPath(input, referenceCount)
         }
-        if startingNewFusion {
+        if !restartingFusion {
+          restartingFusion = referenceCount > 0
+        }
+        
+        // Restart operation fusion.
+        if restartingFusion {
           if pendingOperationFusionExists() {
             appendOperationFusion()
           }
-          fusionHead = input
-          fusionSize = unary.input.dataType.contiguousSize(byteCount: unary.input.byteCount)
+          fusionHeadAllocation = input.reference!.takeUnretainedValue()
+          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         }
+        
+        // Release input.
+        if referenceCount == 0 {
+          let reference = input.reference!
+          input.reference = nil
+          reference.release()
+        }
+        
+        // Append operation.
         if !unary.isNoOp {
           fusionOperations.append(unary.operation.rawValue)
           if let metadata = unary.metadata {
@@ -135,11 +149,12 @@ extension Context {
           }
         }
         
-        let output = _internalFetch(unary.output)
-        _internalRelease(unary.output)
-        precondition(unary.input.shape.elementsEqual(unary.output.shape))
-        fusionTail = output
-        fusionTailHandle = unary.output
+        // Update fusion tail.
+        let outputAllocation = output.reference!.takeUnretainedValue()
+        _internalRelease(output)
+        precondition(input.shape.elementsEqual(output.shape))
+        fusionTailAllocation = outputAllocation
+        fusionTailHandle = output
         
       case .explicitCopy(let explicitCopy):
         if pendingOperationFusionExists() {
@@ -147,8 +162,8 @@ extension Context {
         }
         
         let (input, output) = (explicitCopy.input, explicitCopy.output)
-        let inputAllocation = _internalFetch(input)
-        let outputAllocation = _internalFetch(output)
+        let inputAllocation = input.reference!.takeUnretainedValue()
+        let outputAllocation = output.reference!.takeUnretainedValue()
         _internalRelease(input)
         _internalRelease(output)
         precondition(input.dataType == output.dataType)

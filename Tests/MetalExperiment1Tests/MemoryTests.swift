@@ -14,7 +14,7 @@ fileprivate func releaseBuffer(_ handle: CTensorHandle) {
   if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
     Context.deallocateBuffer(handle)
   } else {
-    fatalError("Could not deallocate handle.")
+    //fatalError("Could not deallocate handle.")
   }
 }
 

@@ -14,6 +14,7 @@ extension Context {
   // Avoids a possible second virtual function call by transforming the generic parameter into
   // something statically typed. There is already massive overhead from calling into
   // `withDispatchQueue`, but it should still be minimized.
+  @inline(never)
   public static func allocateBuffer(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>
@@ -26,26 +27,31 @@ extension Context {
     return (handle._cHandle, shape.count)
   }
   
+  @inline(never)
   public static func initializeBuffer(
     _ cHandle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      let allocation = Context.global._internalFetch(AllocationHandle(cHandle))
-      allocation.initialize(body)
+      let reference = AllocationHandle(cHandle).reference!
+      reference.retain().takeUnretainedValue().initialize(body)
+      reference.release()
     }
   }
   
+  @inline(never)
   public static func readBuffer(
     _ cHandle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
     withDispatchQueue {
-      let allocation = Context.global._internalFetch(AllocationHandle(cHandle))
-      allocation.read(body)
+      let reference = AllocationHandle(cHandle).reference!
+      reference.retain().takeUnretainedValue().read(body)
+      reference.release()
     }
   }
   
+  @inline(never)
   public static func deallocateBuffer(
     _ cHandle: OpaquePointer
   ) {
@@ -54,7 +60,10 @@ extension Context {
       precondition(
         handle.referenceCount.load(ordering: .relaxed) == 0,
         "Deallocated a buffer with a reference count not equal to zero.")
-      Context.global.allocations[handle] = nil
+      
+      let reference = handle.reference!
+      handle.reference = nil
+      reference.release()
     }
   }
 }
@@ -73,8 +82,10 @@ extension Context {
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
       shape: shape, isShared: isShared)
-    allocations[allocation.handle] = allocation
-    return allocation.handle
+    
+    let handle = allocation.handle
+    handle.reference = .passRetained(allocation)
+    return handle
   }
   
   @inline(__always)
@@ -87,22 +98,10 @@ extension Context {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, replicating: other, isShared: isShared)
-    allocations[allocation.handle] = allocation
-    return allocation.handle
-  }
-  
-  // TODO: Remove the dictionary and instead place unmanaged reference at tail end of handle. This
-  // removes the need to cache the allocation during compilation. It also requires careful
-  // management of ARC pointers. Do debug memory leaks here, log to the console when every
-  // `Allocation` deinitializes.
-  //
-  // `_internalFetch` will change to just retain/release the tail end of the handle.
-  @inline(__always)
-  func _internalFetch(_ handle: AllocationHandle) -> Allocation {
-    guard let allocation = allocations[handle] else {
-      fatalError("Tried to retrieve an allocation that does not exist.")
-    }
-    return allocation
+    
+    let handle = allocation.handle
+    handle.reference = .passRetained(allocation)
+    return handle
   }
   
   @discardableResult
@@ -116,8 +115,8 @@ extension Context {
   }
   
   @inline(never)
-  private func _internalRetainSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
-    let id = _internalFetch(handle).id
+  func _internalRetainSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
+    let id = handle.reference!.takeUnretainedValue().id
     print("Allocation #\(id) jumped to a reference count of \(referenceCount)")
   }
   
@@ -129,14 +128,16 @@ extension Context {
       _internalReleaseSlowPath(handle, referenceCount)
     }
     if referenceCount == 0 {
-      allocations[handle] = nil
+      let reference = handle.reference!
+      handle.reference = nil
+      reference.release()
     }
     return referenceCount
   }
   
   @inline(never)
-  private func _internalReleaseSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
-    let allocation = _internalFetch(handle)
+  func _internalReleaseSlowPath(_ handle: AllocationHandle, _ referenceCount: Int) {
+    let allocation = handle.reference!.takeUnretainedValue()
     let id = allocation.id
     if referenceCount == 0 {
       if allocation.initialized {
@@ -299,13 +300,9 @@ class Allocation {
       } catch {
         fatalError(error.localizedDescription)
       }
-      
-      let contents = mtlBuffer!.contents()
-      let ptr = UnsafeMutableRawBufferPointer(start: contents, count: handle.byteCount)
-      body(ptr)
     } else {
       let sourceHandle = ctx._internalAllocate(1, handle, true)
-      sourceAllocation = ctx._internalFetch(sourceHandle)
+      sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
@@ -339,7 +336,7 @@ class Allocation {
       sourceAllocation = self
     } else {
       let sourceHandle = Context.global._internalAllocate(1, handle, true)
-      sourceAllocation = ctx._internalFetch(sourceHandle)
+      sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       ctx._internalRetain(handle)
@@ -381,7 +378,13 @@ class Allocation {
   // completion handler.
   deinit {
     // Catch memory management bugs.
+    precondition(handle.reference == nil)
     precondition(handle.referenceCount.destroy() == 0)
+    Context.global.numDeinitializedAllocations += 1
+    
+//    let ctx = Context.global
+//    let tensorCount = ctx.nextAllocationID - ctx.numDeinitializedAllocations
+//    print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
     
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in release mode because it's very costly.
@@ -419,6 +422,7 @@ public struct AllocationHandle: Hashable {
   ) {
     var bufferSize = 0
     bufferSize += 1 // referenceCount
+    bufferSize += 1 // reference
     bufferSize += 1 // dataType
     bufferSize += 1 // byteCount
     bufferSize += 1 // rank
@@ -427,15 +431,15 @@ public struct AllocationHandle: Hashable {
     baseAddress = malloc(bufferSize)!.assumingMemoryBound(to: Int.self)
     
     baseAddress[0] = referenceCount
-    baseAddress[1] = Int(dataType.rawValue)
-    baseAddress[2] = byteCount
-    baseAddress[3] = shape.count
+    baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
+    baseAddress[2] = Int(dataType.rawValue)
+    baseAddress[3] = byteCount
+    baseAddress[4] = shape.count
     
-    let shapeBuffer = UnsafeMutableBufferPointer(start: baseAddress + 4, count: shape.count)
+    let shapeBuffer = UnsafeMutableBufferPointer(start: baseAddress + 5, count: shape.count)
     _ = shapeBuffer.initialize(from: shape)
   }
   
-  // TODO: Aggressively optimize everything for debug mode performance.
   @inlinable @inline(__always)
   public var _cHandle: OpaquePointer {
     OpaquePointer(baseAddress)
@@ -446,24 +450,43 @@ public struct AllocationHandle: Hashable {
     UnsafeAtomic(at: UnsafeMutablePointer(_cHandle))
   }
   
+  internal var reference: Unmanaged<Allocation>? {
+    @inline(__always)
+    get {
+      if let pointer = UnsafeRawPointer(bitPattern: baseAddress[1]) {
+        return Unmanaged.fromOpaque(pointer)
+      } else {
+        return nil
+      }
+    }
+    @inline(__always)
+    nonmutating set {
+      if let newValue = newValue {
+        baseAddress[1] = Int(bitPattern: newValue.toOpaque())
+      } else {
+        baseAddress[1] = 0
+      }
+    }
+  }
+  
   @inline(__always)
   internal var dataType: DataType {
-    let rawValue = UInt16(truncatingIfNeeded: baseAddress[1])
+    let rawValue = UInt16(truncatingIfNeeded: baseAddress[2])
     return DataType(rawValue: rawValue).unsafelyUnwrapped
   }
   
   @inlinable @inline(__always)
   public var byteCount: Int {
-    baseAddress[2]
-  }
-  
-  @inlinable @inline(__always)
-  public var rank: Int {
     baseAddress[3]
   }
   
   @inlinable @inline(__always)
+  public var rank: Int {
+    baseAddress[4]
+  }
+  
+  @inlinable @inline(__always)
   public var shape: UnsafeBufferPointer<Int> {
-    UnsafeBufferPointer(start: baseAddress + 4, count: rank)
+    UnsafeBufferPointer(start: baseAddress + 5, count: rank)
   }
 }

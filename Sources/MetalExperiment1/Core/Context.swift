@@ -24,8 +24,8 @@ public class Context {
   var numCompletedBatches: UnsafeAtomic<Int>
   var eagerOperations: [EagerOperation] = []
   
-  var allocations: [AllocationHandle: Allocation] = [:]
   var nextAllocationID: UInt64 = 0
+  var numDeinitializedAllocations: UInt64 = 0
   var permitExceedingSystemRAM = false
   var preferSharedStorage: Bool
   
@@ -40,7 +40,7 @@ public class Context {
     
     // Loads all commonly used shaders. Operations that reference these SHOULD NOT call
     // `enqueue(_:)` on the shader cache, because that's redundant and wastes clock cycles. I don't
-    // know why anything would call `enqueue(_:)`, but it's there incase something needs to.
+    // know why anything would call `enqueue(_:)`, but it's there for if something needs to.
     ShaderCache.load(device: device)
   }
   

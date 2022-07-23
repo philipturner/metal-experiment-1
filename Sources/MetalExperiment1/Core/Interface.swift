@@ -15,6 +15,7 @@ extension Context {
   // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
   // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
   // After the first level of recursion, store elements in their native layout stride.
+  @inline(never)
   public static func executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
