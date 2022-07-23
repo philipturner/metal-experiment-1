@@ -1,0 +1,300 @@
+=== Initialize context ===
+Initialization time: 29055 µs
+Appended single unary operation
+Compile time: 3 µs, Encode time: 181 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Compile time: 2 µs, Encode time: 132 µs, Batches in flight: 1, #Commands: 3 -> 3
+Appended single unary operation
+Compile time: 2 µs, Encode time: 30 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Compile time: 2 µs, Encode time: 9 µs, Batches in flight: 1, #Commands: 3 -> 3
+
+=== Interrupted unary fusion ===
+Appended single unary operation
+Compile time: 1 µs, Encode time: 20 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Compile time: 3 µs, Encode time: 22 µs, Batches in flight: 1, #Commands: 8 -> 8
+Appended single unary operation
+Compile time: 1 µs, Encode time: 13 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Appended single unary operation
+Compile time: 3 µs, Encode time: 11 µs, Batches in flight: 1, #Commands: 8 -> 8
+Interrupted unary fusion: 587 µs
+
+=== Massive memory allocation ===
+Appended single unary operation
+Compile time: 1 µs, Encode time: 25 µs, Batches in flight: 0, #Commands: 1 -> 1
+Tensor 3: [0.0, ...]
+Tensor 4: [1.0, ...]
+
+=== Buffer read performance ===
+
+Read handle 1 (fast): 4 µs
+Appended single unary operation
+Compile time: 1 µs, Encode time: 19 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 2 (slow): 671 µs
+Appended single unary operation
+Compile time: 1 µs, Encode time: 27 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 1 again (fast): 36 µs
+Read handle 3 after execution (slow): 191 µs
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 4 (slow): 207 µs
+
+Read handle 1 (fast): 2 µs
+Appended single unary operation
+Compile time: 0 µs, Encode time: 13 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 2 (slow): 204 µs
+Appended single unary operation
+Compile time: 0 µs, Encode time: 9 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 1 again (fast): 15 µs
+Read handle 3 after execution (slow): 183 µs
+Appended single unary operation
+Compile time: 0 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Read handle 4 (slow): 198 µs
+
+=== Memory recycling throughput ===
+Memory recycling throughput: 0.7 µs
+Time excluding GCD: 0.4 µs
+Time inside HeapAllocator: 0.45 µs
+
+=== Simple memory allocation ===
+Unused handle creation throughput: 0.17 µs
+
+=== Tensor handle lifetime ===
+Start of function
+
+Handle 1
+
+Handle 2
+Allocation #206 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #206 dropped to a reference count of 1.
+Allocation #207 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 3 µs, Encode time: 12 µs, Batches in flight: 0, #Commands: 1 -> 1
+
+Handle 3
+Allocation #206 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #206 dropped to a reference count of 1.
+Allocation #208 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 3 µs, Encode time: 14 µs, Batches in flight: 0, #Commands: 1 -> 1
+Allocation #208 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #208 was deallocated after being initialized.
+Allocation #209 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 3 µs, Encode time: 14 µ
+s, Batches in flight: 1, #Commands: 1 -> 1
+
+Handle 4
+Allocation #207 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #207 dropped to a reference count of 1.
+Allocation #210 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 3 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Allocation #210 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #210 was deallocated after being initialized.
+Allocation #211 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 2 µs, Encode time: 8 µs, Batches in flight: 1, #Commands: 1 -> 1
+
+Handle 5
+Allocation #211 jumped to a reference count of 2
+Compiler pass starts with 1 operations.
+Allocation #211 dropped to a reference count of 1.
+Allocation #212 dropped to a reference count of 1.
+Appended single unary operation
+Compiler pass ends.
+Compile time: 2 µs, Encode time: 10 µs, Batches in flight: 0, #Commands: 1 -> 1
+Allocation #212 jumped to a reference count of 2
+Allocation #213 jumped to a reference count of 3
+Compiler pass starts with 2 operations.
+Allocation #212 was deallocated after being initialized.
+Allocation #213 dropped to a reference count of 1.
+Allocation #213 was deallocated.
+Allocation #214 dropped to a reference count of 1.
+*** Fused 2 unary operations ***
+Compiler pass ends.
+Compile time: 4 µs, Encode time: 10 µs, Batches in flight: 1, #Commands: 2 -> 1
+
+End of function
+Appended single unary operation
+Compile time: 1 µs, Encode time: 12 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 9 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 0 µs, Encode time: 7 µs, Batches in flight: 1, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 10 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 9 µs, Batches in flight: 1, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 9 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 2 unary operations ***
+Compile time: 10 µs, Encode time: 9 µs, Batches in flight: 1, #Commands: 2 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 2 unary operations ***
+Appended single unary operation
+Compile time: 11 µs, Encode time: 9 µs, Batches in flight: 1, #Commands: 11 -> 2
+Appended single unary operation
+Compile time: 1 µs, Encode time: 10 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 2 unary operations ***
+Appended single unary operation
+Compile time: 2 µs, Encode time: 11 µs, Batches in flight: 1, #Commands: 5 -> 2
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Compile time: 0 µs, Encode time: 0 µs, Batches in flight: 1, #Commands: 2 -> 0
+Compile time: 1 µs, Encode time: 0 µs, Batches in flight: 1, #Commands: 3 -> 0
+
+=== Streamed command buffer throughput ===
+--- Stream size: 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 16 µs, Batches in flight: 0, #Commands: 1 -> 1
+Creation time: 1 µs First batch latency: 19 µs Total time: 265 µs
+--- Stream size: 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Creation time: 1 µs First batch latency: 15 µs Total time: 255 µs
+--- Stream size: 512
+Appended single unary operation
+Compile time: 0 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 33 unary operations ***
+Compile time: 14 µs, Encode time: 10 µs, Batches in flight: 1, #Commands: 33 -> 1
+*** Fused 114 unary operations ***
+Appended single unary operation
+Compile time: 17 µs, Encode time: 90 µs, Batches in flight: 0, #Commands: 115 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 24 µs, Encode time: 29 µs, Batches in fli
+ght: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 19 µs, Encode time: 14 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 107 unary operations ***
+Compile time: 16 µs, Encode time: 125 µs, Batches in flight: 1, #Commands: 107 -> 1
+Average CPU-side latency: 0.8 µs, Amortized sequential throughput: 3.4 µs, Total time: 1746 µs
+--- Stream size: 512
+Appended single unary operation
+Compile time: 1 µs, Encode time: 14 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 4 unary operations ***
+Compile time: 3 µs, Encode time: 8 µs, Batches in flight: 1, #Commands: 4 -> 1
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 20 µs, Encode time: 22 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 124 unary operations ***
+Compile time: 19 µs, Encode time: 11 µs, Batches in flight: 1, #Commands: 124 -> 1
+*** Fused 120 unary operations ***
+Appended single unary operation
+Compile time: 18 µs, Encode time: 14 µs, Batches in flight: 0, #Commands: 121 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 25 µs, Encode time: 12 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 6 unary operations ***
+Compile time: 6 µs, Encode time: 85 µs, Batches in flight: 2, #Commands: 6 -> 1
+Average CPU-side latency: 0.7 µs, Amortized sequential throughput: 3.3 µs, Total time: 1704 µs
+--- Stream size: 512
+Appended single unary operation
+Compile time: 1 µs, Encode time: 12 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 63 unary operations ***
+Appended single unary operation
+Compile time: 12 µs, Encode time: 15 µs, Batches in flight: 0, #Commands: 64 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 19 µs, Encode time: 15 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 18 µs, Encode time: 10 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 20 µs, Encode time: 7 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 63 unary operations ***
+Compile time: 9 µs, Encode time: 10 µs, Batches in flight: 2, #Commands: 63 -> 1
+Average CPU-side latency: 0.6 µs, Amortized sequential throughput: 3.2 µs, Total time: 1674 µs
+--- Stream size: 512
+Appended single unary operation
+Compile time: 1 µs, Encode time: 9 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 89 unary operations ***
+Appended single unary operation
+Compile time: 24 µs, Encode time: 17 µs, Batches in flight: 0, #Commands: 90 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 21 µs, Encode time: 11 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 19 µs, Encode time: 15 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 18 µs, Encode time: 9 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 37 unary operations ***
+Compile time: 6 µs, Encode time: 11 µs, Batches in flight: 1, #Commands: 37 -> 1
+Average CPU-side latency: 0.6 µs, Amortized sequential throughput: 3.3 µs, Total time: 1721 µs
+--- Stream size: 512
+Appended single unary operation
+Compile time: 1 µs, Encode time: 18 µs, Batches in flight: 0, #Commands: 1 -> 1
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 18 µs, Encode time: 10 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 21 unary operations ***
+Compile time: 5 µs, Encode time: 8 µs, Batches in flight: 2, #Commands: 21 -> 1
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 18 µs, Encode time: 10 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 127 unary operations ***
+Appended single unary operation
+Compile time: 17 µs, Encode time: 8 µs, Batches in flight: 1, #Commands: 128 -> 2
+*** Fused 106 unary operations ***
+Compile t
+ime: 15 µs, Encode time: 8 µs, Batches in flight: 1, #Commands: 106 -> 1
+Average CPU-side latency: 0.5 µs, Amortized sequential throughput: 2.6 µs, Total time: 1352 µs
+
+=== Synchronization latency ===
+Synchronization latency: 0 µs
+Synchronization latency: 0 µs
+Mutex throughput: 0.13 µs
+Dispatch semaphore creation throughput: 0.03 µs
+
+=== Tensor operation fusion ===
+
+=== Tensor ===
+Appended single unary operation
+Compile time: 1 µs, Encode time: 17 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 10 µs, Batches in flight: 0, #Commands: 1 -> 1
+Generic tensor operation execution time: 249 µs
+
+=== Tensor shape ===
+Appended single unary operation
+Compile time: 1 µs, Encode time: 11 µs, Batches in flight: 0, #Commands: 1 -> 1
+Appended single unary operation
+Compile time: 1 µs, Encode time: 10 µs, Batches in flight: 0, #Commands: 1 -> 1
+Tensor shape test execution time: 47 µs
