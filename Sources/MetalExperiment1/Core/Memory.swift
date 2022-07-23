@@ -382,9 +382,12 @@ class Allocation {
     precondition(handle.referenceCount.destroy() == 0)
     Context.global.numDeinitializedAllocations += 1
     
-//    let ctx = Context.global
-//    let tensorCount = ctx.nextAllocationID - ctx.numDeinitializedAllocations
-//    print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
+    // Activate this code if you suspect there are memory leaks.
+    #if false
+    let ctx = Context.global
+    let tensorCount = ctx.nextAllocationID - ctx.numDeinitializedAllocations
+    print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
+    #endif
     
     // The command buffer must be released from the context before its referenced memory can
     // deallocate. Avoiding this check in release mode because it's very costly.

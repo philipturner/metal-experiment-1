@@ -39,8 +39,8 @@ extension Context {
     var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionHeadAllocation: Allocation?
-    var fusionTailAllocation: Allocation?
-    var fusionTailHandle: AllocationHandle?
+    var fusionTailReferenceCount: Int?
+    var fusionTail: AllocationHandle?
     var fusionSize = -1
     @inline(__always)
     func pendingOperationFusionExists() -> Bool {
@@ -55,13 +55,13 @@ extension Context {
         fusionOperations = .init()
         fusionMetadata = .init()
         fusionHeadAllocation = nil
-        fusionTailAllocation = nil
-        fusionTailHandle = nil
+        fusionTailReferenceCount = nil
+        fusionTail = nil
         fusionSize = -1
       }
       guard let fusionHeadAllocation = fusionHeadAllocation,
-            let fusionTailAllocation = fusionTailAllocation,
-            let fusionTailHandle = fusionTailHandle,
+            let fusionTailReferenceCount = fusionTailReferenceCount,
+            let fusionTail = fusionTail,
             fusionSize >= 0 else {
         fatalError("Something went wrong while fusing operations.")
       }
@@ -73,9 +73,17 @@ extension Context {
       // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
       // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
       // to anything that fuses with it.
-      if fusionTailHandle.referenceCount.load(ordering: .relaxed) == 0 {
+      if fusionTailReferenceCount == 0 {
         return
       }
+      
+      // Due to custom reference counting semantics, the fusion tail object might be deallocated if
+      // its reference count is zero. Emphasis on "might", because the frontend could have released
+      // it and would be waiting on `dispatchQueue` to deallocate it. In that case, the allocation
+      // could still exist when returning in the above statement. There is nothing wrong the
+      // allocation existing there. If it didn't return early and the object was deallocated, then
+      // there would be a problem.
+      let fusionTailAllocation = fusionTail.reference!.takeUnretainedValue()
       
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
       // in a later compiler pass; that's the job of `referenceCount`.
@@ -102,15 +110,14 @@ extension Context {
       case .unary(let unary):
         let (input, output) = (unary.input, unary.output)
         var restartingFusion: Bool
-        if input == fusionTailHandle {
+        if input == fusionTail {
           // In the middle of an operation fusion.
           precondition(pendingOperationFusionExists())
-          let inputAllocation = fusionTailAllocation!
           restartingFusion = false
           
           // The tail was the output of previous operation. Something initialized by the frontend
           // can't be an operation's output; only an input.
-          precondition(!inputAllocation.initialized)
+          precondition(!input.reference!.takeUnretainedValue().initialized)
         } else {
           // At the start of an operation fusion. A previous fusion may already be in progress.
           restartingFusion =  true
@@ -134,14 +141,8 @@ extension Context {
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
         }
         
-        // Release input.
-        if referenceCount == 0 {
-          let reference = input.reference!
-          input.reference = nil
-          reference.release()
-        }
-        
         // Append operation.
+        precondition(input.shape.elementsEqual(output.shape))
         if !unary.isNoOp {
           fusionOperations.append(unary.operation.rawValue)
           if let metadata = unary.metadata {
@@ -149,12 +150,16 @@ extension Context {
           }
         }
         
+        // Release input.
+        if referenceCount == 0 {
+          let reference = input.reference!
+          input.reference = nil
+          reference.release()
+        }
+        
         // Update fusion tail.
-        let outputAllocation = output.reference!.takeUnretainedValue()
-        _internalRelease(output)
-        precondition(input.shape.elementsEqual(output.shape))
-        fusionTailAllocation = outputAllocation
-        fusionTailHandle = output
+        fusionTailReferenceCount = _internalRelease(output)
+        fusionTail = output
         
       case .explicitCopy(let explicitCopy):
         if pendingOperationFusionExists() {

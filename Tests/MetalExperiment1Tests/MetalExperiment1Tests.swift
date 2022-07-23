@@ -107,13 +107,13 @@ final class MetalExperiment1Tests: XCTestCase {
     func profileStream(length: Int) {
       print("--- Stream size: \(length)")
       Profiler.checkpoint()
-      let handle = Context.withDispatchQueue {
+//      let handle = Context.withDispatchQueue {
         var handle = Tensor<Float>(repeating: 0, shape: [10])
         for _ in 0..<length {
           handle = handle.incremented()
         }
-        return handle
-      }
+//        return handle
+//      }
       let latency = Profiler.checkpoint()
       validate(handle, value: Float(length))
       

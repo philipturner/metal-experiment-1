@@ -13,12 +13,9 @@ fileprivate func releaseBuffer(_ handle: CTensorHandle) {
   let atomic = AllocationHandle(handle).referenceCount
   if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
     Context.deallocateBuffer(handle)
-  } else {
-    //fatalError("Could not deallocate handle.")
   }
 }
 
-// TODO: Finish swapping 'id' for 'handle' throughput the test suite
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")

@@ -26,7 +26,7 @@ extension Context {
   // anywhere else until there are definitive metrics showing it improves performance.
   //
   // This blocks memory retained by a command buffer from deallocating. Unless the operations
-  // contained by it are likely to fuse, this could degrade performance.
+  // contained by it are likely to fuse, this may degrade performance.
   public static func withDispatchQueue<T>(_ body: () throws -> T) rethrows -> T {
     if DispatchQueue.getSpecific(key: dispatchQueueIdentifier) == true {
       return try body()
