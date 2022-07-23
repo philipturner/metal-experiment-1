@@ -310,19 +310,67 @@ final class TensorOperationTests: XCTestCase {
       }
     }
     
+    func swift_sigmoid(_ x: Float) -> Float {
+      1 / (1 + exp(-x))
+    }
+    
+    func swift_sign(_ x: Float) -> Float {
+      if x < 0 {
+        return -1
+      } else if x == 0 {
+        return 0
+      } else if x > 0 {
+        return 1
+      } else {
+        fatalError("This should never happen.")
+      }
+    }
+    
+    func swift_softplus(_ x: Float) -> Float {
+      log(exp(x) + 1)
+    }
+    
     // Inputs include zero to test `rsqrt` and `sign`.
     for input in [Float(-0.42), 0, 0.42] {
       #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
       let input_f16 = Float16(input)
       if input >= 0 {
         testFloat16(rsqrt, swift_rsqrt, input: input_f16)
-        testFloat16(selu, swift_selu, input: input_f16)
       }
+      testFloat16(selu, swift_selu, input: input_f16)
+      testFloat16(sigmoid, swift_sigmoid, input: input_f16)
+      testFloat16(sign, swift_sign, input: input_f16)
+      testFloat16(sin, sin, input: input_f16)
+      testFloat16(sinh, sinh, input: input_f16)
+      testFloat16(softplus, swift_softplus, input: input_f16)
       #endif
       if input >= 0 {
         testFloat(rsqrt, swift_rsqrt, input: input)
-        testFloat(selu, swift_selu, input: input)
       }
+      testFloat(selu, swift_selu, input: input, accuracy: 1e-5)
+      testFloat(sigmoid, swift_sigmoid, input: input, accuracy: 1e-5)
+      testFloat(sign, swift_sign, input: input)
+      testFloat(sin, sin, input: input, accuracy: 1e-5)
+      testFloat(sinh, sinh, input: input, accuracy: 1e-5)
+      testFloat(softplus, swift_softplus, input: input, accuracy: 1e-5)
     }
+    
+    test(sign, input: Float(-0.0), expected: 0.0)
+    test(sign, input: Float(-0.0), expected: -0.0)
+    test(sign, input: Int8(-1), expected: -1)
+    test(sign, input: Int16(-1), expected: -1)
+    test(sign, input: Int32(-1), expected: -1)
+    
+    test(sign, input: Int8(0), expected: 0)
+    test(sign, input: Int16(0), expected: 0)
+    test(sign, input: Int32(0), expected: 0)
+    test(sign, input: UInt8(0), expected: 0)
+    test(sign, input: UInt16(0), expected: 0)
+    
+    test(sign, input: Int8(1), expected: 1)
+    test(sign, input: Int16(1), expected: 1)
+    test(sign, input: Int32(1), expected: 1)
+    test(sign, input: UInt8(1), expected: 1)
+    test(sign, input: UInt16(1), expected: 1)
   }
 }

@@ -38,14 +38,11 @@ extension Context {
     
     var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
+    var fusionDataGroup: DataGroup?
     var fusionHeadAllocation: Allocation?
-    var fusionTailReferenceCount: Int?
+    var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
-    var fusionSize = -1
-    @inline(__always)
-    func pendingOperationFusionExists() -> Bool {
-      fusionSize != -1
-    }
+    var fusionSize: Int = -9999
     
     // Call this before encoding operations that can't be fused. Avoid proactively peeking at the
     // next operation and seeing whether the fusion ends, because that's costly (0.03 - 0.04 µs).
@@ -54,15 +51,17 @@ extension Context {
       defer {
         fusionOperations = .init()
         fusionMetadata = .init()
+        fusionDataGroup = nil
         fusionHeadAllocation = nil
-        fusionTailReferenceCount = nil
+        fusionTailReferenceCount = -9999
         fusionTail = nil
-        fusionSize = -1
+        fusionSize = -9999
       }
       guard let fusionHeadAllocation = fusionHeadAllocation,
-            let fusionTailReferenceCount = fusionTailReferenceCount,
+            fusionTailReferenceCount >= 0,
             let fusionTail = fusionTail,
-            fusionSize >= 0 else {
+            fusionSize >= 0,
+            let fusionDataGroup = fusionDataGroup else {
         fatalError("Something went wrong while fusing operations.")
       }
       
@@ -90,8 +89,8 @@ extension Context {
       fusionTailAllocation.initialized = true
       
       let elementwise = CompiledOperation.Elementwise(
-        operations: fusionOperations, metadata: fusionMetadata, input: fusionHeadAllocation,
-        output: fusionTailAllocation, size: fusionSize)
+        operations: fusionOperations, metadata: fusionMetadata, dataGroup: fusionDataGroup,
+        input: fusionHeadAllocation, output: fusionTailAllocation, size: fusionSize)
       compiledOperations.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         if fusionOperations.count >= 2 {
@@ -112,15 +111,20 @@ extension Context {
         var restartingFusion: Bool
         if input == fusionTail {
           // In the middle of an operation fusion.
-          precondition(pendingOperationFusionExists())
-          restartingFusion = false
+          switch fusionDataGroup! {
+          case .f32_i32:
+            restartingFusion = false
+          case .u32_i64_u64:
+            restartingFusion = true
+          }
           
           // The tail was the output of previous operation. Something initialized by the frontend
-          // can't be an operation's output; only an input.
-          precondition(!input.reference!.takeUnretainedValue().initialized)
+          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
+          // only perform it in debug mode.
+          assert(!input.reference!.takeUnretainedValue().initialized)
         } else {
           // At the start of an operation fusion. A previous fusion may already be in progress.
-          restartingFusion =  true
+          restartingFusion = true
         }
         
         // Decrement input's reference count.
@@ -134,17 +138,18 @@ extension Context {
         
         // Restart operation fusion.
         if restartingFusion {
-          if pendingOperationFusionExists() {
+          if fusionDataGroup != nil {
             appendOperationFusion()
           }
           fusionHeadAllocation = input.reference!.takeUnretainedValue()
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+          fusionDataGroup = .f32_i32
         }
         
         // Append operation.
         precondition(input.shape.elementsEqual(output.shape))
         if !unary.isNoOp {
-          fusionOperations.append(unary.operation.rawValue)
+          fusionOperations.append(unary.operation)
           if let metadata = unary.metadata {
             fusionMetadata.append(metadata)
           }
@@ -162,7 +167,7 @@ extension Context {
         fusionTail = output
         
       case .explicitCopy(let explicitCopy):
-        if pendingOperationFusionExists() {
+        if fusionDataGroup != nil {
           appendOperationFusion()
         }
         
@@ -183,7 +188,7 @@ extension Context {
     }
     
     // Finish compilation and return the compiled operations.
-    if pendingOperationFusionExists() {
+    if fusionDataGroup != nil {
       appendOperationFusion()
     }
     return compiledOperations

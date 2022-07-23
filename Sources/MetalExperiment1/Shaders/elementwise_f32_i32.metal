@@ -670,8 +670,9 @@ kernel void elementwise_f32_i32(
           }
           case sign_i32: {
             auto x = storage.get_i32();
-            x = select(int4(1), int4(-1), x < 0);
-            SET_I32(x)
+            auto mask = select(int4(1), int4(-1), x < 0);
+            mask = select(mask, int4(0), x == 0);
+            SET_I32(mask)
           }
           case sin_f32: {
             GET_SET_F32(precise::sin)

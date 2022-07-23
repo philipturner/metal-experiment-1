@@ -75,7 +75,12 @@ private extension Context {
     output.lastModifiedCommandBufferID = ectx.commandBufferID
     
     let encoder = ectx.makeEncoder()
-    ectx.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+    switch operation.dataGroup {
+    case .f32_i32:
+      ectx.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+    case .u32_i64_u64:
+      ectx.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
+    }
     encoder.setBuffer(input.mtlBuffer!, offset: 0, index: 0)
     encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 1)
     
@@ -172,7 +177,13 @@ private extension Context {
       encoder.setBytes(metadata, length: length, index: 4)
     }
     
-    let numThreads = (operation.size + 3) / 4
+    var numThreads: Int
+    switch operation.dataGroup {
+    case .f32_i32:
+      numThreads = (operation.size + 3) / 4
+    case .u32_i64_u64:
+      numThreads = (operation.size + 1) / 2
+    }
     encoder.dispatchThreadgroups(MTLSize(numThreads), threadsPerThreadgroup: 1)
   }
   

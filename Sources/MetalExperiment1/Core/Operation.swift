@@ -68,7 +68,7 @@ enum UnaryOperationType: UInt16 {
   case scalar_mul_i32 = 73 // requires metadata
 }
 
-enum UnaryOperationType2: UInt8 {
+enum UnaryOperationType2: UInt16 {
   case abs_i64 = 0
   case neg_i64 = 1
   case sign_i64 = 2
@@ -97,7 +97,7 @@ enum UnaryOperationType2: UInt8 {
   case scalar_mul_i64 = 31 // requires metadata
   case scalar_mul_u64 = 32 // requires metadata
   
-  init?(type32: UnaryOperationType, dataType: DataType) {
+  init?(_ type32: UnaryOperationType, dataType: DataType) {
     guard !dataType.representableByInt32 else {
       return nil
     }
@@ -127,6 +127,11 @@ enum UnaryOperationType2: UInt8 {
   }
 }
 
+enum DataGroup {
+  case f32_i32
+  case u32_i64_u64
+}
+
 // Ordered by relative frequency, minimizing the number of conditional checks during compilation and
 // encoding.
 enum EagerOperation {
@@ -134,9 +139,29 @@ enum EagerOperation {
     // `metadata` stored before `operation` to make the memory layout more compact.
     var metadata: UInt64? = nil
     var isNoOp: Bool = false
-    var operation: UnaryOperationType
+    var dataGroup: DataGroup
+    
+    // `operation` is the raw value of either a `UnaryOperationType` or a `UnaryOperationType2`.
+    var operation: UInt16
     var input: AllocationHandle
     var output: AllocationHandle
+    
+    @inline(__always)
+    init(
+      _ operation: UInt16,
+      _ input: AllocationHandle,
+      _ output: AllocationHandle,
+      _ dataGroup: DataGroup,
+      _ metadata: UInt64?,
+      _ isNoOp: Bool
+    ) {
+      self.operation = operation
+      self.input = input
+      self.output = output
+      self.dataGroup = dataGroup
+      self.metadata = metadata
+      self.isNoOp = isNoOp
+    }
   }
   case unary(Unary)
   
@@ -160,6 +185,7 @@ enum CompiledOperation {
     // for metadata is 16, which happens to be (2 operations) * (8 bytes/operation). The rationing
     // of metadata per operation is subject to change.
     var metadata: SmallVector<SIMD2<UInt64>>
+    var dataGroup: DataGroup
     var input: Allocation
     var output: Allocation
     var size: Int

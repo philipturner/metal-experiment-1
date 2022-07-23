@@ -232,39 +232,49 @@ extension OperationRegistry {
     }
     
     // Select operation type.
-    var operation: UnaryOperationType
+    var operation: UInt16
+    var dataGroup: DataGroup = .f32_i32
     if let operation_bool = operation_bool {
       precondition(dataType == .bool, dataMismatch(operation_bool))
       guard operation_f32 == nil,
             operation_i32 == nil else {
         fatalError("This should never happen.")
       }
-      operation = operation_bool
+      operation = operation_bool.rawValue
     } else {
       precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
-      switch (operation_f32, operation_i32) {
-      case (.some(let operation_f32), .some(let operation_i32)):
-        if dataType.isFloatingPoint {
-          operation = operation_f32
-        } else if dataType.representableByInt32 {
-          operation = operation_i32
+      if let operation_f32 = operation_f32 {
+        if let operation_i32 = operation_i32 {
+          if dataType.isFloatingPoint {
+            operation = operation_f32.rawValue
+          } else if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+          } else {
+            operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+            dataGroup = .u32_i64_u64
+          }
         } else {
-          preconditionFailure(dataMismatch(operation_i32))
+          precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
+          operation = operation_f32.rawValue
         }
-      case (.some(let operation_f32), .none):
-        precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
-        operation = operation_f32
-      case (.none, .some(let operation_i32)):
-        precondition(dataType.representableByInt32, dataMismatch(operation_i32))
-        operation = operation_i32
-      case (.none, .none):
-        fatalError("This should never happen.")
+      } else {
+        if let operation_i32 = operation_i32 {
+          precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
+          if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+          } else {
+            operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+            dataGroup = .u32_i64_u64
+          }
+        } else {
+           fatalError("This should never happen.")
+        }
       }
     }
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, operation: operation, input: input, output: output)))
+      operation, input, output, dataGroup, metadata, false)))
   }
   
   // Named after the Metal Standard Library header, `metal_relational`.
@@ -290,12 +300,13 @@ extension OperationRegistry {
     let byteCount = input.byteCount >> stridePowerOf2
     
     // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
     let output = ctx._internalAllocate(2, .bool, byteCount, input.shape)
     encodeOutput(&args.outputs, output)
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation: operation, input: input, output: output)))
+      operation.rawValue, input, output, .f32_i32, nil, false)))
   }
   
   static func dispatchUnaryScalar(
@@ -323,7 +334,9 @@ extension OperationRegistry {
     }
     precondition(dataType != .bool, dataMismatch(operation_f32))
     
-    // Fetch metadata.
+    // Select operation type.
+    var operation: UInt16
+    var dataGroup: DataGroup = .f32_i32
     var metadata: UInt64
     var isNoOp: Bool
     if dataType.isFloatingPoint {
@@ -338,8 +351,10 @@ extension OperationRegistry {
       default:
         fatalError("This should never happen.")
       }
+      
+      operation = operation_f32.rawValue
       metadata = UInt64(rhs.bitPattern)
-      isNoOp = rhs == 0
+      isNoOp = (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1)
     } else if dataType.representableByInt32 {
       var rhs: Int32
       switch dataType {
@@ -356,8 +371,10 @@ extension OperationRegistry {
       default:
         fatalError("This should never happen.")
       }
+      
+      operation = operation_i32.rawValue
       metadata = UInt64(truncatingIfNeeded: rhs)
-      isNoOp = rhs == 0
+      isNoOp = (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1)
     } else {
       switch dataType {
       case .uint32:
@@ -365,21 +382,16 @@ extension OperationRegistry {
       default:
         metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt64)
       }
-      isNoOp = metadata == 0
+      
+      operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+      dataGroup = .u32_i64_u64
+      isNoOp = (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1)
     }
     advanceAtom(&args.attributes)
     
-    // Select operation type.
-    var operation: UnaryOperationType
-    if dataType.isFloatingPoint {
-      operation = operation_f32
-    } else {
-      operation = operation_i32
-    }
-    
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      metadata: metadata, isNoOp: isNoOp, operation: operation, input: input, output: output)))
+      operation, input, output, dataGroup, metadata, isNoOp)))
   }
 }
 
