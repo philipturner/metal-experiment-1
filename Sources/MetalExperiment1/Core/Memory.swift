@@ -21,7 +21,7 @@ extension Context {
   ) -> (OpaquePointer, Int) {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
-    let handle = Self.sync {
+    let handle = Context.global.sync {
       Context.global._internalAllocate(1, dataType, byteCount, shape)
     }
     return (handle._cHandle, shape.count)
@@ -32,7 +32,7 @@ extension Context {
     _ cHandle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
-    Self.sync {
+    Context.global.sync {
       let reference = AllocationHandle(cHandle).reference!
       reference.retain().takeUnretainedValue().initialize(body)
       reference.release()
@@ -44,7 +44,7 @@ extension Context {
     _ cHandle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
-    Self.sync {
+    Context.global.sync {
       let reference = AllocationHandle(cHandle).reference!
       reference.retain().takeUnretainedValue().read(body)
       reference.release()
@@ -55,7 +55,7 @@ extension Context {
   public static func deallocateBuffer(
     _ cHandle: OpaquePointer
   ) {
-    Self.sync {
+    Context.global.sync {
       let handle = AllocationHandle(cHandle)
       precondition(
         handle.referenceCount.load(ordering: .relaxed) == 0,

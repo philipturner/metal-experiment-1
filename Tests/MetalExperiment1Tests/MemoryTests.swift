@@ -115,18 +115,18 @@ final class MemoryTests: XCTestCase {
     func fakeAllocateDeallocate(numBuffers: Int) {
       var handles: [OpaquePointer?] = []
       for _ in 0..<numBuffers {
-        let handle = Context.sync {
+        let handle = Context.global.sync {
           return OpaquePointer?(nil)
         }
         handles.append(handle)
       }
       for handle in handles {
-        Context.sync {
+        Context.global.sync {
           _ = handle
         }
       }
       for handle in handles {
-        Context.sync {
+        Context.global.sync {
           _ = handle
         }
       }
@@ -138,7 +138,7 @@ final class MemoryTests: XCTestCase {
         handles.append(handle)
       }
       for handle in handles {
-        Context.sync {
+        Context.global.sync {
           _ = handle
         }
       }
@@ -211,7 +211,7 @@ final class MemoryTests: XCTestCase {
       HeapAllocator._releaseCachedBufferBlocks()
       let smallBufferHandle1 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle1) }
-      Context.sync {
+      Context.global.sync {
         Context.global.permitExceedingSystemRAM = true
       }
       
@@ -220,25 +220,25 @@ final class MemoryTests: XCTestCase {
         let largeBufferSize = Context.global.device.maxBufferLength
         let largeBufferHandle1 = allocate(byteCount: largeBufferSize)
         defer { deallocate(handle: largeBufferHandle1) }
-        Context.sync {
+        Context.global.sync {
           XCTAssertTrue(Context.global.permitExceedingSystemRAM)
         }
       }
       
       let smallBufferHandle2 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle2) }
-      Context.sync {
+      Context.global.sync {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
     }
-    Context.sync {
+    Context.global.sync {
       XCTAssertTrue(Context.global.permitExceedingSystemRAM)
     }
     
     do {
       let smallBufferHandle3 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle3) }
-      Context.sync {
+      Context.global.sync {
         XCTAssertTrue(Context.global.permitExceedingSystemRAM)
       }
       
@@ -251,7 +251,7 @@ final class MemoryTests: XCTestCase {
       
       let smallBufferHandle4 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle4) }
-      Context.sync {
+      Context.global.sync {
         XCTAssertFalse(Context.global.permitExceedingSystemRAM)
       }
     }
@@ -259,7 +259,7 @@ final class MemoryTests: XCTestCase {
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
-    Context.sync {
+    Context.global.sync {
       // Already overrode the environment variable for this in `testHeader`.
       Allocation.debugInfoEnabled = true
     }
@@ -299,7 +299,7 @@ final class MemoryTests: XCTestCase {
       print("End of function")
     }
     
-    Context.sync {
+    Context.global.sync {
       Allocation.debugInfoEnabled = false
     }
     
@@ -357,13 +357,13 @@ final class MemoryTests: XCTestCase {
     }
     
     var tensor3: Tensor<Float>?
-    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
     Context.initializeBuffer(bufferID1) { _ in }
-    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
     Context.initializeBuffer(bufferID2) { _ in }
-    Context.sync { Context.global.permitExceedingSystemRAM = true }
+    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
     tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
-    Context.sync { Context.global.permitExceedingSystemRAM = false }
+    Context.global.sync { Context.global.permitExceedingSystemRAM = false }
     guard let tensor3 = tensor3 else {
       fatalError("This should never happen.")
     }
@@ -421,12 +421,12 @@ final class MemoryTests: XCTestCase {
     
     // Don't override the environment variable for other tests.
     var previousProfilingEncoding = false
-    Context.sync {
+    Context.global.sync {
       previousProfilingEncoding = Context.profilingEncoding
       Context.profilingEncoding = true
     }
     defer {
-      Context.sync {
+      Context.global.sync {
         Context.profilingEncoding = previousProfilingEncoding
       }
     }

@@ -9,7 +9,7 @@ import Metal
 
 extension Context {
   static func barrier() {
-    sync {
+    Context.global.sync {
       let ctx = Context.global
       ctx._internalFlushStream()
       ctx._internalBarrier()
@@ -120,38 +120,25 @@ private extension Context {
       encodingContext.finishEncoder()
       
       // Force the memory allocations to stay alive until the command buffer finishes.
-      var retainClosure: () -> Void
-      if range == compiledOperations.indices {
-        // If `commandBufferID` is captured without doing anything else, it will register as
-        // something greater than we want inside the closure. To fix this, each closure captures the
-        // ID inside its explicit capture list.
-        retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID] = nil
-          _ = compiledOperations
+      class Retainer {
+        var operations: [CompiledOperation]
+        init(retaining operations: [CompiledOperation]) {
+          self.operations = operations
         }
+      }
+      var retainer: Unmanaged<Retainer>
+      if range == compiledOperations.indices {
+        retainer = .passRetained(Retainer(retaining: compiledOperations))
       } else {
         // Capture only the range of operations encoded in this batch.
         let submittedOperations = Array(compiledOperations[range])
-        retainClosure = { [commandBufferID = commandBufferID] in
-          Context.global.commandBufferDictionary[commandBufferID] = nil
-          _ = submittedOperations
-        }
-      }
-      
-      // TODO: Fix up this memory management scheme to have lower overhead.
-      class Retainer {
-        var body: () -> Void
-        init(_ body: @escaping () -> Void) {
-          self.body = body
-        }
-        func call() {
-          body()
-        }
+        retainer = .passRetained(Retainer(retaining: submittedOperations))
       }
       
       // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
       // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
       // atomic.
+      let currentCommandBufferID = commandBufferID
       commandBufferID += 1
       numCommittedBatches.store(commandBufferID, ordering: .relaxed)
       
@@ -179,20 +166,16 @@ private extension Context {
         let numCommitted = self.numCommittedBatches.load(ordering: .relaxed)
         let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(ordering: .relaxed)
         
-        let retainer = Retainer(retainClosure)
-        let ref = Unmanaged.passRetained(retainer)
-        
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
         let shouldFlush = numCommitted == numCompleted
-        DispatchQueue.global().async { [ref = ref] in
-          Context.sync { [ref = ref] in
-            let retainer = ref.takeUnretainedValue()
-            retainer.call()
-            ref.release()
-            
+        DispatchQueue.global().async {
+          Context.global.sync {
+            let ctx = Context.global
+            ctx.commandBufferDictionary[currentCommandBufferID] = nil
+            retainer.release()
             if shouldFlush {
-              Context.global.flushStream()
+              ctx.flushStream()
             }
           }
         }

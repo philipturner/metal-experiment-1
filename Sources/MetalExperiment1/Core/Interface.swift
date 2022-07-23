@@ -22,7 +22,7 @@ extension Context {
     _ inputs: UnsafeBufferPointer<OpaquePointer>,
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
-    Self.sync {
+    Context.global.sync {
       Context.global._executeOperation(name, attributes, inputs, outputs)
     }
   }

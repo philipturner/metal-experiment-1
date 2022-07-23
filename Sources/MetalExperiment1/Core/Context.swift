@@ -69,20 +69,19 @@ public class Context {
   // Borrowed from https://github.com/s4tf/s4tf
   /// Synchronously execute the body, preventing asynchronous computation from corrupting the
   /// context data.
-  @inline(__always) // Only inlines internally
-  public static func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
-    let ctx = Context.global
+  @inline(__always)
+  public func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
     #if os(Windows)
-    AcquireSRWLockExclusive(&ctx._mutex)
+    AcquireSRWLockExclusive(&_mutex)
     #else
-    precondition(pthread_mutex_lock(&ctx._mutex) == 0)
+    precondition(pthread_mutex_lock(&_mutex) == 0)
     #endif
     
     defer {
       #if os(Windows)
-      ReleaseSRWLockExclusive(&ctx._mutex)
+      ReleaseSRWLockExclusive(&_mutex)
       #else
-      precondition(pthread_mutex_unlock(&ctx._mutex) == 0)
+      precondition(pthread_mutex_unlock(&_mutex) == 0)
       #endif
     }
     return try body()

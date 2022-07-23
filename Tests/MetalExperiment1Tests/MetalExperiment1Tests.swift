@@ -3,10 +3,7 @@ import XCTest
 
 func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()
-  Context.sync {
-    // The caller initializes `Context.global`, but keeping this code statement for clarity.
-    _ = Context.global
-  }
+  _ = Context.global
   let startupTime = Profiler.checkpoint()
   if startupTime > 1000 {
     print("=== Initialize context ===")
@@ -20,7 +17,7 @@ func testHeader(_ message: String? = nil) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Context.sync {
+  Context.global.sync {
     Allocation.debugInfoEnabled = false
   }
   Context.barrier()
@@ -32,7 +29,7 @@ final class MetalExperiment1Tests: XCTestCase {
     
     for _ in 0..<2 {
       Profiler.checkpoint()
-      _ = Context.sync {
+      _ = Context.global.sync {
         Bool.random()
       }
       Profiler.log("Synchronization latency")
@@ -42,7 +39,7 @@ final class MetalExperiment1Tests: XCTestCase {
       Profiler.checkpoint()
       let iterations = 100
       for _ in 0..<iterations {
-        _ = Context.sync {
+        _ = Context.global.sync {
           Bool.random()
         }
       }
