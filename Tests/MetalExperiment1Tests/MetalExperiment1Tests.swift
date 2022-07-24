@@ -249,4 +249,14 @@ final class MetalExperiment1Tests: XCTestCase {
     releaseRetained(retained)
     XCTAssertTrue(Self.didDestroyObject)
   }
+  
+  func testScalarBroadcast() throws {
+    testHeader()
+    
+    let tensor = Tensor<Int32>(repeating: 1, shape: [1])
+    XCTAssertEqual(tensor.incremented().scalars, [2])
+    
+    let tensor2 = Tensor<Int8>(Tensor(repeating: Float(2), shape: [1]))
+    XCTAssertEqual(Tensor<Float>(square(tensor2)).scalars, [4])
+  }
 }

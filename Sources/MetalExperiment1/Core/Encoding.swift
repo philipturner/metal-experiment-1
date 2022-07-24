@@ -151,19 +151,22 @@ private extension Context {
         outputHandle: AllocationHandle
       ) {
         var dataTypeRawValues = SIMD4<UInt16>(repeating: .max)
-        var broadcastScalarMasks = SIMD4<UInt16>(repeating: 0)
+        var byteCounts = SIMD4<Int32>(repeating: 0)
         dataTypeRawValues[0] = inputHandle1.dataType.rawValue
+        byteCounts[0] = Int32(clamping: inputHandle1.byteCount)
+        
+        // Output's byte count will not be used.
         dataTypeRawValues[3] = outputHandle.dataType.rawValue
-        broadcastScalarMasks[0] = 0
-        broadcastScalarMasks[3] = 0
+        // byteCounts[3] = Int32(clamping: outputHandle.byteCount)
+        
         var numInputs: UInt16 = 1
         if let inputHandle2 = inputHandle2 {
           dataTypeRawValues[1] = inputHandle2.dataType.rawValue
-          broadcastScalarMasks[1] = 0
+          byteCounts[1] = Int32(clamping: inputHandle2.byteCount)
           numInputs = 2
           if let inputHandle3 = inputHandle3 {
             dataTypeRawValues[2] = inputHandle3.dataType.rawValue
-            broadcastScalarMasks[2] = 0
+            byteCounts[2] = Int32(clamping: inputHandle3.byteCount)
             numInputs = 3
           }
         } else {
@@ -179,9 +182,13 @@ private extension Context {
           }
           let memoryCast = MemoryCast(dataTypeRawValue: dataTypeRawValue)
           memoryCastRawValues[i] = memoryCast.rawValue
-          let readSize = memoryCast.readSize
-          let broadcastScalarMask = broadcastScalarMasks[i]
-          layouts[i] = broadcastScalarMask | readSize
+          var layoutMask = memoryCast.readSize
+          
+          let dataType = DataType(rawValue: dataTypeRawValue).unsafelyUnwrapped
+          if dataType.stride == byteCounts[i] {
+            layoutMask |= 128
+          }
+          layouts[i] = layoutMask
         }
         
         // 2nd and 3rd read params can be invalid, as long as they aren't read from.
