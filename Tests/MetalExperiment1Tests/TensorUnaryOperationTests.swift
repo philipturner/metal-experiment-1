@@ -13,6 +13,16 @@ func test<T: Equatable>(_ function: (Tensor<T>) -> Tensor<T>, input: T, expected
   XCTAssertEqual(transformedTensor.scalars, [T](repeating: expected, count: 5))
 }
 
+func test<T, U: Equatable>(
+  _ function: (Tensor<T>) -> Tensor<U>,
+  input: T,
+  expected: U
+) {
+  let tensor = Tensor(repeating: input, shape: [5])
+  let transformedTensor = function(tensor)
+  XCTAssertEqual(transformedTensor.scalars, [U](repeating: expected, count: 5))
+}
+
 func test<T: FloatingPoint>(
   _ function: (Tensor<T>) -> Tensor<T>,
   input: T,
@@ -96,7 +106,7 @@ func tensorOperationFooter() {
   }
 }
 
-final class TensorOperationTests: XCTestCase {
+final class TensorUnaryOperationTests: XCTestCase {
   func testIncrement() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
@@ -156,6 +166,120 @@ final class TensorOperationTests: XCTestCase {
     testFloat(asinh, asinh, input: 1.42, accuracy: 1e-5)
     testFloat(atan, atan, input: 0.42, accuracy: 1e-5)
     testFloat(atanh, atanh, input: 0.42, accuracy: 1e-5)
+  }
+  
+  func testCast() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    // Same-type casting.
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Tensor.init, input: Float16(-42), expected: Float16(-42))
+    #endif
+    test(Tensor.init, input: Float(-42), expected: Float(-42))
+    test(Tensor.unitTestCastBool, input: Bool(true), expected: Bool(true))
+    test(Tensor.unitTestCastBool, input: Bool(false), expected: Bool(false))
+    test(Tensor.init, input: Int8(-42), expected: Int8(-42))
+    test(Tensor.init, input: Int16(-42), expected: Int16(-42))
+    test(Tensor.init, input: Int32(-42), expected: Int32(-42))
+    test(Tensor.init, input: UInt8(42), expected: UInt8(42))
+    test(Tensor.init, input: UInt16(42), expected: UInt16(42))
+    
+    // Casting to/from boolean.
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Tensor.init, input: true, expected: Float16(1))
+    test(Tensor.init, input: false, expected: Float16(0))
+    test(Tensor.unitTestCastBool, input: Float16(0), expected: false)
+    test(Tensor.unitTestCastBool, input: Float16(-1), expected: true)
+    #endif
+    test(Tensor.init, input: true, expected: Float(1))
+    test(Tensor.init, input: false, expected: Float(0))
+    test(Tensor.init, input: true, expected: UInt8(1))
+    test(Tensor.init, input: false, expected: UInt8(0))
+    test(Tensor.init, input: true, expected: Int32(1))
+    test(Tensor.init, input: false, expected: Int32(0))
+    test(Tensor.unitTestCastBool, input: Float(0), expected: false)
+    test(Tensor.unitTestCastBool, input: Float(-1), expected: true)
+    test(Tensor.unitTestCastBool, input: UInt8(0), expected: false)
+    test(Tensor.unitTestCastBool, input: Int8(-1), expected: true)
+    test(Tensor.unitTestCastBool, input: Int32(0), expected: false)
+    test(Tensor.unitTestCastBool, input: Int32(-1), expected: true)
+    
+    // Casting between floating-point types.
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Tensor.init, input: Float(0.5), expected: Float16(0.5))
+    test(Tensor.init, input: Float(0.5), expected: Float(0.5))
+    test(Tensor.init, input: Float.infinity, expected: Float16.infinity)
+    test(Tensor.init, input: Float16.infinity, expected: Float.infinity)
+    test(Tensor.init, input: Float(65534), expected: Float16.infinity)
+    #endif
+    
+    // Casting between floating-point types and integers.
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    test(Tensor.init, input: Float16(7), expected: UInt8(7))
+    test(Tensor.init, input: Float16(7), expected: Int32(7))
+    test(Tensor.init, input: UInt8(7), expected: Float16(7))
+    test(Tensor.init, input: Int32(7), expected: Float16(7))
+    test(Tensor.init, input: UInt16(65534), expected: Float16.infinity)
+    test(Tensor.init, input: Float16.infinity, expected: UInt16.max)
+    test(Tensor.init, input: -Float16.infinity, expected: UInt16.min)
+    test(Tensor.init, input: -Float16.infinity, expected: Int16.min)
+    #endif
+    test(Tensor.init, input: Float(7), expected: UInt8(7))
+    test(Tensor.init, input: Float(7), expected: Int32(7))
+    test(Tensor.init, input: UInt8(7), expected: Float(7))
+    test(Tensor.init, input: Int32(7), expected: Float(7))
+    test(Tensor.init, input: UInt16(65534), expected: Float(65534))
+    test(Tensor.init, input: Float.infinity, expected: UInt16.max)
+    test(Tensor.init, input: -Float.infinity, expected: UInt16.min)
+    test(Tensor.init, input: -Float.infinity, expected: Int16.min)
+    test(Tensor.init, input: Float.nan, expected: Int32(0))
+    
+    // Casting between integral types (larger -> smaller).
+    test(Tensor.init, input: Int16.max, expected: Int8(truncatingIfNeeded: Int16.max))
+    test(Tensor.init, input: Int16.max / 2, expected: Int8(truncatingIfNeeded: Int16.max / 2))
+    test(Tensor.init, input: -Int16.max, expected: Int8(truncatingIfNeeded: -Int16.max))
+    test(Tensor.init, input: -Int16.max / 2, expected: Int8(truncatingIfNeeded: -Int16.max / 2))
+    test(Tensor.init, input: UInt16.max, expected: Int8(truncatingIfNeeded: UInt16.max))
+    test(Tensor.init, input: UInt16.max / 2, expected: Int8(truncatingIfNeeded: UInt16.max / 2))
+    
+    test(Tensor.init, input: UInt16.max, expected: Int16(truncatingIfNeeded: UInt16.max))
+    test(Tensor.init, input: UInt16.max / 2, expected: Int16(truncatingIfNeeded: UInt16.max / 2))
+    
+    test(Tensor.init, input: Int32.max, expected: UInt8(truncatingIfNeeded: Int32.max))
+    test(Tensor.init, input: Int32.max / 2, expected: UInt8(truncatingIfNeeded: Int32.max / 2))
+    test(Tensor.init, input: -Int32.max, expected: UInt8(truncatingIfNeeded: -Int32.max))
+    test(Tensor.init, input: -Int32.max / 2, expected: UInt8(truncatingIfNeeded: -Int32.max / 2))
+    
+    test(Tensor.init, input: Int32.max, expected: UInt16(truncatingIfNeeded: Int32.max))
+    test(Tensor.init, input: Int32.max / 2, expected: UInt16(truncatingIfNeeded: Int32.max / 2))
+    test(Tensor.init, input: -Int32.max, expected: UInt16(truncatingIfNeeded: -Int32.max))
+    test(Tensor.init, input: -Int32.max / 2, expected: UInt16(truncatingIfNeeded: -Int32.max / 2))
+    
+    // Casting between integral types (smaller -> larger).
+    test(Tensor.init, input: Int8.max, expected: UInt8(truncatingIfNeeded: Int8.max))
+    test(Tensor.init, input: Int8.max / 2, expected: UInt8(truncatingIfNeeded: Int8.max / 2))
+    test(Tensor.init, input: -Int8.max, expected: UInt8(truncatingIfNeeded: -Int8.max))
+    test(Tensor.init, input: -Int8.max / 2, expected: UInt8(truncatingIfNeeded: -Int8.max / 2))
+    
+    test(Tensor.init, input: Int16.max, expected: UInt16(truncatingIfNeeded: Int16.max))
+    test(Tensor.init, input: Int16.max / 2, expected: UInt16(truncatingIfNeeded: Int16.max / 2))
+    test(Tensor.init, input: -Int16.max, expected: UInt16(truncatingIfNeeded: -Int16.max))
+    test(Tensor.init, input: -Int16.max / 2, expected: UInt16(truncatingIfNeeded: -Int16.max / 2))
+    
+    test(Tensor.init, input: Int8.max, expected: Int16(Int8.max))
+    test(Tensor.init, input: Int8.max / 2, expected: Int16(Int8.max / 2))
+    test(Tensor.init, input: -Int8.max, expected: Int16(-Int8.max))
+    test(Tensor.init, input: -Int8.max / 2, expected: Int16(-Int8.max / 2))
+    
+    test(Tensor.init, input: Int8.max, expected: Int32(Int8.max))
+    test(Tensor.init, input: Int8.max / 2, expected: Int32(Int8.max / 2))
+    test(Tensor.init, input: -Int8.max, expected: Int32(-Int8.max))
+    test(Tensor.init, input: -Int8.max / 2, expected: Int32(-Int8.max / 2))
+    test(Tensor.init, input: Int16.max, expected: Int32(Int16.max))
+    test(Tensor.init, input: Int16.max / 2, expected: Int32(Int16.max / 2))
+    test(Tensor.init, input: -Int16.max, expected: Int32(-Int16.max))
+    test(Tensor.init, input: -Int16.max / 2, expected: Int32(-Int16.max / 2))
   }
   
   // Operations with codes 20 - 26

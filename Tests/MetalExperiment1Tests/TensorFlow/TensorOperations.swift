@@ -64,8 +64,8 @@ extension Tensor where Scalar: Numeric {
 }
 
 extension Tensor {
-  func unitTestCastBool() -> Tensor<Bool> {
-    return _Raw.cast(self)
+  static func unitTestCastBool(_ input: Tensor) -> Tensor<Bool> {
+    return _Raw.cast(input)
   }
 }
 
