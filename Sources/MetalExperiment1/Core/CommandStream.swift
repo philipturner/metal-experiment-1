@@ -79,6 +79,33 @@ extension Context {
     // operations. For short ones like elementwise ops, it doesn't fire and isn't needed. This AI
     // could be generalizable for not just ML ops, but any GPGPU domain including linear algebra.
     // Even more awesome - I can train it using Swift for TensorFlow!
+    //
+    // I could also provide an option that limits the compiled command stream size. But the user
+    // shouldn't have to (and probably won't) play around with hyperparameters like that just to
+    // train their model.
+    //
+    // Benefits of AI approach:
+    // - Stops the frontend from freezing someone's computer if they are using an Apple or Intel
+    //   integrated GPU. They can do other things on their computer while the model is training.
+    // - Can scale up or down the intensity of the graph compiler. When operations are taking a long
+    //   time, the AI gives it more freedom to take longer to compile.
+    // - Can exceed the 128 operation limit, going to 1000 in some instances. That could decrease
+    //   sequential latency to the theoretical minimum.
+    // - Generalizes to different workloads, requiring no prior knowledge of the frontend.
+    // - An opportunity to show off S4TF.
+    //
+    // Drawbacks of AI approach:
+    // - Takes a lot of time to develop.
+    // - Might be over-optimizing for a specific feature.
+    // - There might be an easier way to solve this problem, but it doesn't generalize to other
+    //   domains and you have to hard-code certain parameters.
+    // - If it depends on disk storage inside the package bundle to aggregate data over multiple
+    //   startups, that data would clear when you purge build products.
+    // - Time spent on this is time spent not developing the OpenCL backend.
+    //
+    // Current stance: wait until real-world data confirms my hypothesis about performance, then
+    // pursue the AI approach. This will definitely come *after* integrating the Metal backend into
+    // Swift for TensorFlow.
     flushStream(precomputedBackPressure: backPressure)
   }
 }

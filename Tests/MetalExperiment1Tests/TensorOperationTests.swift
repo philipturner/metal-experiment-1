@@ -373,4 +373,30 @@ final class TensorOperationTests: XCTestCase {
     test(sign, input: UInt8(1), expected: 1)
     test(sign, input: UInt16(1), expected: 1)
   }
+  
+  // Operations with codes 60 - 65
+  func testOperations60Series() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    func swift_softsign(_ x: Float) -> Float {
+      x / (abs(x) + 1)
+    }
+    
+    for input in [Float(-0.42), 0.42] {
+      #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+      let input_f16 = Float16(input)
+      if input > 0 {
+        testFloat16(log, log, input: input_f16)
+      }
+      testFloat16(log1p, log1p, input: input_f16)
+      #endif
+      if input > 0 {
+        testFloat(log, log, input: input, accuracy: 1e-5)
+      }
+      testFloat(log1p, log1p, input: input, accuracy: 1e-5)
+    }
+    
+    test(-, input: Int8(127), expected: Int8(-127))
+  }
 }

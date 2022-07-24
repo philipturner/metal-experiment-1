@@ -80,7 +80,15 @@ private extension Context {
     try input1.materialize()
     encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
     
+    if let input2 = instruction.input2 {
+      try input2.materialize()
+      encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
+    }
     
+    if let input3 = instruction.input3 {
+      try input3.materialize()
+      encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
+    }
     
     let output = instruction.output
     try output.materialize()

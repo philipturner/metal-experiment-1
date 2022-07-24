@@ -197,6 +197,12 @@ extension OperationRegistry {
     "Sinh": sinh,
     "Softplus": softplus,
     
+    "Softsign": softsign,
+    "Sqrt": sqrt,
+    "Square": square,
+    "Tan": tan,
+    "Tanh": tanh,
+    
     "ScalarAdd": scalarAdd,
     "ScalarMul": scalarMul,
   ]
@@ -534,6 +540,28 @@ extension OperationRegistry {
   static let softplus = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .softplus_f32, nil, nil)
+  }
+  
+  // Codes 60 - 65
+  static let softsign = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .softsign_f32, nil, nil)
+  }
+  static let sqrt = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .sqrt_f32, nil, nil)
+  }
+  static let square = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .square_f32, .square_i32, nil)
+  }
+  static let tan = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .tan_f32, nil, nil)
+  }
+  static let tanh = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnary(&args, .tanh_f32, nil, nil)
   }
   
   // Codes 70 - 73

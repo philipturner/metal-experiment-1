@@ -321,6 +321,33 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
+  public static func softsign<T>(features: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Softsign", features)
+  }
+  
+  @inlinable @inline(__always)
+  public static func sqrt<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Sqrt", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func square<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Square", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func tan<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Tan", input)
+  }
+  
+  @inlinable @inline(__always)
+  public static func tanh<T>(_ input: Tensor<T>) -> Tensor<T> {
+    dispatchUnary("Tanh", input)
+  }
+  
+  
+  
+  @inlinable @inline(__always)
   public static func scalarAdd<T: Numeric>(
     _ input: Tensor<T>,
     rhs: T
