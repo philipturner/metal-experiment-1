@@ -111,7 +111,7 @@ final class TensorOperationTests: XCTestCase {
     test(Tensor<UInt8>.incremented, input: 42, expected: 43)
     test(Tensor<UInt16>.incremented, input: 42, expected: 43)
     
-    // Test overflow of integers.
+    // Test integer overflow.
     test(Tensor<Int8>.incremented, input: 127, expected: -128)
     test(Tensor<Int16>.incremented, input: .max, expected: .min)
     test(Tensor<Int32>.incremented, input: .max, expected: .min)
@@ -132,7 +132,7 @@ final class TensorOperationTests: XCTestCase {
     test(abs, input: Int8(-127), expected: 127)
     test(abs, input: -Int16.max, expected: Int16.max)
     
-    // Test overflow of integers.
+    // Test integer overflow.
     test(abs, input: Int8(-128), expected: Int8(-128))
     test(abs, input: Int16.min, expected: Int16.min)
     test(abs, input: Int32.min, expected: Int32.min)
@@ -276,7 +276,7 @@ final class TensorOperationTests: XCTestCase {
     test(-, input: Int16.max, expected: -Int16.max)
     test(-, input: Int32.max, expected: -Int32.max)
     
-    // Test overflow of integers.
+    // Test integer overflow.
     test(-, input: Int8(-128), expected: Int8(-128))
     test(-, input: Int16.min, expected: Int16.min)
     test(-, input: Int32.min, expected: Int32.min)
@@ -383,20 +383,41 @@ final class TensorOperationTests: XCTestCase {
       x / (abs(x) + 1)
     }
     
+    func swift_square(_ x: Float) -> Float {
+      x * x
+    }
+    
     for input in [Float(-0.42), 0.42] {
       #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
       let input_f16 = Float16(input)
+      testFloat16(softsign, swift_softsign, input: input_f16)
       if input > 0 {
-        testFloat16(log, log, input: input_f16)
+        testFloat16(sqrt, sqrt, input: input_f16)
       }
-      testFloat16(log1p, log1p, input: input_f16)
+      testFloat16(square, swift_square, input: input_f16)
+      testFloat16(tan, tan, input: input_f16)
+      testFloat16(tanh, tanh, input: input_f16)
       #endif
+      testFloat(softsign, swift_softsign, input: input)
       if input > 0 {
-        testFloat(log, log, input: input, accuracy: 1e-5)
+        testFloat(sqrt, sqrt, input: input)
       }
-      testFloat(log1p, log1p, input: input, accuracy: 1e-5)
+      testFloat(square, swift_square, input: input)
+      testFloat(tan, tan, input: input, accuracy: 1e-5)
+      testFloat(tanh, tanh, input: input)
     }
     
-    test(-, input: Int8(127), expected: Int8(-127))
+    test(square, input: Int8(-11), expected: Int8(121))
+    test(square, input: Int16(-181), expected: Int16(32761))
+    test(square, input: Int32(-46340), expected: Int32(2_147_395_600))
+    test(square, input: UInt8(15), expected: UInt8(225))
+    test(square, input: UInt16(255), expected: UInt16(255 * 255))
+    
+    // Test integer overflow.
+    test(square, input: Int8(16), expected: Int8(0))
+    test(square, input: Int16(256), expected: Int16(0))
+    test(square, input: Int32(65536), expected: Int32(0))
+    test(square, input: UInt8(16), expected: UInt8(0))
+    test(square, input: UInt16(256), expected: UInt16(0))
   }
 }

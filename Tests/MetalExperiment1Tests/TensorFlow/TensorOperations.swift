@@ -182,3 +182,29 @@ public func softplus<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.softplus(features: x)
 }
 
+
+
+@inlinable
+public func softsign<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.softsign(features: x)
+}
+
+@inlinable
+public func sqrt<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.sqrt(x)
+}
+
+@inlinable
+public func square<T: Numeric>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.square(x)
+}
+
+@inlinable
+public func tan<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.tan(x)
+}
+
+@inlinable
+public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
+  _Raw.tanh(x)
+}
