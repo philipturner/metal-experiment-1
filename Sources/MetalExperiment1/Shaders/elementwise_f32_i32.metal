@@ -570,11 +570,17 @@ kernel void elementwise_f32_i32(
             auto x = storage.get_i32();
             auto operation_metadata = get_metadata(metadata, metadata_index);
             int2 masks = ((constant int2*)operation_metadata)[0];
-            
             x &= int4(masks[0]); // truncate
+            
             if (masks[1] != 0) { // sign extend
-              int4 sign_mask = select(int4(0), int4(~masks[0]), short4(x) > 0);
-              x |= sign_mask;
+              // TODO: Force-unroll this loop for performance.
+              int inverted_mask = ~masks[0];
+              for (int i = 0; i < 4; ++i) {
+                // Sign mask has one bit activated.
+                if (x[i] & masks[1]) {
+                  x[i] |= inverted_mask;
+                }
+              }
             }
             SET_I32(x)
           }

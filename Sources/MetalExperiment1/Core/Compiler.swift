@@ -29,7 +29,7 @@ extension Context {
         print("Compiler pass ends.")
       }
     }
-    precondition(eagerOperations.count > 0)
+    precondition(eagerOperations.count > 0, "Compiled without any eager operations.")
     defer {
       eagerOperations.removeAll(keepingCapacity: true)
     }
@@ -162,7 +162,7 @@ extension Context {
         }
         
         // Append operation.
-        precondition(input.shape.elementsEqual(output.shape))
+        precondition(input.shape.elementsEqual(output.shape), "Broadcasting not yet supported.")
         if !unary.isNoOp {
           fusionOperations.append(unary.operation)
           if let metadata = unary.metadata {
@@ -191,9 +191,9 @@ extension Context {
         let outputAllocation = output.reference!.takeUnretainedValue()
         _internalRelease(input)
         _internalRelease(output)
-        precondition(input.dataType == output.dataType)
+        precondition(input.dataType == output.dataType, "Data types did not match.")
         let byteCount = explicitCopy.input.byteCount
-        precondition(byteCount == explicitCopy.output.byteCount)
+        precondition(byteCount == explicitCopy.output.byteCount, "Byte counts did not match.")
         
         outputAllocation.initialized = true
         let explicitCopy = Instruction.ExplicitCopy(

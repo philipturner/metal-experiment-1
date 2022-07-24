@@ -222,7 +222,10 @@ where Vector.Scalar: FixedWidthInteger & SIMDScalar {
   
   @inline(__always)
   func copy(into bufferPointer: UnsafeMutableBufferPointer<Scalar>) {
-    precondition(count == bufferPointer.count)
+    let bufferSize = bufferPointer.count
+    precondition(
+      count == bufferSize,
+      "Attempted to copy 'SmallVector' of size \(count) into buffer of size \(bufferSize).")
     let baseAddress = bufferPointer.baseAddress!
     if count <= Vector.scalarCount {
       for i in 0..<count {

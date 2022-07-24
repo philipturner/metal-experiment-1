@@ -377,8 +377,8 @@ class Allocation {
   // completion handler.
   deinit {
     // Catch memory management bugs.
-    precondition(handle.reference == nil)
-    precondition(handle.referenceCount.destroy() == 0)
+    precondition(handle.reference == nil, "Handle reference was not erased.")
+    precondition(handle.referenceCount.destroy() == 0, "Reference count was nonzero.")
     Context.global.numDeinitializedAllocations += 1
     
     // Activate this code if you suspect there are memory leaks.

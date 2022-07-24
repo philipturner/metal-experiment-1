@@ -17,12 +17,11 @@ enum UnaryOperationType: UInt16 {
   
   case cast_f32_to_f16 = 10
   case cast_f32_to_bool = 11
-  case cast_i32_to_f16 = 12
-  case cast_i32_to_f32 = 13
-  case cast_i32_to_bool = 14
-  case cast_f32_to_i32 = 15 // requires metadata
-  case cast_i32_to_i16 = 16 // requires metadata
-  case cast_i32_to_u16 = 17 // requires metadata
+  case cast_f32_to_i32 = 12 // requires metadata
+  case cast_i32_to_f16 = 13
+  case cast_i32_to_f32 = 14
+  case cast_i32_to_bool = 15
+  case cast_i32_to_i32 = 16 // requires metadata
   
   case ceil_f32 = 20
   case cos_f32 = 21
@@ -76,22 +75,20 @@ enum UnaryOperationType2: UInt16 {
   case square_i64 = 4
   case square_u64 = 5
   
-  case cast_f32_to_i64 = 10
-  case cast_i64_to_bool = 11
+  case cast_f32_to_u32 = 10
+  case cast_f32_to_i64 = 11
   case cast_i64_to_f16 = 12
   case cast_i64_to_f32 = 13
-  case cast_i64_to_u8 = 14
-  case cast_i64_to_u16 = 15
-  case cast_i64_to_u32 = 16
+  case cast_i64_to_bool = 14
+  // cast_i64_to_i32 = cast_u64_to_i32,
+  // cast_i64_to_u32 = cast_u64_to_u32
   
-  case cast_f32_to_u32 = 20
-  case cast_f32_to_u64 = 21
-  case cast_u64_to_bool = 22
-  case cast_u64_to_f16 = 23
-  case cast_u64_to_f32 = 24
-  case cast_u64_to_u8 = 25
-  case cast_u64_to_u16 = 26
-  case cast_u64_to_u32 = 27
+  case cast_f32_to_u64 = 20
+  case cast_u64_to_f16 = 21
+  case cast_u64_to_f32 = 22
+  // cast_u64_to_bool = cast_i64_to_bool
+  case cast_u64_to_i32 = 23 // requires metadata
+  case cast_u64_to_u32 = 24 // requires metadata
   
   case scalar_add_i64 = 30 // requires metadata
   case scalar_mul_i64 = 31 // requires metadata

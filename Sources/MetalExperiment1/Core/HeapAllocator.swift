@@ -114,7 +114,7 @@ class BufferBlock: AllocatorBlockProtocol {
   }
   
   static func alignUp(size: Int, alignment: Int) -> Int {
-    precondition(alignment.nonzeroBitCount == 1)
+    precondition(alignment.nonzeroBitCount == 1, "Alignment '\(alignment)' is not a power of 2.")
     return (size + alignment - 1) & ~(alignment - 1)
   }
   
@@ -182,7 +182,7 @@ class HeapBlock: AllocatorBlockProtocol {
   }
   
   deinit {
-    precondition(numBuffers == 0)
+    precondition(numBuffers == 0, "Deinitialized heap block with \(numBuffers) remaining buffers.")
     
     // Activate this code if you suspect there are memory leaks.
     #if false

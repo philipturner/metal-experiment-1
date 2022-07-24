@@ -211,6 +211,14 @@ extension OperationRegistry {
 // MARK: - Unary Operations
 
 extension OperationRegistry {
+  @inline(__always)
+  static func commonUnaryPrecondition(_ args: Arguments) {
+    precondition(
+      args.inputs.count == 1, "Passed \(args.inputs.count) inputs into a unary operation.")
+    precondition(
+      args.outputs.count == 1, "Passed \(args.outputs.count) inputs into a unary operation.")
+  }
+  
   static func dispatchUnary(
     _ args: inout Arguments,
     _ operation_f32: UnaryOperationType?,
@@ -219,8 +227,7 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil
   ) {
     let ctx = Context.global
-    precondition(args.inputs.count == 1)
-    precondition(args.outputs.count == 1)
+    commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
@@ -289,8 +296,7 @@ extension OperationRegistry {
     _ operation: UnaryOperationType
   ) {
     let ctx = Context.global
-    precondition(args.inputs.count == 1)
-    precondition(args.outputs.count == 1)
+    commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
@@ -321,8 +327,7 @@ extension OperationRegistry {
     _ operation_i32: UnaryOperationType
   ) {
     let ctx = Context.global
-    precondition(args.inputs.count == 1)
-    precondition(args.outputs.count == 1)
+    commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
@@ -404,8 +409,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     let ctx = Context.global
-    precondition(args.inputs.count == 1)
-    precondition(args.outputs.count == 1)
+    commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)

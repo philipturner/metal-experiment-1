@@ -19,8 +19,8 @@ enum ElementwiseOperationType2: ushort {
   square_i64 = 4,
   square_u64 = 5,
   
-  cast_f32_to_i64 = 10,
-  cast_f32_to_u32 = 11,
+  cast_f32_to_u32 = 10,
+  cast_f32_to_i64 = 11,
   cast_i64_to_f16 = 12,
   cast_i64_to_f32 = 13,
   cast_i64_to_bool = 14,
@@ -31,7 +31,6 @@ enum ElementwiseOperationType2: ushort {
   cast_u64_to_f16 = 21,
   cast_u64_to_f32 = 22,
   // cast_u64_to_bool = cast_i64_to_bool
-  // cast_u64_to_i32 = cast_i64_to_i32
   cast_u64_to_i32 = 23, // requires metadata
   cast_u64_to_u32 = 24, // requires metadata
   

@@ -187,7 +187,7 @@ enum DataType: UInt16, CustomStringConvertible {
   }
   
   @inline(__always)
-  var isSigned: Bool {
+  var isSignedInteger: Bool {
     rawValue >= 3 && rawValue <= 6
   }
   
@@ -200,6 +200,11 @@ enum DataType: UInt16, CustomStringConvertible {
   @inline(__always)
   var representableByInt64: Bool {
     rawValue >= 2 && rawValue <= 9
+  }
+  
+  @inline(__always)
+  var requiresLargeRepresentation: Bool {
+    rawValue == 6 || rawValue >= 9
   }
   
   @inline(__always)

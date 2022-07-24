@@ -71,14 +71,16 @@ public class Context {
     #if os(Windows)
     AcquireSRWLockExclusive(&_mutex)
     #else
-    precondition(pthread_mutex_lock(&_mutex) == 0)
+    let code = pthread_mutex_lock(&_mutex)
+    precondition(code == 0, "Attempt to acquire mutex returned '\(code)'.")
     #endif
     
     defer {
       #if os(Windows)
       ReleaseSRWLockExclusive(&_mutex)
       #else
-      precondition(pthread_mutex_unlock(&_mutex) == 0)
+      let code = pthread_mutex_unlock(&_mutex)
+      precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
       #endif
     }
     return try body()
