@@ -183,6 +183,8 @@ enum Instruction {
     // of metadata per operation is subject to change.
     var metadata: SmallVector<SIMD2<UInt64>>
     var dataGroup: DataGroup
+    
+    // TODO: Support scalar broadcasting for each input.
     var input1: Allocation
     var input2: Allocation?
     var input3: Allocation?

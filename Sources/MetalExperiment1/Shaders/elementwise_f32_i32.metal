@@ -32,17 +32,16 @@ enum MemoryCast: ushort {
   // `bool` can be masked as either `i8` or `u8`.
 };
 
-// TODO: Rework to include 3 x all reading parameters, packed into 4 bytes.
+struct ReadParams {
+  // (1 << 7) bit marks whether it's scalar broadcasting. Lowest bits mark # bytes per element.
+  ushort layout;
+  MemoryCast memory_cast;
+};
+
 struct DispatchParams {
-  // Reading
-  bool read_scalar_broadcast;
-  ushort read_size;
-  MemoryCast read_memory_cast;
-  
-  // Execution
+  ReadParams read_params[3];
+  ushort num_inputs;
   ushort num_operations;
-  
-  // Writing
   MemoryCast write_memory_cast;
 };
 
@@ -173,7 +172,7 @@ enum ElementwiseOperationType: ushort {
 
 // MARK: - Classes
 
-class CompressedStorage {
+class CompressedRegister {
   uint4 data;
   
 public:
@@ -222,42 +221,42 @@ public:
   }
 };
 
-class Storage {
+class Register {
   uint4 data;
   
 public:
   // Memory cast setters
   
-  void set_vector_f32_i32(CompressedStorage storage) {
-    data = storage.get_vector_u32();
+  void set_vector_f32_i32(CompressedRegister compressed) {
+    data = compressed.get_vector_u32();
   }
   
-  void set_vector_f16(CompressedStorage storage) {
-    half4 in = as_type<half4>(storage.get_vector_u16());
+  void set_vector_f16(CompressedRegister compressed) {
+    half4 in = as_type<half4>(compressed.get_vector_u16());
     float4 casted = float4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_vector_i8(CompressedStorage storage) {
-    char4 in = as_type<char4>(storage.get_vector_u8());
+  void set_vector_i8(CompressedRegister compressed) {
+    char4 in = as_type<char4>(compressed.get_vector_u8());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_vector_i16(CompressedStorage storage) {
-    short4 in = as_type<short4>(storage.get_vector_u16());
+  void set_vector_i16(CompressedRegister compressed) {
+    short4 in = as_type<short4>(compressed.get_vector_u16());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_vector_u8(CompressedStorage storage) {
-    uchar4 in = as_type<uchar4>(storage.get_vector_u8());
+  void set_vector_u8(CompressedRegister compressed) {
+    uchar4 in = as_type<uchar4>(compressed.get_vector_u8());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
   
-  void set_vector_u16(CompressedStorage storage) {
-    ushort4 in = as_type<ushort4>(storage.get_vector_u16());
+  void set_vector_u16(CompressedRegister compressed) {
+    ushort4 in = as_type<ushort4>(compressed.get_vector_u16());
     int4 casted = int4(in);
     data = as_type<uint4>(casted);
   }
@@ -305,19 +304,19 @@ public:
 
 // MARK: - Shader Function Utilities
 
-#define SET_F32(expr)  \
-storage.set_f32(expr); \
-break;                 \
+#define SET_F32(expr)    \
+register1.set_f32(expr); \
+break;                   \
 
-#define SET_I32(expr)  \
-storage.set_i32(expr); \
-break;                 \
+#define SET_I32(expr)    \
+register1.set_i32(expr); \
+break;                   \
 
-#define GET_SET_F32(expr)        \
-SET_F32(expr(storage.get_f32())) \
+#define GET_SET_F32(expr)          \
+SET_F32(expr(register1.get_f32())) \
 
-#define GET_SET_I32(expr)        \
-SET_I32(expr(storage.get_i32())) \
+#define GET_SET_I32(expr)          \
+SET_I32(expr(register1.get_i32())) \
 
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
@@ -428,71 +427,92 @@ kernel void elementwise_f32_i32(
   device void *output [[buffer(6)]],
   uint tid [[thread_position_in_grid]]
 ) {
-  CompressedStorage compressed_storage;
-  if (params.read_scalar_broadcast) {
-    uint mem_slice_u32 = ((device uint*)input1)[0];
-    switch (params.read_size) {
+  Register register1;
+  Register register2;
+  Register register3;
+  for (int i = 0; i < params.num_inputs; ++i) {
+    ReadParams read_params = params.read_params[i];
+    CompressedRegister compressed;
+    
+    if (read_params.layout & 128) {
+      uint mem_slice_u32 = ((device uint*)input1)[0];
+      switch (read_params.layout) {
+        case 128 + 1: {
+          uchar mem_slice = uchar(mem_slice_u32);
+          compressed.set_scalar_u8(mem_slice);
+          break;
+        }
+        case 128 + 2: {
+          ushort mem_slice = ushort(mem_slice_u32);
+          compressed.set_scalar_u16(mem_slice);
+          break;
+        }
+        default: /*128 + 4*/ {
+          uint mem_slice = uint(mem_slice_u32);
+          compressed.set_scalar_u32(mem_slice);
+          break;
+        }
+      }
+    } else {
+      switch (read_params.layout) {
+        case 1: {
+          uchar4 mem_slice = ((device uchar4*)input1)[tid];
+          compressed.set_vector_u8(mem_slice);
+          break;
+        }
+        case 2: {
+          ushort4 mem_slice = ((device ushort4*)input1)[tid];
+          compressed.set_vector_u16(mem_slice);
+          break;
+        }
+        default: /*4*/ {
+          uint4 mem_slice = ((device uint4*)input1)[tid];
+          compressed.set_vector_u32(mem_slice);
+          break;
+        }
+      }
+    }
+    
+    Register expanded;
+    switch (read_params.memory_cast) {
+      case f32_i32_native: {
+        expanded.set_vector_f32_i32(compressed);
+        break;
+      }
+      case f16_as_f32: {
+        expanded.set_vector_f16(compressed);
+        break;
+      }
+      case i8_as_i32: {
+        expanded.set_vector_i8(compressed);
+        break;
+      }
+      case i16_as_i32: {
+        expanded.set_vector_i16(compressed);
+        break;
+      }
+      case u8_as_i32: {
+        expanded.set_vector_u8(compressed);
+        break;
+      }
+      default: /*u16_as_i32*/ {
+        expanded.set_vector_u16(compressed);
+        break;
+      }
+    }
+    switch (i) {
+      case 0: {
+        register1 = expanded;
+        break;
+      }
       case 1: {
-        uchar mem_slice = uchar(mem_slice_u32);
-        compressed_storage.set_scalar_u8(mem_slice);
+        register2 = expanded;
         break;
       }
-      case 2: {
-        ushort mem_slice = ushort(mem_slice_u32);
-        compressed_storage.set_scalar_u16(mem_slice);
+      default: /*2*/ {
+        register3 = expanded;
         break;
       }
-      default: /*4*/ {
-        uint mem_slice = uint(mem_slice_u32);
-        compressed_storage.set_scalar_u32(mem_slice);
-        break;
-      }
-    }
-  } else {
-    switch (params.read_size) {
-      case 1: {
-        uchar4 mem_slice = ((device uchar4*)input1)[tid];
-        compressed_storage.set_vector_u8(mem_slice);
-        break;
-      }
-      case 2: {
-        ushort4 mem_slice = ((device ushort4*)input1)[tid];
-        compressed_storage.set_vector_u16(mem_slice);
-        break;
-      }
-      default: /*4*/ {
-        uint4 mem_slice = ((device uint4*)input1)[tid];
-        compressed_storage.set_vector_u32(mem_slice);
-        break;
-      }
-    }
-  }
-  
-  Storage storage;
-  switch (params.read_memory_cast) {
-    case f32_i32_native: {
-      storage.set_vector_f32_i32(compressed_storage);
-      break;
-    }
-    case f16_as_f32: {
-      storage.set_vector_f16(compressed_storage);
-      break;
-    }
-    case i8_as_i32: {
-      storage.set_vector_i8(compressed_storage);
-      break;
-    }
-    case i16_as_i32: {
-      storage.set_vector_i16(compressed_storage);
-      break;
-    }
-    case u8_as_i32: {
-      storage.set_vector_u8(compressed_storage);
-      break;
-    }
-    default: /*u16_as_i32*/ {
-      storage.set_vector_u16(compressed_storage);
-      break;
     }
   }
   
@@ -533,17 +553,17 @@ kernel void elementwise_f32_i32(
       } else if (operation <= cast_i32_to_i32) {
         switch (operation) {
           case cast_f32_to_f16: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto casted = float4(half4(x));
             SET_F32(casted)
           }
           case cast_f32_to_bool: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto casted = int4(bool4(x));
             SET_I32(casted);
           }
           case cast_f32_to_i32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto operation_metadata = get_metadata(metadata, metadata_index);
             int2 bounds = ((constant int2*)operation_metadata)[0];
             
@@ -552,22 +572,22 @@ kernel void elementwise_f32_i32(
             SET_I32(casted)
           }
           case cast_i32_to_f16: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto casted = float4(half4(x));
             SET_F32(casted)
           }
           case cast_i32_to_f32: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto casted = float4(x);
             SET_F32(casted)
           }
           case cast_i32_to_bool: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto casted = int4(bool4(x));
             SET_I32(casted);
           }
           default: /*cast_i32_to_i32*/ {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto operation_metadata = get_metadata(metadata, metadata_index);
             int2 masks = ((constant int2*)operation_metadata)[0];
             x &= int4(masks[0]); // truncate
@@ -597,7 +617,7 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::cosh)
           }
           case elu_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             x = select(x, precise::expm1(x), x < 0);
             SET_F32(x)
           }
@@ -614,17 +634,17 @@ kernel void elementwise_f32_i32(
       } else if (operation <= is_nan_f32) {
         switch (operation) {
           case is_finite_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto mask = int4(isfinite(x));
             SET_I32(mask)
           }
           case is_inf_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto mask = int4(isinf(x));
             SET_I32(mask)
           }
           default: /*is_nan_f32*/ {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto mask = int4(isnan(x));
             SET_I32(mask)
           }
@@ -632,7 +652,7 @@ kernel void elementwise_f32_i32(
       } else if (operation <= round_f32) {
         switch (operation) {
           case leaky_relu_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto operation_metadata = get_metadata(metadata, metadata_index);
             float alpha = ((constant float*)operation_metadata)[0];
             x = precise::max(x, x * alpha);
@@ -642,11 +662,11 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::log);
           }
           case log1p_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             SET_F32(precise::log(1 + x));
           }
           case logical_not_bool: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto casted = bool4(x);
             auto mask = int4(!casted);
             SET_I32(mask)
@@ -658,11 +678,11 @@ kernel void elementwise_f32_i32(
             GET_SET_I32(-)
           }
           case relu_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             SET_F32(precise::max(0, x))
           }
           case relu6_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             SET_F32(precise::clamp(x, 0, 6))
           }
           default: /*round_f32*/ {
@@ -675,7 +695,7 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::rsqrt)
           }
           case selu_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             constexpr float ALPHA = 1.6732632423543772848170429916717;
             constexpr float SCALE = 1.0507009873554804934193349852946;
             x = select(x, ALPHA * precise::expm1(x), x < 0);
@@ -683,7 +703,7 @@ kernel void elementwise_f32_i32(
             SET_F32(x);
           }
           case sigmoid_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             x = 1 + precise::exp(-x);
             x = precise::divide(1, x);
             SET_F32(x);
@@ -692,7 +712,7 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(sign)
           }
           case sign_i32: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             auto mask = select(int4(1), int4(-1), x < 0);
             mask = select(mask, int4(0), x == 0);
             SET_I32(mask)
@@ -704,7 +724,7 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::sinh)
           }
           default: /*softplus_f32*/ {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             x = precise::exp(x) + 1;
             x = precise::log(x);
             SET_F32(x)
@@ -713,7 +733,7 @@ kernel void elementwise_f32_i32(
       } else if (operation <= tanh_f32) {
         switch (operation) {
           case softsign_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             auto denominator = precise::abs(x) + 1;
             x = precise::divide(x, denominator);
             SET_F32(x)
@@ -722,11 +742,11 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::sqrt)
           }
           case square_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             SET_F32(x * x)
           }
           case square_i32: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             SET_I32(x * x)
           }
           case tan_f32: {
@@ -741,22 +761,22 @@ kernel void elementwise_f32_i32(
         uint rhs_mask = ((constant uint*)operation_metadata)[0];
         switch (operation) {
           case scalar_add_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             x += as_type<float>(rhs_mask);
             SET_F32(x);
           }
           case scalar_add_i32: {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             x += as_type<int>(rhs_mask);
             SET_I32(x);
           }
           case scalar_mul_f32: {
-            auto x = storage.get_f32();
+            auto x = register1.get_f32();
             x *= as_type<float>(rhs_mask);
             SET_F32(x);
           }
           default: /*scalar_mul_i32*/ {
-            auto x = storage.get_i32();
+            auto x = register1.get_i32();
             x *= as_type<int>(rhs_mask);
             SET_I32(x);
           }
@@ -773,24 +793,24 @@ kernel void elementwise_f32_i32(
   
   switch (params.write_memory_cast) {
     case f32_i32_native: {
-      uint4 mem_slice = storage.get_vector_f32_i32();
+      uint4 mem_slice = register1.get_vector_f32_i32();
       ((device uint4*)output)[tid] = mem_slice;
       break;
     }
     case f16_as_f32: {
-      ushort4 mem_slice = storage.get_vector_f16();
+      ushort4 mem_slice = register1.get_vector_f16();
       ((device ushort4*)output)[tid] = mem_slice;
       break;
     }
     case i8_as_i32:
     case u8_as_i32: {
-      uchar4 mem_slice = storage.get_vector_i8_u8();
+      uchar4 mem_slice = register1.get_vector_i8_u8();
       ((device uchar4*)output)[tid] = mem_slice;
       break;
     }
     default: /*i16_as_i32
                u16_as_i32*/ {
-      ushort4 mem_slice = storage.get_vector_i16_u16();
+      ushort4 mem_slice = register1.get_vector_i16_u16();
       ((device ushort4*)output)[tid] = mem_slice;
       break;
     }

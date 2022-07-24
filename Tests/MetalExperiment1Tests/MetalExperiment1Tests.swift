@@ -1,5 +1,6 @@
 import XCTest
 @testable import MetalExperiment1
+import Metal
 
 func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()

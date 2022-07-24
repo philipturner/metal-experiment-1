@@ -67,17 +67,14 @@ private extension Context {
     let input1 = instruction.input1
     try input1.materialize()
     encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
-    
     if let input2 = instruction.input2 {
       try input2.materialize()
       encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
     }
-    
     if let input3 = instruction.input3 {
       try input3.materialize()
       encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
     }
-    
     let output = instruction.output
     try output.materialize()
     output.lastModifiedCommandBufferID = ectx.commandBufferID
@@ -92,31 +89,33 @@ private extension Context {
       case u16_as_i32 = 5
       
       @inline(__always)
-      init(dataType: DataType) {
-        switch dataType {
-        case .float16:
+      init(dataTypeRawValue: UInt16) {
+        switch dataTypeRawValue {
+        case DataType.float16.rawValue:
           self = .f16_as_f32
-        case .float32:
+        case DataType.float32.rawValue:
           self = .f32_i32_native
-        case .bool:
+        case DataType.bool.rawValue:
           self = .u8_as_i32
-        case .int8:
+        case DataType.int8.rawValue:
           self = .i8_as_i32
-        case .int16:
+        case DataType.int16.rawValue:
           self = .i16_as_i32
-        case .int32:
+        case DataType.int32.rawValue:
           self = .f32_i32_native
-        case .uint8:
+        case DataType.uint8.rawValue:
           self = .u8_as_i32
-        case .uint16:
+        case DataType.uint16.rawValue:
           self = .u16_as_i32
-        case .uint32, .int64, .uint64:
-          fatalError("'unary_f32_i32' does not support data type '\(dataType)'.")
+        default:
+          let dataType = DataType(rawValue: dataTypeRawValue)
+          fatalError(
+            "'unary_f32_i32' does not support data type '\(dataType?.description ?? "invalid")'.")
         }
       }
       
       @inline(__always)
-      var read_size: UInt16 {
+      var readSize: UInt16 {
         switch self {
         case .f32_i32_native: return 4
         case .f16_as_f32: return 2
@@ -128,31 +127,80 @@ private extension Context {
       }
     }
     
+    struct ReadParams {
+      var layout: UInt16
+      var memory_cast: MemoryCast.RawValue
+    }
+    
     // The memory casts must be stored as explicit raw values, instead of Swift enums. Doing the
     // latter makes Metal code run incorrectly. Swift probably doesn't store an `enum` in memory
     // using its exact raw value.
     struct DispatchParams {
-      var read_scalar_broadcast: Bool
-      var read_size: UInt16
-      var read_memory_cast: MemoryCast.RawValue
+      var read_param_1: ReadParams
+      var read_param_2: ReadParams
+      var read_param_3: ReadParams
+      var num_inputs: UInt16
       var num_operations: UInt16
       var write_memory_cast: MemoryCast.RawValue
       
-      init(inputDataType: DataType, numOperations: Int, outputDataType: DataType) {
-        let read_memory_cast = MemoryCast(dataType: inputDataType)
-        let write_memory_cast = MemoryCast(dataType: outputDataType)
-        self.read_scalar_broadcast = false
-        self.read_memory_cast = read_memory_cast.rawValue
-        self.num_operations = UInt16(numOperations)
-        self.write_memory_cast = write_memory_cast.rawValue
-        self.read_size = read_memory_cast.read_size
+      init(
+        numOperations: Int,
+        inputHandle1: AllocationHandle,
+        inputHandle2: AllocationHandle?,
+        inputHandle3: AllocationHandle?,
+        outputHandle: AllocationHandle
+      ) {
+        var dataTypeRawValues = SIMD4<UInt16>(repeating: .max)
+        var broadcastScalarMasks = SIMD4<UInt16>(repeating: 0)
+        dataTypeRawValues[0] = inputHandle1.dataType.rawValue
+        dataTypeRawValues[3] = outputHandle.dataType.rawValue
+        broadcastScalarMasks[0] = 0
+        broadcastScalarMasks[3] = 0
+        var numInputs: UInt16 = 1
+        if let inputHandle2 = inputHandle2 {
+          dataTypeRawValues[1] = inputHandle2.dataType.rawValue
+          broadcastScalarMasks[1] = 0
+          numInputs = 2
+          if let inputHandle3 = inputHandle3 {
+            dataTypeRawValues[2] = inputHandle3.dataType.rawValue
+            broadcastScalarMasks[2] = 0
+            numInputs = 3
+          }
+        } else {
+          precondition(inputHandle3 == nil, "This should never happen.")
+        }
+        
+        var layouts = SIMD4<UInt16>(repeating: 0)
+        var memoryCastRawValues = SIMD4<MemoryCast.RawValue>(repeating: 0)
+        for i in 0..<4 {
+          let dataTypeRawValue = dataTypeRawValues[i]
+          guard dataTypeRawValue != .max else {
+            continue
+          }
+          let memoryCast = MemoryCast(dataTypeRawValue: dataTypeRawValue)
+          memoryCastRawValues[i] = memoryCast.rawValue
+          let readSize = memoryCast.readSize
+          let broadcastScalarMask = broadcastScalarMasks[i]
+          layouts[i] = broadcastScalarMask | readSize
+        }
+        
+        // 2nd and 3rd read params can be invalid, as long as they aren't read from.
+        self.read_param_1 = .init(layout: layouts[0], memory_cast: memoryCastRawValues[0])
+        self.read_param_2 = .init(layout: layouts[1], memory_cast: memoryCastRawValues[1])
+        self.read_param_3 = .init(layout: layouts[2], memory_cast: memoryCastRawValues[2])
+        self.num_inputs = numInputs
+        self.num_operations = UInt16(truncatingIfNeeded: numOperations)
+        self.write_memory_cast = memoryCastRawValues[3]
       }
     }
     
     let numOperations = instruction.operations.count
     var params = DispatchParams(
-      inputDataType: input1.handle.dataType, numOperations: numOperations,
-      outputDataType: output.handle.dataType)
+      numOperations: instruction.operations.count,
+      inputHandle1: instruction.input1.handle,
+      inputHandle2: instruction.input2?.handle,
+      inputHandle3: instruction.input3?.handle,
+      outputHandle: instruction.output.handle)
     encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 0)
     
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in
