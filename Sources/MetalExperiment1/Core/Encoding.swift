@@ -11,7 +11,6 @@ struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
   private var encoder: MTLComputeCommandEncoder?
-  private unowned var state: MTLComputePipelineState?
   
   init(commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
     self.commandBuffer = commandBuffer
@@ -34,17 +33,6 @@ struct EncodingContext {
     if let encoder = encoder {
       encoder.endEncoding()
       self.encoder = nil
-      self.state = nil
-    }
-  }
-  
-  @inline(__always)
-  mutating func setComputePipelineState(_ state: MTLComputePipelineState) {
-    if self.state === state {
-      // Skip function call.
-    } else {
-      self.state = state
-      encoder!.setComputePipelineState(state)
     }
   }
 }
@@ -71,9 +59,9 @@ private extension Context {
     let encoder = ectx.makeEncoder()
     switch instruction.dataGroup {
     case .f32_i32:
-      ectx.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+      encoder.setComputePipelineState(ShaderCache.elementwise_f32_i32)
     case .u32_i64_u64:
-      ectx.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
+      encoder.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
     }
     
     let input1 = instruction.input1
