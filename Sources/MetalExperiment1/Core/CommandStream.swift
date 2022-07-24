@@ -55,6 +55,25 @@ extension Context {
     // Perhaps to query a reasonable minimum for command buffer latency, I can send an empty one at
     // program startup. It should take longer than most because the system isn't fired up, but it
     // will at least be smaller than a supermassive batch with 128 unique commands in it.
+    
+    // TODO: Heuristic that holds off on encoding 128 operations at least one has fully completed.
+    // The GPU might be running its first convolution op, then you make 128 equally long convolution
+    // ops that stall the GPU because the command buffer is huge. The maximum batch size could
+    // exponentially grow up to 128, which fits with the performance pattern of the first
+    // instructions taking longer. They have to wait on `MPSGraph`s and initial heap expansion
+    // anyway.
+    //
+    // This does not mean you halt the acceptance of ops. This needs to wait as long as possible to
+    // accept more MPSGraph submissions. This gradual expansion of batch size happens while flushing
+    // the stream. It compiles all 128 operations to fish out elementwise ones that can be fused.
+    // Between fusion boundaries, there is little cost to making new command buffers.
+    //
+    // A more refined idea: dynamically expand or contract command buffer size based on how long
+    // operations are taking. This can use short-term memory, which is damped and doesn't respond
+    // well to sudden changes in operation distribution. It can also use an elaborate long-term
+    // memory mechanism, which hashes complex operations and profiles their execution time with
+    // respect to several parameters. Perhaps it could be an opt-in plugin. This is sounding like a
+    // real-time AI making quick decisions, running on the Apple AMX.
     flushStream(precomputedBackPressure: backPressure)
   }
 }
@@ -170,7 +189,7 @@ private extension Context {
         let shouldFlush = numCommitted == numCompleted
         DispatchQueue.global().async {
           Context.global.sync {
-            // Captured `currentCommandBufferID` declared above.
+            // Captures `currentCommandBufferID` declared above.
             let ctx = Context.global
             ctx.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()

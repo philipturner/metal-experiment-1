@@ -75,9 +75,12 @@ private extension Context {
     case .u32_i64_u64:
       ectx.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
     }
+    
     let input1 = instruction.input1
     try input1.materialize()
     encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
+    
+    
     
     let output = instruction.output
     try output.materialize()
