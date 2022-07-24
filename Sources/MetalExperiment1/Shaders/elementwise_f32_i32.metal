@@ -94,8 +94,7 @@ struct DispatchParams {
 // casts.
 //
 // Casting integer types to other integer types falls in the same boat. It can all be emulated with
-// some masking. Due to complexity of sign extension, integer casts fall into two categories: signed
-// and unsigned. Casting to `bool` behaves differently than casting to integers. It returns 1 if the
+// some masking. Casting to `bool` behaves differently than casting to integers. It returns 1 if the
 // if the input is nonzero, regardless of the bits.
 
 enum ElementwiseOperationType: ushort {
@@ -112,12 +111,11 @@ enum ElementwiseOperationType: ushort {
   
   cast_f32_to_f16 = 10,
   cast_f32_to_bool = 11,
-  cast_i32_to_f16 = 12,
-  cast_i32_to_f32 = 13,
-  cast_i32_to_bool = 14,
-  cast_f32_to_i32 = 15, // requires metadata
-  cast_i32_to_i16 = 16, // requires metadata
-  cast_i32_to_u16 = 17, // requires metadata
+  cast_f32_to_i32 = 12, // requires metadata
+  cast_i32_to_f16 = 13,
+  cast_i32_to_f32 = 14,
+  cast_i32_to_bool = 15,
+  cast_i32_to_i32 = 16, // requires metadata
   
   ceil_f32 = 20,
   cos_f32 = 21,
@@ -532,57 +530,53 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::atanh)
           }
         }
-      } else if (operation <= cast_i32_to_u16) {
-        if (operation <= cast_i32_to_bool) {
-          switch (operation) {
-            case cast_f32_to_f16: {
-              auto x = storage.get_f32();
-              auto casted = float4(half4(x));
-              SET_F32(casted)
-            }
-            case cast_f32_to_bool: {
-              auto x = storage.get_f32();
-              auto casted = int4(bool4(x));
-              SET_I32(casted);
-            }
-            case cast_i32_to_f16: {
-              auto x = storage.get_i32();
-              auto casted = float4(half4(x));
-              SET_F32(casted)
-            }
-            case cast_i32_to_f32: {
-              auto x = storage.get_i32();
-              auto casted = float4(x);
-              SET_F32(casted)
-            }
-            default: /*cast_i32_to_bool*/ {
-              auto x = storage.get_i32();
-              auto casted = int4(bool4(x));
-              SET_I32(casted);
-            }
+      } else if (operation <= cast_i32_to_i32) {
+        switch (operation) {
+          case cast_f32_to_f16: {
+            auto x = storage.get_f32();
+            auto casted = float4(half4(x));
+            SET_F32(casted)
           }
-        } else {
-          auto operation_metadata = get_metadata(metadata, metadata_index);
-          int2 bounds = ((constant int2*)operation_metadata)[0];
-          switch (operation) {
-            case cast_f32_to_i32: {
-              auto x = storage.get_f32();
-              auto casted = int4(x);
-              casted = clamp(casted, bounds[0], bounds[1]);
-              SET_I32(casted)
+          case cast_f32_to_bool: {
+            auto x = storage.get_f32();
+            auto casted = int4(bool4(x));
+            SET_I32(casted);
+          }
+          case cast_f32_to_i32: {
+            auto x = storage.get_f32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            int2 bounds = ((constant int2*)operation_metadata)[0];
+            
+            auto casted = int4(x);
+            casted = clamp(casted, bounds[0], bounds[1]);
+            SET_I32(casted)
+          }
+          case cast_i32_to_f16: {
+            auto x = storage.get_i32();
+            auto casted = float4(half4(x));
+            SET_F32(casted)
+          }
+          case cast_i32_to_f32: {
+            auto x = storage.get_i32();
+            auto casted = float4(x);
+            SET_F32(casted)
+          }
+          case cast_i32_to_bool: {
+            auto x = storage.get_i32();
+            auto casted = int4(bool4(x));
+            SET_I32(casted);
+          }
+          default: /*cast_i32_to_i32*/ {
+            auto x = storage.get_i32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            int2 masks = ((constant int2*)operation_metadata)[0];
+            
+            x &= int4(masks[0]); // truncate
+            if (masks[1] != 0) { // sign extend
+              int4 sign_mask = select(int4(0), int4(~masks[0]), short4(x) > 0);
+              x |= sign_mask;
             }
-            case cast_i32_to_i16: {
-              auto x = storage.get_i32();
-              int4 sign_mask = select(int4(0), int4(~bounds[0]), x < 0);
-              x &= int4(bounds[0]); // truncate
-              x |= sign_mask; // sign extend
-              SET_I32(x)
-            }
-            default: /*cast_i32_to_u16*/ {
-              auto x = storage.get_i32();
-              x &= int4(bounds[0]); // truncate
-              SET_I32(x);
-            }
+            SET_I32(x)
           }
         }
       } else if (operation <= floor_f32) {

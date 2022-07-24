@@ -237,7 +237,7 @@ extension OperationRegistry {
       "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
     }
     
-    // Select operation type.
+    // Select operation.
     var operation: UInt16
     var dataGroup: DataGroup = .f32_i32
     if let operation_bool = operation_bool {
@@ -340,7 +340,7 @@ extension OperationRegistry {
     }
     precondition(dataType != .bool, dataMismatch(operation_f32))
     
-    // Select operation type.
+    // Select operation.
     var operation: UInt16
     var dataGroup: DataGroup = .f32_i32
     var metadata: UInt64
@@ -399,6 +399,27 @@ extension OperationRegistry {
     ctx.eagerOperations.append(.unary(.init(
       operation, input, output, dataGroup, metadata, isNoOp)))
   }
+  
+  static func dispatchCast(
+    _ args: inout Arguments
+  ) {
+    let ctx = Context.global
+    precondition(args.inputs.count == 1)
+    precondition(args.outputs.count == 1)
+    
+    // Fetch input.
+    let input = decodeInput(&args.inputs)
+    ctx._internalRetain(input)
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let outputDataType = DataType(tensorFlowDataType: decodeScalar(&args.attributes))
+    let inputShape = input.shape
+    let outputByteCount = inputShape.reduce(outputDataType.stride, *)
+    
+    // Select operation.
+    
+  }
 }
 
 extension OperationRegistry {
@@ -430,6 +451,12 @@ extension OperationRegistry {
   static let atanh = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnary(&args, .atanh_f32, nil, nil)
+  }
+  
+  // Codes 10 - 16
+  static let cast = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchCast(&args)
   }
   
   // Codes 20 - 26

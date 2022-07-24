@@ -15,14 +15,14 @@ enum UnaryOperationType: UInt16 {
   case atan_f32 = 6
   case atanh_f32 = 7
   
-  // TODO: - Support casting
-//  case cast_f32_to_f16 = 10
-//  case cast_f32_to_i32 = 11 // requires metadata
-//  case cast_i32_to_bool = 12
-//  case cast_i32_to_f16 = 13
-//  case cast_i32_to_f32 = 14
-//  case cast_i32_to_u8 = 15
-//  case cast_i32_to_u16 = 16
+  case cast_f32_to_f16 = 10
+  case cast_f32_to_bool = 11
+  case cast_i32_to_f16 = 12
+  case cast_i32_to_f32 = 13
+  case cast_i32_to_bool = 14
+  case cast_f32_to_i32 = 15 // requires metadata
+  case cast_i32_to_i16 = 16 // requires metadata
+  case cast_i32_to_u16 = 17 // requires metadata
   
   case ceil_f32 = 20
   case cos_f32 = 21

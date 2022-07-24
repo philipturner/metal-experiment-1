@@ -216,7 +216,7 @@ class BufferPool {
 
 enum HeapAllocator {
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
-  static var debugInfoEnabled = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_ALLOCATOR")
+  static var debugInfoEnabled = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_HEAP_ALLOCATOR")
   
   private static var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
   

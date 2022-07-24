@@ -147,6 +147,9 @@ enum DataType: UInt16, CustomStringConvertible {
   
   // Used in multiple places; the getter is likely a function call. Inlining optimizations for some
   // other members of `DataType` assume `stride` is a function call.
+  //
+  // TODO: Make this extremely fast by doing tricks with bits. Changes this from a function call to
+  // a few inlined assembly instructions.
   var stride: Int {
     switch self {
     case .float16:

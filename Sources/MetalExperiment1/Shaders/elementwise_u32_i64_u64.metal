@@ -19,23 +19,21 @@ enum ElementwiseOperationType2: ushort {
   square_i64 = 4,
   square_u64 = 5,
   
-  // TODO: Reorder placement of casting to bool, reflect f32_i32 shader.
   cast_f32_to_i64 = 10,
-  cast_i64_to_bool = 11,
+  cast_f32_to_u32 = 11,
   cast_i64_to_f16 = 12,
   cast_i64_to_f32 = 13,
-  cast_i64_to_u8 = 14,
-  cast_i64_to_u16 = 15,
-  cast_i64_to_u32 = 16,
+  cast_i64_to_bool = 14,
+  // cast_i64_to_i32 = cast_u64_to_i32,
+  // cast_i64_to_u32 = cast_u64_to_u32
   
-  case_f32_to_u32 = 20,
-  cast_f32_to_u64 = 21,
-  cast_u64_to_bool = 22,
-  cast_u64_to_f16 = 23,
-  cast_u64_to_f32 = 24,
-  cast_u64_to_u8 = 25,
-  cast_u64_to_u16 = 26,
-  cast_u64_to_u32 = 27,
+  cast_f32_to_u64 = 20,
+  cast_u64_to_f16 = 21,
+  cast_u64_to_f32 = 22,
+  // cast_u64_to_bool = cast_i64_to_bool
+  // cast_u64_to_i32 = cast_i64_to_i32
+  cast_u64_to_i32 = 23, // requires metadata
+  cast_u64_to_u32 = 24, // requires metadata
   
   scalar_add_i64 = 30, // requires metadata
   scalar_mul_i64 = 31, // requires metadata
