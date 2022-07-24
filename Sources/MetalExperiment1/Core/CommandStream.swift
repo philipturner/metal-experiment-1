@@ -74,6 +74,11 @@ extension Context {
     // memory mechanism, which hashes complex operations and profiles their execution time with
     // respect to several parameters. Perhaps it could be an opt-in plugin. This is sounding like a
     // real-time AI making quick decisions, running on the Apple AMX.
+    //
+    // It can be a costly neural network because it fires when dealing with excessively long
+    // operations. For short ones like elementwise ops, it doesn't fire and isn't needed. This AI
+    // could be generalizable for not just ML ops, but any GPGPU domain including linear algebra.
+    // Even more awesome - I can train it using Swift for TensorFlow!
     flushStream(precomputedBackPressure: backPressure)
   }
 }
