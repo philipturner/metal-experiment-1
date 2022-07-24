@@ -45,6 +45,60 @@ extension Context {
 
 // MARK: - Operation Dispatch Table
 
+extension OperationRegistry {
+  static let registry: [StringWrapper: Function] = [
+    // Unary
+    
+    "Abs": abs,
+    "Acos": acos,
+    "Acosh": acosh,
+    "Asin": asin,
+    "Asinh": asinh,
+    "Atan": atan,
+    "Atanh": atanh,
+    
+    "Cast": cast,
+    
+    "Ceil": ceil,
+    "Cos": cos,
+    "Cosh": cosh,
+    "Elu": elu,
+    "Exp": exp,
+    "Expm1": expm1,
+    "Floor": floor,
+    
+    "IsFinite": isFinite,
+    "IsInf": isInf,
+    "IsNan": isNan,
+    
+    "LeakyRelu": leakyRelu,
+    "Log": log,
+    "Log1p": log1p,
+    "LogicalNot": logicalNot,
+    "Neg": neg,
+    "Relu": relu,
+    "Relu6": relu6,
+    "Round": round,
+    
+    "Rsqrt": rsqrt,
+    "Selu": selu,
+    "Sigmoid": sigmoid,
+    "Sign": sign,
+    "Sin": sin,
+    "Sinh": sinh,
+    "Softplus": softplus,
+    
+    "Softsign": softsign,
+    "Sqrt": sqrt,
+    "Square": square,
+    "Tan": tan,
+    "Tanh": tanh,
+    
+    "ScalarAdd": scalarAdd,
+    "ScalarMul": scalarMul,
+  ]
+}
+
 struct OperationRegistry {
   typealias FunctionSignature = @convention(c) (
     OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int) -> Void
@@ -154,58 +208,6 @@ struct OperationRegistry {
     ptr[0] = output._cHandle
     advanceOutput(&ptr)
   }
-}
-
-extension OperationRegistry {
-  static let registry: [StringWrapper: Function] = [
-    // Unary
-    
-    "Abs": abs,
-    "Acos": acos,
-    "Acosh": acosh,
-    "Asin": asin,
-    "Asinh": asinh,
-    "Atan": atan,
-    "Atanh": atanh,
-    
-    "Ceil": ceil,
-    "Cos": cos,
-    "Cosh": cosh,
-    "Elu": elu,
-    "Exp": exp,
-    "Expm1": expm1,
-    "Floor": floor,
-    
-    "IsFinite": isFinite,
-    "IsInf": isInf,
-    "IsNan": isNan,
-    
-    "LeakyRelu": leakyRelu,
-    "Log": log,
-    "Log1p": log1p,
-    "LogicalNot": logicalNot,
-    "Neg": neg,
-    "Relu": relu,
-    "Relu6": relu6,
-    "Round": round,
-    
-    "Rsqrt": rsqrt,
-    "Selu": selu,
-    "Sigmoid": sigmoid,
-    "Sign": sign,
-    "Sin": sin,
-    "Sinh": sinh,
-    "Softplus": softplus,
-    
-    "Softsign": softsign,
-    "Sqrt": sqrt,
-    "Square": square,
-    "Tan": tan,
-    "Tanh": tanh,
-    
-    "ScalarAdd": scalarAdd,
-    "ScalarMul": scalarMul,
-  ]
 }
 
 // MARK: - Unary Operations
@@ -418,11 +420,44 @@ extension OperationRegistry {
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
     let outputDataType = DataType(tensorFlowDataType: decodeScalar(&args.attributes))
-    let inputShape = input.shape
-    let outputByteCount = inputShape.reduce(outputDataType.stride, *)
+    let shape = input.shape
+    let byteCount = shape.reduce(outputDataType.stride, *)
+    let output = ctx._internalAllocate(2, outputDataType, byteCount, shape)
+    encodeOutput(&args.outputs, output)
     
     // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    var metadata: UInt64?
+    var isNoOp: Bool
+    let inputDataType = input.dataType
+    if inputDataType.requiresLargeRepresentation || outputDataType.requiresLargeRepresentation {
+      let cast = UnaryOperationType2(
+        casting: inputDataType, to: outputDataType, metadata: &metadata)
+      if let cast = cast {
+        operation = cast.rawValue
+        isNoOp = false
+      } else {
+        operation = .max
+        isNoOp = true
+      }
+      dataGroup = .u32_i64_u64
+    } else {
+      let cast = UnaryOperationType(
+        casting: inputDataType, to: outputDataType, metadata: &metadata)
+      if let cast = cast {
+        operation = cast.rawValue
+        isNoOp = false
+      } else {
+        operation = .max
+        isNoOp = true
+      }
+      dataGroup = .f32_i32
+    }
     
+    // Append operation.
+    ctx.eagerOperations.append(.unary(.init(
+      operation, input, output, dataGroup, metadata, isNoOp)))
   }
 }
 

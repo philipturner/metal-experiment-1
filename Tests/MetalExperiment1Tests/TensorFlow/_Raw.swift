@@ -10,10 +10,10 @@ import MetalExperiment1
 // MARK: - _Raw Helpers
 
 @inlinable @inline(__always)
-func dispatchUnary<T0>(
+func dispatchUnary<T0, T1>(
   _ name: StaticString,
   _ input1: Tensor<T0>
-) -> Tensor<T0> {
+) -> Tensor<T1> {
   return decodeOutputs { outputs in
     encodeInputs(input1) { inputs in
       let name = encodeName(name)
@@ -24,11 +24,11 @@ func dispatchUnary<T0>(
 }
 
 @inlinable @inline(__always)
-func dispatchUnary<T0, U0: Numeric>(
+func dispatchUnary<T0, T1, U0>(
   _ name: StaticString,
   _ input1: Tensor<T0>,
   _ attribute1: U0
-) -> Tensor<T0> {
+) -> Tensor<T1> {
   return decodeOutputs { outputs in
     encodeInputs(input1) { inputs in
       encodeAttributes(attribute1) { attributes in
@@ -66,7 +66,7 @@ func encodeAttributes() -> UnsafeRawBufferPointer {
 }
 
 @inlinable @inline(__always)
-func encodeAttributes<T0: Numeric>(
+func encodeAttributes<T0>(
   _ input1: T0,
   _ body: (UnsafeRawBufferPointer) -> Void
 ) {
@@ -180,6 +180,13 @@ public enum _Raw {
   @inlinable @inline(__always)
   public static func atanh<T>(_ input: Tensor<T>) -> Tensor<T> {
     dispatchUnary("Atanh", input)
+  }
+  
+  
+  
+  @inlinable @inline(__always)
+  public static func cast<T, U>(_ input: Tensor<T>) -> Tensor<U> {
+    dispatchUnary("Cast", input, U.tensorFlowDataType)
   }
   
   
@@ -348,7 +355,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func scalarAdd<T: Numeric>(
+  public static func scalarAdd<T>(
     _ input: Tensor<T>,
     rhs: T
   ) -> Tensor<T> {
@@ -356,7 +363,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func scalarMul<T: Numeric>(
+  public static func scalarMul<T>(
     _ input: Tensor<T>,
     rhs: T
   ) -> Tensor<T> {

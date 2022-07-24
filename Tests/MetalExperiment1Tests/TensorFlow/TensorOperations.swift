@@ -51,6 +51,26 @@ public func atanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 
 
+extension Tensor where Scalar: Numeric {
+  @inlinable
+  public init(_ other: Tensor<Bool>) {
+    self = _Raw.cast(other)
+  }
+  
+  @inlinable
+  public init<OtherScalar: Numeric>(_ other: Tensor<OtherScalar>) {
+    self = _Raw.cast(other)
+  }
+}
+
+extension Tensor {
+  func unitTestCastBool() -> Tensor<Bool> {
+    return _Raw.cast(self)
+  }
+}
+
+
+
 @inlinable
 public func ceil<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.ceil(x)
