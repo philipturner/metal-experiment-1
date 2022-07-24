@@ -156,8 +156,7 @@ enum AllocationError: Error {
 }
 
 class Allocation {
-  static var debugInfoEnabled = fetchEnvironmentBoolean(
-    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_REFERENCE_COUNTING")
+  static var debugInfoEnabled = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_REFERENCE_COUNTING")
   
   let id: UInt64
   var handle: AllocationHandle

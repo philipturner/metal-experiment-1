@@ -15,8 +15,7 @@ public class Context {
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   static let maxBatchesInFlight = 10
   
-  static var profilingEncoding = fetchEnvironmentBoolean(
-    "TENSORFLOW_DEBUG_PLUGGABLE_DEVICE_COMMAND_STREAM")
+  static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
   static var maxCommandsPerBatch = 128
   var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
