@@ -12,4 +12,4 @@ Metal experiments:
 - 7) Perform "constant folding" of extremely tiny tensors on the CPU, before submitting to the GPU
 - 8) Generate a graph in-flight, fuse non-adjacent unary operations, fuse binary/ternary operations into unary operation chains
 
-> You may notice some wierd commit messages being just "z". It is easy to type "z" on a keyboard when submitting a commit message to synchronize your work with the cloud. Alternatively, I could close-source this repo to prevent the informal commit messages from being public. But the downsides of that approach are much greater.
+> You may notice some wierd commit messages being just "z". It is easy to type "z" on a keyboard when submitting a commit message to synchronize my work with the cloud. This was originally a private repo, so I am not trying to make it look formal.

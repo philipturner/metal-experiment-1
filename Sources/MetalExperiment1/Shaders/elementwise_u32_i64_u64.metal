@@ -11,6 +11,10 @@ using namespace metal;
 // The u32/i64/u64 ubsershader includes any casts that involve u32/i64/u64. Its start and end are
 // more complex than f32/i32; it can read and write from more data types.
 
+enum MemoryCast2: ushort {
+  
+};
+
 enum ElementwiseOperationType2: ushort {
   abs_i64 = 0,
   neg_i64 = 1,
