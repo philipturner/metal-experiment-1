@@ -145,40 +145,32 @@ enum DataType: UInt16, CustomStringConvertible {
     }
   }
   
-  // Used in multiple places; the getter is likely a function call. Inlining optimizations for some
-  // other members of `DataType` assume `stride` is a function call.
-  //
-  // TODO: Make this extremely fast by doing tricks with bits. Changes this from a function call to
-  // a few inlined assembly instructions.
+  @inline(__always)
   var stride: Int {
-    switch self {
-    case .float16:
-      #if (os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64)
-      return 2
-      #else
-      return MemoryLayout<Float16>.stride
-      #endif
-    case .float32:
-      return MemoryLayout<Float>.stride
-    case .bool:
-      return MemoryLayout<Bool>.stride
-    case .int8:
-      return MemoryLayout<Int8>.stride
-    case .int16:
-      return MemoryLayout<Int16>.stride
-    case .int32:
-      return MemoryLayout<Int32>.stride
-    case .int64:
-      return MemoryLayout<Int64>.stride
-    case .uint8:
-      return MemoryLayout<UInt8>.stride
-    case .uint16:
-      return MemoryLayout<UInt16>.stride
-    case .uint32:
-      return MemoryLayout<UInt32>.stride
-    case .uint64:
-      return MemoryLayout<UInt64>.stride
+    if rawValue < 2 {
+      return 2 &<< rawValue
+    } else if rawValue == 2 {
+      return 1
+    } else if rawValue < 7 {
+      return 1 &<< (rawValue &- 3)
+    } else {
+      return 1 &<< (rawValue &- 7)
     }
+  }
+  
+  @inline(__always)
+  func contiguousSize(byteCount: Int) -> Int {
+    var stridePowerOf2: UInt16
+    if rawValue < 2 {
+      stridePowerOf2 = 1 &+ rawValue
+    } else if rawValue == 2 {
+      stridePowerOf2 = 0
+    } else if rawValue < 7 {
+      stridePowerOf2 = rawValue &- 3
+    } else {
+      stridePowerOf2 = rawValue &- 7
+    }
+    return byteCount &>> stridePowerOf2
   }
   
   @inline(__always)
@@ -205,12 +197,6 @@ enum DataType: UInt16, CustomStringConvertible {
   @inline(__always)
   var requiresLargeRepresentation: Bool {
     rawValue == 6 || rawValue >= 9
-  }
-  
-  @inline(__always)
-  func contiguousSize(byteCount: Int) -> Int {
-    let stridePowerOf2 = self.stride.trailingZeroBitCount
-    return byteCount >> stridePowerOf2
   }
   
   var description: String {

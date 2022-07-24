@@ -102,7 +102,7 @@ final class MetalExperiment1Tests: XCTestCase {
       validate(handle, value: Float(length))
       
       let totalTime = latency + Profiler.checkpoint()
-      let latencyAverage = Double(latency * 10 / length) / 10
+      let latencyAverage = Double(latency * 100 / length) / 100
       let throughputAverage = Double(totalTime * 10 / length) / 10
       print("""
         Average CPU-side latency: \(latencyAverage) \(Profiler.timeUnit), \
