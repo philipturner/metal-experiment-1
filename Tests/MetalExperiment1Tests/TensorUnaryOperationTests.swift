@@ -13,6 +13,58 @@ func test<T: Equatable>(_ function: (Tensor<T>) -> Tensor<T>, input: T, expected
   XCTAssertEqual(transformedTensor.scalars, [T](repeating: expected, count: 5))
 }
 
+func test4<T0: Equatable, T1: Equatable, T2: Equatable, T3: Equatable>(
+  _ function1: (Tensor<T0>) -> () -> Tensor<T0>, input1: T0, expected1: T0,
+  _ function2: (Tensor<T1>) -> () -> Tensor<T1>, input2: T1, expected2: T1,
+  _ function3: (Tensor<T2>) -> () -> Tensor<T2>, input3: T2, expected3: T2,
+  _ function4: (Tensor<T3>) -> () -> Tensor<T3>, input4: T3, expected4: T3
+) {
+  // Performs multiple operations before waiting, reducing test execution time.
+  #if true
+  let tensor1 = function1(Tensor(repeating: input1, shape: [5]))()
+  let tensor2 = function2(Tensor(repeating: input2, shape: [5]))()
+  let tensor3 = function3(Tensor(repeating: input3, shape: [5]))()
+  let tensor4 = function4(Tensor(repeating: input4, shape: [5]))()
+  _ = tensor4.scalars
+  
+  XCTAssertEqual(tensor1.scalars, [T0](repeating: expected1, count: 5))
+  XCTAssertEqual(tensor2.scalars, [T1](repeating: expected2, count: 5))
+  XCTAssertEqual(tensor3.scalars, [T2](repeating: expected3, count: 5))
+  XCTAssertEqual(tensor4.scalars, [T3](repeating: expected4, count: 5))
+  #else
+  test(function1, input: input1, expected: expected1)
+  test(function2, input: input2, expected: expected2)
+  test(function3, input: input3, expected: expected3)
+  test(function4, input: input4, expected: expected4)
+  #endif
+}
+
+func test4<T0: Equatable, T1: Equatable, T2: Equatable, T3: Equatable>(
+  _ function1: (Tensor<T0>) -> Tensor<T0>, input1: T0, expected1: T0,
+  _ function2: (Tensor<T1>) -> Tensor<T1>, input2: T1, expected2: T1,
+  _ function3: (Tensor<T2>) -> Tensor<T2>, input3: T2, expected3: T2,
+  _ function4: (Tensor<T3>) -> Tensor<T3>, input4: T3, expected4: T3
+) {
+  // Performs multiple operations before waiting, reducing test execution time.
+  #if true
+  let tensor1 = function1(Tensor(repeating: input1, shape: [5]))
+  let tensor2 = function2(Tensor(repeating: input2, shape: [5]))
+  let tensor3 = function3(Tensor(repeating: input3, shape: [5]))
+  let tensor4 = function4(Tensor(repeating: input4, shape: [5]))
+  _ = tensor4.scalars
+  
+  XCTAssertEqual(tensor1.scalars, [T0](repeating: expected1, count: 5))
+  XCTAssertEqual(tensor2.scalars, [T1](repeating: expected2, count: 5))
+  XCTAssertEqual(tensor3.scalars, [T2](repeating: expected3, count: 5))
+  XCTAssertEqual(tensor4.scalars, [T3](repeating: expected4, count: 5))
+  #else
+  test(function1, input: input1, expected: expected1)
+  test(function2, input: input2, expected: expected2)
+  test(function3, input: input3, expected: expected3)
+  test(function4, input: input4, expected: expected4)
+  #endif
+}
+
 func test<T, U: Equatable>(
   _ function: (Tensor<T>) -> Tensor<U>,
   input: T,
@@ -115,18 +167,28 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(Tensor<Float16>.incremented, input: 42, expected: 43)
     #endif
     test(Tensor<Float>.incremented, input: 42, expected: 43)
-    test(Tensor<Int8>.incremented, input: 42, expected: 43)
-    test(Tensor<Int16>.incremented, input: 42, expected: 43)
-    test(Tensor<Int32>.incremented, input: 42, expected: 43)
-    test(Tensor<UInt8>.incremented, input: 42, expected: 43)
-    test(Tensor<UInt16>.incremented, input: 42, expected: 43)
+    test4(
+      Tensor<Int8>.incremented, input1: 42, expected1: 43,
+      Tensor<Int16>.incremented, input2: 42, expected2: 43,
+      Tensor<Int32>.incremented, input3: 42, expected3: 43,
+      Tensor<Int64>.incremented, input4: 42, expected4: 43)
+    test4(
+      Tensor<UInt8>.incremented, input1: 42, expected1: 43,
+      Tensor<UInt16>.incremented, input2: 42, expected2: 43,
+      Tensor<UInt32>.incremented, input3: 42, expected3: 43,
+      Tensor<UInt64>.incremented, input4: 42, expected4: 43)
     
     // Test integer overflow.
-    test(Tensor<Int8>.incremented, input: 127, expected: -128)
-    test(Tensor<Int16>.incremented, input: .max, expected: .min)
-    test(Tensor<Int32>.incremented, input: .max, expected: .min)
-    test(Tensor<UInt8>.incremented, input: 255, expected: 0)
-    test(Tensor<UInt16>.incremented, input: .max, expected: .min)
+    test4(
+      Tensor<Int8>.incremented, input1: 127, expected1: -128,
+      Tensor<Int16>.incremented, input2: .max, expected2: .min,
+      Tensor<Int32>.incremented, input3: .max, expected3: .min,
+      Tensor<Int64>.incremented, input4: .max, expected4: .min)
+    test4(
+      Tensor<UInt8>.incremented, input1: 255, expected1: 0,
+      Tensor<UInt16>.incremented, input2: .max, expected2: .min,
+      Tensor<UInt32>.incremented, input3: .max, expected3: .min,
+      Tensor<UInt64>.incremented, input4: .max, expected4: .min)
   }
   
   // Integer overflow demonstrates the behavior described here:
@@ -139,13 +201,18 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(abs, input: Float16(-42), expected: 42)
     #endif
     test(abs, input: Float(-42), expected: 42)
-    test(abs, input: Int8(-127), expected: 127)
-    test(abs, input: -Int16.max, expected: Int16.max)
+    test4(
+      abs, input1: Int8(-127), expected1: 127,
+      abs, input2: -Int16.max, expected2: Int16.max,
+      abs, input3: -Int32.max, expected3: Int32.max,
+      abs, input4: -Int64.max, expected4: Int64.max)
     
     // Test integer overflow.
-    test(abs, input: Int8(-128), expected: Int8(-128))
-    test(abs, input: Int16.min, expected: Int16.min)
-    test(abs, input: Int32.min, expected: Int32.min)
+    test4(
+      abs, input1: Int8(-128), expected1: Int8(-128),
+      abs, input2: Int16.min, expected2: Int16.min,
+      abs, input3: Int32.min, expected3: Int32.min,
+      abs, input4: Int64.min, expected4: Int64.min)
   }
   
   func testInverseTrigonometric() throws {
@@ -179,11 +246,16 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(Tensor.init, input: Float(-42), expected: Float(-42))
     test(Tensor.unitTestCastBool, input: Bool(true), expected: Bool(true))
     test(Tensor.unitTestCastBool, input: Bool(false), expected: Bool(false))
-    test(Tensor.init, input: Int8(-42), expected: Int8(-42))
-    test(Tensor.init, input: Int16(-42), expected: Int16(-42))
-    test(Tensor.init, input: Int32(-42), expected: Int32(-42))
-    test(Tensor.init, input: UInt8(42), expected: UInt8(42))
-    test(Tensor.init, input: UInt16(42), expected: UInt16(42))
+    test4(
+      Tensor.init, input1: Int8(-42), expected1: Int8(-42),
+      Tensor.init, input2: Int16(-42), expected2: Int16(-42),
+      Tensor.init, input3: Int32(-42), expected3: Int32(-42),
+      Tensor.init, input4: Int64(-42), expected4: Int64(-42))
+    test4(
+      Tensor.init, input1: UInt8(42), expected1: UInt8(42),
+      Tensor.init, input2: UInt16(42), expected2: UInt16(42),
+      Tensor.init, input3: UInt32(42), expected3: UInt32(42),
+      Tensor.init, input4: UInt64(42), expected4: UInt64(42))
     
     // Casting to/from boolean.
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
@@ -204,11 +276,14 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(Tensor.unitTestCastBool, input: Int8(-1), expected: true)
     test(Tensor.unitTestCastBool, input: Int32(0), expected: false)
     test(Tensor.unitTestCastBool, input: Int32(-1), expected: true)
+    test(Tensor.unitTestCastBool, input: Int64(0), expected: false)
+    test(Tensor.unitTestCastBool, input: Int64(-1), expected: true)
+    test(Tensor.unitTestCastBool, input: UInt64(1), expected: true)
     
     // Casting between floating-point types.
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     test(Tensor.init, input: Float(0.5), expected: Float16(0.5))
-    test(Tensor.init, input: Float(0.5), expected: Float(0.5))
+    test(Tensor.init, input: Float16(0.5), expected: Float(0.5))
     test(Tensor.init, input: Float.infinity, expected: Float16.infinity)
     test(Tensor.init, input: Float16.infinity, expected: Float.infinity)
     test(Tensor.init, input: Float(65534), expected: Float16.infinity)
@@ -221,6 +296,8 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(Tensor.init, input: UInt8(7), expected: Float16(7))
     test(Tensor.init, input: Int32(7), expected: Float16(7))
     test(Tensor.init, input: UInt16(65534), expected: Float16.infinity)
+    test(Tensor.init, input: Int64(70_000_000), expected: Float16.infinity)
+    test(Tensor.init, input: UInt64(70_000_000), expected: Float16.infinity)
     test(Tensor.init, input: Float16.infinity, expected: UInt16.max)
     test(Tensor.init, input: -Float16.infinity, expected: UInt16.min)
     test(Tensor.init, input: -Float16.infinity, expected: Int16.min)
@@ -230,56 +307,76 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(Tensor.init, input: UInt8(7), expected: Float(7))
     test(Tensor.init, input: Int32(7), expected: Float(7))
     test(Tensor.init, input: UInt16(65534), expected: Float(65534))
+    test(Tensor.init, input: Int64(70_000_000), expected: Float(70_000_000))
+    test(Tensor.init, input: UInt64(70_000_000), expected: Float(70_000_000))
     test(Tensor.init, input: Float.infinity, expected: UInt16.max)
     test(Tensor.init, input: -Float.infinity, expected: UInt16.min)
     test(Tensor.init, input: -Float.infinity, expected: Int16.min)
     test(Tensor.init, input: Float.nan, expected: Int32(0))
     
+    func testIntCombo<T: TensorFlowSignedNumeric & FixedWidthInteger, U: TensorFlowInteger>(
+      _ type1: T.Type,
+      _ type2: U.Type
+    ) {
+      // Performs multiple operations before waiting, reducing test execution time.
+      #if true
+      let tensor1 = Tensor<U>(Tensor(repeating: T.max, shape: [5]))
+      let tensor2 = Tensor<U>(Tensor(repeating: T.max / 2, shape: [5]))
+      let tensor3 = Tensor<U>(Tensor(repeating: -T.max, shape: [5]))
+      let tensor4 = Tensor<U>(Tensor(repeating: -T.max / 2, shape: [5]))
+      _ = tensor4.scalars
+      
+      let scalar1 = U(truncatingIfNeeded: T.max)
+      let scalar2 = U(truncatingIfNeeded: T.max / 2)
+      let scalar3 = U(truncatingIfNeeded: -T.max)
+      let scalar4 = U(truncatingIfNeeded: -T.max / 2)
+      XCTAssertEqual(tensor1.scalars, [U](repeating: scalar1, count: 5))
+      XCTAssertEqual(tensor2.scalars, [U](repeating: scalar2, count: 5))
+      XCTAssertEqual(tensor3.scalars, [U](repeating: scalar3, count: 5))
+      XCTAssertEqual(tensor4.scalars, [U](repeating: scalar4, count: 5))
+      #else
+      test(Tensor.init, input: T.max, expected: U(truncatingIfNeeded: T.max))
+      test(Tensor.init, input: T.max / 2, expected: U(truncatingIfNeeded: T.max / 2))
+      test(Tensor.init, input: -T.max, expected: U(truncatingIfNeeded: -T.max))
+      test(Tensor.init, input: -T.max / 2, expected: U(truncatingIfNeeded: -T.max / 2))
+      #endif
+    }
+    
     // Casting between integral types (larger -> smaller).
-    test(Tensor.init, input: Int16.max, expected: Int8(truncatingIfNeeded: Int16.max))
-    test(Tensor.init, input: Int16.max / 2, expected: Int8(truncatingIfNeeded: Int16.max / 2))
-    test(Tensor.init, input: -Int16.max, expected: Int8(truncatingIfNeeded: -Int16.max))
-    test(Tensor.init, input: -Int16.max / 2, expected: Int8(truncatingIfNeeded: -Int16.max / 2))
+    testIntCombo(Int16.self, Int8.self)
     test(Tensor.init, input: UInt16.max, expected: Int8(truncatingIfNeeded: UInt16.max))
     test(Tensor.init, input: UInt16.max / 2, expected: Int8(truncatingIfNeeded: UInt16.max / 2))
-    
     test(Tensor.init, input: UInt16.max, expected: Int16(truncatingIfNeeded: UInt16.max))
     test(Tensor.init, input: UInt16.max / 2, expected: Int16(truncatingIfNeeded: UInt16.max / 2))
+    testIntCombo(Int32.self, UInt8.self)
+    testIntCombo(Int32.self, UInt16.self)
     
-    test(Tensor.init, input: Int32.max, expected: UInt8(truncatingIfNeeded: Int32.max))
-    test(Tensor.init, input: Int32.max / 2, expected: UInt8(truncatingIfNeeded: Int32.max / 2))
-    test(Tensor.init, input: -Int32.max, expected: UInt8(truncatingIfNeeded: -Int32.max))
-    test(Tensor.init, input: -Int32.max / 2, expected: UInt8(truncatingIfNeeded: -Int32.max / 2))
-    
-    test(Tensor.init, input: Int32.max, expected: UInt16(truncatingIfNeeded: Int32.max))
-    test(Tensor.init, input: Int32.max / 2, expected: UInt16(truncatingIfNeeded: Int32.max / 2))
-    test(Tensor.init, input: -Int32.max, expected: UInt16(truncatingIfNeeded: -Int32.max))
-    test(Tensor.init, input: -Int32.max / 2, expected: UInt16(truncatingIfNeeded: -Int32.max / 2))
+    // Casting between integral types (same size).
+    testIntCombo(Int8.self, UInt8.self)
+    testIntCombo(Int16.self, UInt16.self)
+    testIntCombo(Int32.self, UInt32.self)
+    testIntCombo(Int64.self, UInt64.self)
     
     // Casting between integral types (smaller -> larger).
-    test(Tensor.init, input: Int8.max, expected: UInt8(truncatingIfNeeded: Int8.max))
-    test(Tensor.init, input: Int8.max / 2, expected: UInt8(truncatingIfNeeded: Int8.max / 2))
-    test(Tensor.init, input: -Int8.max, expected: UInt8(truncatingIfNeeded: -Int8.max))
-    test(Tensor.init, input: -Int8.max / 2, expected: UInt8(truncatingIfNeeded: -Int8.max / 2))
+    test(Tensor.init, input: UInt8.max, expected: UInt32(truncatingIfNeeded: UInt8.max))
+    test(Tensor.init, input: UInt8.max / 2, expected: UInt32(truncatingIfNeeded: UInt8.max / 2))
+    test(Tensor.init, input: UInt8.max, expected: Int64(truncatingIfNeeded: UInt8.max))
+    test(Tensor.init, input: UInt8.max / 2, expected: Int64(truncatingIfNeeded: UInt8.max / 2))
+    testIntCombo(Int8.self, Int16.self)
+    testIntCombo(Int8.self, Int32.self)
+    testIntCombo(Int8.self, UInt32.self)
+    testIntCombo(Int8.self, Int64.self)
+    testIntCombo(Int16.self, Int32.self)
+    testIntCombo(Int32.self, UInt64.self)
     
-    test(Tensor.init, input: Int16.max, expected: UInt16(truncatingIfNeeded: Int16.max))
-    test(Tensor.init, input: Int16.max / 2, expected: UInt16(truncatingIfNeeded: Int16.max / 2))
-    test(Tensor.init, input: -Int16.max, expected: UInt16(truncatingIfNeeded: -Int16.max))
-    test(Tensor.init, input: -Int16.max / 2, expected: UInt16(truncatingIfNeeded: -Int16.max / 2))
-    
-    test(Tensor.init, input: Int8.max, expected: Int16(Int8.max))
-    test(Tensor.init, input: Int8.max / 2, expected: Int16(Int8.max / 2))
-    test(Tensor.init, input: -Int8.max, expected: Int16(-Int8.max))
-    test(Tensor.init, input: -Int8.max / 2, expected: Int16(-Int8.max / 2))
-    
-    test(Tensor.init, input: Int8.max, expected: Int32(Int8.max))
-    test(Tensor.init, input: Int8.max / 2, expected: Int32(Int8.max / 2))
-    test(Tensor.init, input: -Int8.max, expected: Int32(-Int8.max))
-    test(Tensor.init, input: -Int8.max / 2, expected: Int32(-Int8.max / 2))
-    test(Tensor.init, input: Int16.max, expected: Int32(Int16.max))
-    test(Tensor.init, input: Int16.max / 2, expected: Int32(Int16.max / 2))
-    test(Tensor.init, input: -Int16.max, expected: Int32(-Int16.max))
-    test(Tensor.init, input: -Int16.max / 2, expected: Int32(-Int16.max / 2))
+    // Regression test for `Int16` -> `UInt64` conversion.
+    testIntCombo(Int16.self, Int64.self)
+    testIntCombo(Int16.self, UInt64.self)
+    test(Tensor.init, input: UInt16.max, expected: Int64(truncatingIfNeeded: UInt16.max))
+    test(Tensor.init, input: UInt16.max / 2, expected: Int64(truncatingIfNeeded: UInt16.max / 2))
+    test(Tensor.init, input: UInt16.max, expected: UInt64(truncatingIfNeeded: UInt16.max))
+    test(Tensor.init, input: UInt16.max / 2, expected: UInt64(truncatingIfNeeded: UInt16.max / 2))
+    testIntCombo(Int8.self, Int64.self)
   }
   
   // Operations with codes 20 - 26
@@ -404,6 +501,9 @@ final class TensorUnaryOperationTests: XCTestCase {
     test(-, input: Int8(-128), expected: Int8(-128))
     test(-, input: Int16.min, expected: Int16.min)
     test(-, input: Int32.min, expected: Int32.min)
+    test(_Raw.neg, input: UInt8(0), expected: UInt8(0))
+    test(_Raw.neg, input: UInt8(1), expected: UInt8(255))
+    test(_Raw.neg, input: UInt16(65535), expected: UInt16(1))
     
     // The `round` operator in Swift does not round to nearest even.
     for input in [Float(-1.5), -0.5, 0.5, 1.5] {
@@ -481,21 +581,33 @@ final class TensorUnaryOperationTests: XCTestCase {
     
     test(sign, input: Float(-0.0), expected: 0.0)
     test(sign, input: Float(-0.0), expected: -0.0)
-    test(sign, input: Int8(-1), expected: -1)
-    test(sign, input: Int16(-1), expected: -1)
-    test(sign, input: Int32(-1), expected: -1)
+    test4(
+      sign, input1: Int8(-1), expected1: -1,
+      sign, input2: Int16(-1), expected2: -1,
+      sign, input3: Int32(-1), expected3: -1,
+      sign, input4: Int64(-1), expected4: -1)
     
-    test(sign, input: Int8(0), expected: 0)
-    test(sign, input: Int16(0), expected: 0)
-    test(sign, input: Int32(0), expected: 0)
-    test(sign, input: UInt8(0), expected: 0)
-    test(sign, input: UInt16(0), expected: 0)
+    test4(
+      sign, input1: Int8(0), expected1: 0,
+      sign, input2: Int16(0), expected2: 0,
+      sign, input3: Int32(0), expected3: 0,
+      sign, input4: Int64(0), expected4: 0)
+    test4(
+      sign, input1: UInt8(0), expected1: 0,
+      sign, input2: UInt16(0), expected2: 0,
+      sign, input3: UInt32(0), expected3: 0,
+      sign, input4: UInt64(0), expected4: 0)
     
-    test(sign, input: Int8(1), expected: 1)
-    test(sign, input: Int16(1), expected: 1)
-    test(sign, input: Int32(1), expected: 1)
-    test(sign, input: UInt8(1), expected: 1)
-    test(sign, input: UInt16(1), expected: 1)
+    test4(
+      sign, input1: Int8(1), expected1: 1,
+      sign, input2: Int16(1), expected2: 1,
+      sign, input3: Int32(1), expected3: 1,
+      sign, input4: Int64(1), expected4: 1)
+    test4(
+      sign, input1: UInt8(1), expected1: 1,
+      sign, input2: UInt16(1), expected2: 1,
+      sign, input3: UInt32(1), expected3: 1,
+      sign, input4: UInt64(1), expected4: 1)
   }
   
   // Operations with codes 60 - 65
@@ -531,17 +643,27 @@ final class TensorUnaryOperationTests: XCTestCase {
       testFloat(tanh, tanh, input: input)
     }
     
-    test(square, input: Int8(-11), expected: Int8(121))
-    test(square, input: Int16(-181), expected: Int16(32761))
-    test(square, input: Int32(-46340), expected: Int32(2_147_395_600))
-    test(square, input: UInt8(15), expected: UInt8(225))
-    test(square, input: UInt16(255), expected: UInt16(255 * 255))
+    test4(
+      square, input1: Int8(-11), expected1: Int8(121),
+      square, input2: Int16(-181), expected2: Int16(32761),
+      square, input3: Int32(-46340), expected3: Int32(2_147_395_600),
+      square, input4: Int64(-3_037_000_499), expected4: Int64(-3_037_000_499) * (-3_037_000_499))
+    test4(
+      square, input1: UInt8(15), expected1: UInt8(225),
+      square, input2: UInt16(255), expected2: UInt16(255 * 255),
+      square, input3: UInt32(65535), expected3: UInt32(65535 * 65535),
+      square, input4: UInt64(4_294_967_295), expected4: UInt64(4_294_967_295) * (4_294_967_295))
     
     // Test integer overflow.
-    test(square, input: Int8(16), expected: Int8(0))
-    test(square, input: Int16(256), expected: Int16(0))
-    test(square, input: Int32(65536), expected: Int32(0))
-    test(square, input: UInt8(16), expected: UInt8(0))
-    test(square, input: UInt16(256), expected: UInt16(0))
+    test4(
+      square, input1: Int8(16), expected1: Int8(0),
+      square, input2: Int16(256), expected2: Int16(0),
+      square, input3: Int32(65536), expected3: Int32(0),
+      square, input4: Int64(1 << 32), expected4: Int64(0))
+    test4(
+      square, input1: UInt8(16), expected1: UInt8(0),
+      square, input2: UInt16(256), expected2: UInt16(0),
+      square, input3: UInt32(65536), expected3: UInt32(0),
+      square, input4: UInt64(1 << 32), expected4: UInt64(0))
   }
 }

@@ -133,11 +133,11 @@ extension UnaryOperationType2 {
         if output.isSignedInteger {
           switch output {
           case .int8:
-            mask = 1 << 8 - 1
+            mask = UInt64(UInt8.max)
           case .int16:
-            mask = 1 << 16 - 1
+            mask = UInt64(UInt16.max)
           case .int32:
-            mask = 1 << 32 - 1
+            mask = UInt64(UInt32.max)
           case .int64:
             // No sign extension occurs when casting bool/u8/u16/u32 to i64.
             return nil
@@ -148,14 +148,14 @@ extension UnaryOperationType2 {
         } else {
           switch output {
           case .uint8:
-            mask = 1 << 8 - 1
+            mask = UInt64(UInt8.max)
           case .uint16:
-            mask = 1 << 16 - 1
+            mask = UInt64(UInt16.max)
           case .uint32:
-            mask = 1 << 32 - 1
+            mask = UInt64(UInt32.max)
           case .uint64:
             // Responsible for sign-extending casts of i8/i16/i32 to u64.
-            mask = 1 << 64 - 1
+            mask = UInt64.max
           default:
             fatalError("This should never happen.")
           }

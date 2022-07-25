@@ -126,10 +126,9 @@ extension Context {
         var restartingFusion: Bool
         if input == fusionTail {
           // In the middle of an operation fusion.
-          switch fusionDataGroup! {
-          case .f32_i32:
+          if fusionDataGroup! == unary.dataGroup {
             restartingFusion = false
-          case .u32_i64_u64:
+          } else {
             restartingFusion = true
           }
           
@@ -158,7 +157,7 @@ extension Context {
           }
           fusionHeadAllocation1 = input.reference!.takeUnretainedValue()
           fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
-          fusionDataGroup = .f32_i32
+          fusionDataGroup = unary.dataGroup
         }
         
         // Append operation.

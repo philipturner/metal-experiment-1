@@ -90,27 +90,27 @@ private extension Context {
       
       @inline(__always)
       init(dataTypeRawValue: UInt16) {
-        switch dataTypeRawValue {
-        case DataType.float16.rawValue:
+        let dataType = DataType(rawValue: dataTypeRawValue)
+        switch dataType.unsafelyUnwrapped {
+        case .float16:
           self = .f16_as_f32
-        case DataType.float32.rawValue:
+        case .float32:
           self = .f32_i32_native
-        case DataType.bool.rawValue:
+        case .bool:
           self = .u8_as_i32
-        case DataType.int8.rawValue:
+        case .int8:
           self = .i8_as_i32
-        case DataType.int16.rawValue:
+        case .int16:
           self = .i16_as_i32
-        case DataType.int32.rawValue:
+        case .int32:
           self = .f32_i32_native
-        case DataType.uint8.rawValue:
+        case .uint8:
           self = .u8_as_i32
-        case DataType.uint16.rawValue:
+        case .uint16:
           self = .u16_as_i32
         default:
-          let dataType = DataType(rawValue: dataTypeRawValue)
-          fatalError(
-            "'unary_f32_i32' does not support data type '\(dataType?.description ?? "invalid")'.")
+          let description = dataType?.description ?? "invalid"
+          fatalError("'unary_f32_i32' does not support data type '\(description)'.")
         }
       }
       
@@ -119,25 +119,63 @@ private extension Context {
         switch self {
         case .f32_i32_native: return 4
         case .f16_as_f32: return 2
-        case .i8_as_i32: return 1
-        case .i16_as_i32: return 2
-        case .u8_as_i32: return 1
-        case .u16_as_i32: return 2
+        case .i8_as_i32, .u8_as_i32: return 1
+        case .i16_as_i32, .u16_as_i32: return 2
         }
       }
     }
     
     enum MemoryCast2: UInt16, RawRepresentable {
       case i64_u64_native = 0
+      case i32_as_i64 = 1
+      case i16_as_i64 = 2
+      case i8_as_i64 = 3
+      
+      case u32_as_i64 = 4
+      case u16_as_i64 = 5
+      case u8_as_i64 = 6
+      case f32_padded = 7
+      case f16_as_f32_padded = 8
       
       @inline(__always)
       init(dataTypeRawValue: UInt16) {
-        fatalError()
+        let dataType = DataType(rawValue: dataTypeRawValue)
+        switch dataType.unsafelyUnwrapped {
+        case .float16:
+          self = .f16_as_f32_padded
+        case .float32:
+          self = .f32_padded
+        case .bool:
+          self = .u8_as_i64
+        case .int8:
+          self = .i8_as_i64
+        case .int16:
+          self = .i16_as_i64
+        case .int32:
+          self = .i32_as_i64
+        case .int64:
+          self = .i64_u64_native
+        case .uint8:
+          self = .u8_as_i64
+        case .uint16:
+          self = .u16_as_i64
+        case .uint32:
+          self = .u32_as_i64
+        case .uint64:
+          self = .i64_u64_native
+        }
       }
       
       @inline(__always)
       var readSize: UInt16 {
-        fatalError()
+        switch self {
+        case .i64_u64_native: return 8
+        case .i32_as_i64, .u32_as_i64: return 4
+        case .i16_as_i64, .u16_as_i64: return 2
+        case .i8_as_i64, .u8_as_i64: return 1
+        case .f32_padded: return 4
+        case .f16_as_f32_padded: return 2
+        }
       }
     }
     

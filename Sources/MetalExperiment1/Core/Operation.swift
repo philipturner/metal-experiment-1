@@ -105,15 +105,12 @@ enum UnaryOperationType2: UInt16 {
       }
     case .neg_i32:
       // Produce the same behavior with signed and unsigned integers.
-      // TODO: Run a test utilizing the _Raw namespace to check this behavior for `f32_i32`.
       self = .neg_i64
-//      if dataType == .int64 {
-//
-//      } else {
-//        fatalError("Attempted to negate an unsigned integer of type \(dataType).")
-//      }
     case .sign_i32:
       self = (dataType == .int64) ? .sign_i64 : .sign_u64
+    case .square_i32:
+      self = (dataType == .int64) ? .square_i64 : .square_u64
+    
     case .scalar_add_i32:
       self = .scalar_add_i64_u64
     case .scalar_mul_i32:

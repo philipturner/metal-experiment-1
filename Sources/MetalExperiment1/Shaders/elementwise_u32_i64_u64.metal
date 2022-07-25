@@ -308,6 +308,7 @@ kernel void elementwise_u32_i64_u64(
         case 128 + 2: {
           ushort mem_slice = ushort(mem_slice_u64);
           compressed.set_scalar_u16(mem_slice);
+          break;
         }
         default: /*128 + 1*/ {
           uchar mem_slice = uchar(mem_slice_u64);
@@ -330,6 +331,7 @@ kernel void elementwise_u32_i64_u64(
         case 2: {
           ushort2 mem_slice = ((device ushort2*)input1)[tid];
           compressed.set_vector_u16(mem_slice);
+          break;
         }
         default: /*1*/ {
           uchar2 mem_slice = ((device uchar2*)input1)[tid];
