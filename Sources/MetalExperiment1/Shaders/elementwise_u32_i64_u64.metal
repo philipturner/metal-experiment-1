@@ -37,6 +37,7 @@ struct DispatchParams {
   MemoryCast write_memory_cast;
 };
 
+// TODO: Investigate whether to include native u32 instructions.
 enum ElementwiseOperationType: ushort {
   // Unary (0 - 999)
   
@@ -189,6 +190,58 @@ public:
   }
   
   // Memory cast getters
+  
+  ulong2 get_vector_i64_u64() const {
+    return data;
+  }
+  
+  uint2 get_vector_i32_u32() const {
+    return uint2(data);
+  }
+  
+  ushort2 get_vector_i16_u16() const {
+    return ushort2(data);
+  }
+  
+  uchar2 get_vector_i8_u8() const {
+    return uchar2(data);
+  }
+  
+  uint2 get_vector_f32() const {
+    return as_type<uint2>(data[0]);
+  }
+  
+  ushort2 get_vector_f16() const {
+    float2 out = as_type<float2>(data[0]);
+    half2 casted = half2(out);
+    return as_type<ushort2>(casted);
+  }
+  
+  // Instruction execution utilities
+  
+  void set_i64(long2 input) {
+    data = as_type<ulong2>(input);
+  }
+  
+  void set_u64(ulong2 input) {
+    data = input;
+  }
+  
+  void set_f32(float2 input) {
+    data[0] = as_type<ulong>(input);
+  }
+  
+  long2 get_i64() const {
+    return as_type<long2>(data);
+  }
+  
+  ulong2 get_u64() const {
+    return data;
+  }
+  
+  float2 get_f32() const {
+    return as_type<float2>(data[0]);
+  }
 };
 
 kernel void elementwise_u32_i64_u64(

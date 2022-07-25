@@ -250,15 +250,11 @@ public:
   }
   
   void set_vector_u8(CompressedRegister compressed) {
-    uchar4 in = as_type<uchar4>(compressed.get_vector_u8());
-    int4 casted = int4(in);
-    data = as_type<uint4>(casted);
+    data = uint4(compressed.get_vector_u8());
   }
   
   void set_vector_u16(CompressedRegister compressed) {
-    ushort4 in = as_type<ushort4>(compressed.get_vector_u16());
-    int4 casted = int4(in);
-    data = as_type<uint4>(casted);
+    data = uint4(compressed.get_vector_u16());
   }
   
   // Memory cast getters
@@ -274,13 +270,11 @@ public:
   }
   
   uchar4 get_vector_i8_u8() const {
-    int4 out = as_type<int4>(data);
-    return uchar4(out);
+    return uchar4(data);
   }
   
   ushort4 get_vector_i16_u16() const {
-    int4 out = as_type<int4>(data);
-    return ushort4(out);
+    return ushort4(data);
   }
   
   // Instruction execution utilities
