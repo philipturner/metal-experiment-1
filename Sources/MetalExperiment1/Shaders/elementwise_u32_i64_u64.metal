@@ -11,6 +11,8 @@ using namespace metal;
 // The u32/i64/u64 ubsershader includes any casts that involve u32/i64/u64. Its start and end are
 // more complex than f32/i32; it can read and write from more data types.
 
+// Prioritizes performance of large integers over small integers. The `f32_i32` shader does the
+// opposite, bringing float-point point numbers and small integers to the top of switch statements.
 enum MemoryCast: ushort {
   i64_u64_native = 0,
   i32_as_i64 = 1,
@@ -278,5 +280,168 @@ kernel void elementwise_u32_i64_u64(
   device void *output [[buffer(6)]],
   uint tid [[thread_position_in_grid]]
 ) {
+  Register register1;
+  Register register2;
+  Register register3;
+  for (int i = 0; i < params.num_inputs; ++i) {
+    ReadParams read_params = params.read_params[i];
+    CompressedRegister compressed;
+    
+    if (read_params.layout & 128) {
+      ulong mem_slice_u64 = ((device ulong*)input1)[0];
+      switch (read_params.layout) {
+        case 128 + 8: {
+          ulong mem_slice = ulong(mem_slice_u64);
+          compressed.set_scalar_u64(mem_slice);
+          break;
+        }
+        case 128 + 4: {
+          uint mem_slice = uint(mem_slice_u64);
+          compressed.set_scalar_u32(mem_slice);
+          break;
+        }
+        case 128 + 2: {
+          ushort mem_slice = ushort(mem_slice_u64);
+          compressed.set_scalar_u16(mem_slice);
+        }
+        default: /*128 + 1*/ {
+          uchar mem_slice = uchar(mem_slice_u64);
+          compressed.set_scalar_u8(mem_slice);
+          break;
+        }
+      }
+    } else {
+      switch (read_params.layout) {
+        case 8: {
+          ulong2 mem_slice = ((device ulong2*)input1)[tid];
+          compressed.set_vector_u64(mem_slice);
+          break;
+        }
+        case 4: {
+          uint2 mem_slice = ((device uint2*)input1)[tid];
+          compressed.set_vector_u32(mem_slice);
+          break;
+        }
+        case 2: {
+          ushort2 mem_slice = ((device ushort2*)input1)[tid];
+          compressed.set_vector_u16(mem_slice);
+        }
+        default: /*1*/ {
+          uchar2 mem_slice = ((device uchar2*)input1)[tid];
+          compressed.set_vector_u8(mem_slice);
+          break;
+        }
+      }
+    }
+    
+    Register expanded;
+    if (read_params.memory_cast <= i8_as_i64) {
+      switch (read_params.memory_cast) {
+        case i64_u64_native: {
+          expanded.set_vector_i64_u64(compressed);
+          break;
+        }
+        case i32_as_i64: {
+          expanded.set_vector_i32(compressed);
+          break;
+        }
+        case i16_as_i64: {
+          expanded.set_vector_i16(compressed);
+          break;
+        }
+        default: /*i8_as_i64*/ {
+          expanded.set_vector_i8(compressed);
+          break;
+        }
+      }
+    } else {
+      switch (read_params.memory_cast) {
+        case u32_as_i64: {
+          expanded.set_vector_u32(compressed);
+          break;
+        }
+        case u16_as_i64: {
+          expanded.set_vector_u16(compressed);
+          break;
+        }
+        case u8_as_i64: {
+          expanded.set_vector_u8(compressed);
+          break;
+        }
+        case f32_padded: {
+          expanded.set_vector_f32(compressed);
+          break;
+        }
+        default: /*f16_as_f32_padded*/ {
+          expanded.set_vector_f16(compressed);
+          break;
+        }
+      }
+    }
+    switch (i) {
+      case 0: {
+        register1 = expanded;
+        break;
+      }
+      case 1: {
+        register2 = expanded;
+        break;
+      }
+      default: /*2*/ {
+        register3 = expanded;
+        break;
+      }
+    }
+  }
   
+  // pc = program counter
+  for (ushort pc = 0; pc < params.num_operations; ++pc) {
+    ElementwiseOperationType operation = operations[pc];
+    if (operation < 1000) {
+      // Unary
+      
+    } else if (operation < 2000) {
+      // Binary
+      
+    } else {
+      // Ternary
+      
+    }
+  }
+  
+  switch (params.write_memory_cast) {
+    case i64_u64_native: {
+      ulong2 mem_slice = register1.get_vector_i64_u64();
+      ((device ulong2*)output)[tid] = mem_slice;
+      break;
+    }
+    case i32_as_i64:
+    case u32_as_i64: {
+      uint2 mem_slice = register1.get_vector_i32_u32();
+      ((device uint2*)output)[tid] = mem_slice;
+      break;
+    }
+    case i16_as_i64:
+    case u16_as_i64: {
+      ushort2 mem_slice = register1.get_vector_i16_u16();
+      ((device ushort2*)output)[tid] = mem_slice;
+      break;
+    }
+    case i8_as_i64:
+    case u8_as_i64: {
+      uchar2 mem_slice = register1.get_vector_i8_u8();
+      ((device uchar2*)output)[tid] = mem_slice;
+      break;
+    }
+    case f32_padded: {
+      uint2 mem_slice = register1.get_vector_f32();
+      ((device uint2*)output)[tid] = mem_slice;
+      break;
+    }
+    default: /*f16_as_f32_padded*/ {
+      ushort2 mem_slice = register1.get_vector_f16();
+      ((device ushort2*)output)[tid] = mem_slice;
+      break;
+    }
+  }
 }
