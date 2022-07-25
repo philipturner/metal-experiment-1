@@ -32,17 +32,26 @@ extension Context {
     }
   }
   
-  // Only called in one location, but force-inlining anyway.
-  @inline(__always)
   func maybeFlushStream() {
     let backPressure = queryQueueBackPressure()
-    // TODO: -
-    // If it flushed because the batch was really long, prevent the very last command from being
-    // flushed. You're probably in the middle of calling into an operation, and all of the inputs
-    // are being retained. That prevents fusion.
-    if eagerOperations.count < Context.maxCommandsPerBatch,
-       backPressure >= 1 {
+    guard eagerOperations.count > Context.maxCommandsPerBatch ||
+          backPressure == 0 else {
       return
+    }
+    precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
+    
+    // If it flushed because the batch was really long, don't include the very last operation.
+    // `maybeFlushStream` is called in the middle of submitting an operation, and all of the inputs
+    // are being retained. That prevents fusion.
+    var currentOperation: EagerOperation?
+    if eagerOperations.count > Context.maxCommandsPerBatch {
+      currentOperation = eagerOperations.removeLast()
+    }
+    defer {
+      if let currentOperation = currentOperation {
+        precondition(eagerOperations.count == 0)
+        eagerOperations.append(currentOperation)
+      }
     }
     
     // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
