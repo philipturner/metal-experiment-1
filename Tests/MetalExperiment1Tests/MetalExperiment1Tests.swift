@@ -265,4 +265,30 @@ final class MetalExperiment1Tests: XCTestCase {
     let tensor4 = Tensor<Int8>(Tensor(repeating: Int8(-4), shape: [1]))
     XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [16])
   }
+  
+  func testMovingAverage() throws {
+    testHeader()
+    
+    var average = MovingAverage<UInt64>(repeating: 0, count: 10)
+    XCTAssertEqual(average.average, 0)
+    
+    average.append(20)
+    XCTAssertEqual(average.average, 2)
+    
+    average.append(9)
+    XCTAssertEqual(average.average, 2)
+    
+    average.append(1)
+    XCTAssertEqual(average.average, 3)
+    
+    for _ in 0..<7 {
+      average.append(10)
+    }
+    XCTAssertEqual(average.average, (30 + 7 * 10) / 10)
+    
+    for _ in 0..<10 {
+      average.append(5)
+    }
+    XCTAssertEqual(average.average, 5)
+  }
 }

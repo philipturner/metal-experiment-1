@@ -282,3 +282,32 @@ extension StringWrapper: ExpressibleByStringLiteral {
     self.init(value)
   }
 }
+
+struct MovingAverage<Element: FixedWidthInteger> {
+  private var data: [Element]
+  private var sum: Element
+  private(set) var average: Element
+  private var index: Int
+  private var count: Int { data.count }
+  
+  init(repeating repeatedValue: Element, count: Int) {
+    precondition(count > 0, "'MovingAverage' cannot be empty.")
+    data = Array(repeating: repeatedValue, count: count)
+    sum = repeatedValue * Element(count)
+    average = repeatedValue
+    index = 0
+  }
+  
+  mutating func append(_ newElement: Element) {
+    let oldElement = data[index]
+    data[index] = newElement
+    sum -= oldElement
+    sum += newElement
+    average = sum / Element(count)
+    
+    index += 1
+    if index == count {
+      index = 0
+    }
+  }
+}
