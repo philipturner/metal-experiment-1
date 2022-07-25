@@ -58,7 +58,41 @@ final class TensorTests: XCTestCase {
   
   func testFusion() throws {
     testHeader("Tensor operation fusion")
-    // Tests pairs and triples of unary ops, bypassing automatic submission of the first operation
-    // after reading scalars, prove they are fused.
+    
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    typealias SmallFloat = Float
+    #else
+    typealias SmallFloat = Float16
+    #endif
+    
+    do {
+      func getOutput() -> Tensor<SmallFloat> {
+        let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
+        let tensor2 = square(tensor1) // 25.050
+        // Fusion break
+        let tensor3 = Tensor<Int8>(tensor2) // 25
+        let tensor4 = Tensor<SmallFloat>(tensor3) // 5.0
+        let tensor5 = sqrt(tensor4) // 5.0
+        // Fusion break
+        return tensor5
+      }
+      XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
+    }
+    
+    // Fusion is interrupted by replacing `Int8` with `UInt64`.
+    do {
+      func getOutput() -> Tensor<SmallFloat> {
+        let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
+        let tensor2 = square(tensor1) // 25.050
+        // Fusion break
+        let tensor3 = Tensor<Int64>(tensor2) // 25
+        let tensor4 = Tensor<SmallFloat>(tensor3) // 5.0
+        // Fusion break
+        let tensor5 = sqrt(tensor4) // 5.0
+        // Fusion break
+        return tensor5
+      }
+      XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
+    }
   }
 }

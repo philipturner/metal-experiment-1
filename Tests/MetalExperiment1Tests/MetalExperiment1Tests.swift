@@ -258,5 +258,11 @@ final class MetalExperiment1Tests: XCTestCase {
     
     let tensor2 = Tensor<Int8>(Tensor(repeating: Float(2), shape: [1]))
     XCTAssertEqual(Tensor<Float>(square(tensor2)).scalars, [4])
+    
+    let tensor3 = Tensor<Int64>(Tensor(repeating: Int64(3), shape: [1]))
+    XCTAssertEqual(Tensor<UInt8>(square(tensor3)).scalars, [9])
+    
+    let tensor4 = Tensor<Int8>(Tensor(repeating: Int8(-4), shape: [1]))
+    XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [16])
   }
 }
