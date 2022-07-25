@@ -18,6 +18,7 @@ public class Context {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
   static var maxCommandsPerBatch = 128
+  static var maxCommandsPerSmallBatch = 16
   var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
   var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
   var numCompletedBatches: UnsafeAtomic<Int> = .create(0)

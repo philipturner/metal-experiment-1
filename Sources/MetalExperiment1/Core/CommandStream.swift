@@ -33,9 +33,21 @@ extension Context {
   }
   
   func maybeFlushStream() {
-    let backPressure = queryQueueBackPressure()
+    let numCommitted = numCommittedBatches.load(ordering: .relaxed)
+    let numCompleted = numCompletedBatches.load(ordering: .relaxed)
+    let backPressure = numCommitted - numCompleted
+    
+    var shouldFlush: Bool
+    if backPressure == 0 {
+      shouldFlush = true
+    } else if backPressure == 1 {
+      let numScheduled = numScheduledBatches.load(ordering: .relaxed)
+      shouldFlush = numCommitted == numScheduled
+    } else {
+      shouldFlush = false
+    }
     guard eagerOperations.count > Context.maxCommandsPerBatch ||
-          backPressure == 0 else {
+          shouldFlush else {
       return
     }
     precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
@@ -44,7 +56,7 @@ extension Context {
     // `maybeFlushStream` is called in the middle of submitting an operation, and all of the inputs
     // are being retained. That prevents fusion.
     var currentOperation: EagerOperation?
-    if eagerOperations.count > Context.maxCommandsPerBatch {
+    if eagerOperations.count > Context.maxCommandsPerSmallBatch {
       currentOperation = eagerOperations.removeLast()
     }
     defer {
@@ -133,20 +145,7 @@ private extension Context {
   func queryQueueBackPressure() -> Int {
     let numCommitted = numCommittedBatches.load(ordering: .relaxed)
     let numCompleted = numCompletedBatches.load(ordering: .relaxed)
-    
-    let completionBackPressure = numCommitted - numCompleted
-    if completionBackPressure == 0 {
-      return 0
-    } else if completionBackPressure == 1 {
-      let schedulingBackPressure = numCommitted - numScheduledBatches.load(ordering: .relaxed)
-      if schedulingBackPressure == 0 {
-        return 0
-      } else {
-        return 1
-      }
-    } else {
-      return completionBackPressure
-    }
+    return numCommitted - numCompleted
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
@@ -184,8 +183,8 @@ private extension Context {
       }
     }
     
-    // If the compiler removes all eager operations (by constant folding or eliding no-ops), avoid
-    // the overhead of creating a command buffer.
+    // If the compiler removes all eager operations by constant folding, avoid the overhead of
+    // creating a command buffer.
     if instructions.count == 0 {
       return
     }
@@ -253,12 +252,9 @@ private extension Context {
             ctx.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()
             
-            if ctx.eagerOperations.count > 0 {
-              let numCommitted = ctx.numCommittedBatches.load(ordering: .relaxed)
-              let numCompleted = ctx.numCompletedBatches.load(ordering: .relaxed)
-              if numCommitted == numCompleted {
-                ctx.flushStream()
-              }
+            if ctx.eagerOperations.count > 0,
+               ctx.queryQueueBackPressure() == 0 {
+              ctx.flushStream()
             }
           }
         }
