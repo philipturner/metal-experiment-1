@@ -65,24 +65,35 @@ public class Context {
     pthread_mutex_destroy(&_mutex)
     #endif
   }
-  
-  // Borrowed from https://github.com/s4tf/s4tf
+}
+
+extension Context {
   @inline(__always)
-  internal func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+  func acquireMutex() {
     #if os(Windows)
     AcquireSRWLockExclusive(&_mutex)
     #else
     let code = pthread_mutex_lock(&_mutex)
     precondition(code == 0, "Attempt to acquire mutex returned '\(code)'.")
     #endif
-    
+  }
+  
+  @inline(__always)
+  func releaseMutex() {
+    #if os(Windows)
+    ReleaseSRWLockExclusive(&_mutex)
+    #else
+    let code = pthread_mutex_unlock(&_mutex)
+    precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
+    #endif
+  }
+  
+  // Borrowed from https://github.com/s4tf/s4tf
+  @inline(__always)
+  func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+    acquireMutex()
     defer {
-      #if os(Windows)
-      ReleaseSRWLockExclusive(&_mutex)
-      #else
-      let code = pthread_mutex_unlock(&_mutex)
-      precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
-      #endif
+      releaseMutex()
     }
     return try body()
   }

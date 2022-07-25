@@ -24,11 +24,13 @@ extension Context {
   // Flush the command stream before calling this function.
   @inline(__always)
   func _internalBarrier(commandBufferID chosenID: Int? = nil) {
-    // Using relaxed memory ordering because it doesn't need to be atomic in the first place. It is
-    // never modified by threads other than the encapsulating dispatch queue.
     let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
-      lastCommandBuffer.waitUntilCompleted()
+      if lastCommandBuffer.status != .completed {
+        releaseMutex()
+        lastCommandBuffer.waitUntilCompleted()
+        acquireMutex()
+      }
     }
   }
   
