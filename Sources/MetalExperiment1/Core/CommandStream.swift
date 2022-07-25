@@ -36,6 +36,10 @@ extension Context {
   @inline(__always)
   func maybeFlushStream() {
     let backPressure = queryQueueBackPressure()
+    // TODO: -
+    // If it flushed because the batch was really long, prevent the very last command from being
+    // flushed. You're probably in the middle of calling into an operation, and all of the inputs
+    // are being retained. That prevents fusion.
     if eagerOperations.count < Context.maxCommandsPerBatch,
        backPressure >= 1 {
       return
@@ -106,7 +110,7 @@ extension Context {
     //   startups, that data would clear when you purge build products.
     // - Time spent on this is time spent not developing the OpenCL backend.
     //
-    // Current stance: wait until real-world data confirms my hypothesis about performance, then
+    // Current stance: Wait until real-world data indicates that there's no better solution, then
     // pursue the AI approach. This will definitely come *after* integrating the Metal backend into
     // Swift for TensorFlow.
     flushStream(precomputedBackPressure: backPressure)
@@ -119,8 +123,21 @@ private extension Context {
   @inline(__always)
   func queryQueueBackPressure() -> Int {
     let numCommitted = numCommittedBatches.load(ordering: .relaxed)
-    let numScheduled = numScheduledBatches.load(ordering: .relaxed)
-    return numCommitted - numScheduled
+    let numCompleted = numCompletedBatches.load(ordering: .relaxed)
+    
+    let completionBackPressure = numCommitted - numCompleted
+    if completionBackPressure == 0 {
+      return 0
+    } else if completionBackPressure == 1 {
+      let schedulingBackPressure = numCommitted - numScheduledBatches.load(ordering: .relaxed)
+      if schedulingBackPressure == 0 {
+        return 0
+      } else {
+        return 1
+      }
+    } else {
+      return completionBackPressure
+    }
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
@@ -216,20 +233,23 @@ private extension Context {
       
       encodingContext.commandBuffer.addCompletedHandler { commandBuffer in
         precondition(commandBuffer.status == .completed, commandBuffer.errorMessage)
-        let numCommitted = self.numCommittedBatches.load(ordering: .relaxed)
-        let numCompleted = self.numCompletedBatches.wrappingIncrementThenLoad(ordering: .relaxed)
+        self.numCompletedBatches.wrappingIncrement(ordering: .relaxed)
         
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
-        let shouldFlush = numCommitted == numCompleted
         DispatchQueue.global().async {
           Context.global.sync {
             // Captures `currentCommandBufferID` declared above.
             let ctx = Context.global
             ctx.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()
-            if shouldFlush {
-              ctx.flushStream()
+            
+            if ctx.eagerOperations.count > 0 {
+              let numCommitted = ctx.numCommittedBatches.load(ordering: .relaxed)
+              let numCompleted = ctx.numCompletedBatches.load(ordering: .relaxed)
+              if numCommitted == numCompleted {
+                ctx.flushStream()
+              }
             }
           }
         }
