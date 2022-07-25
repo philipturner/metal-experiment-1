@@ -24,27 +24,25 @@ extension Context {
   // Flush the command stream before calling this function.
   @inline(__always)
   func _internalBarrier(commandBufferID chosenID: Int? = nil) {
-    let commandBufferID = chosenID ?? (numCommittedBatches.load(ordering: .relaxed) - 1)
+    let commandBufferID = chosenID ?? (numCommittedBatches - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
       if lastCommandBuffer.status != .completed {
         releaseMutex()
         lastCommandBuffer.waitUntilCompleted()
         acquireMutex()
+        justFinishedBarrier = true
       }
     }
   }
   
   func maybeFlushStream() {
-    let numCommitted = numCommittedBatches.load(ordering: .relaxed)
-    let numCompleted = numCompletedBatches.load(ordering: .relaxed)
-    let backPressure = numCommitted - numCompleted
-    
+    let backPressure = queryQueueBackPressure()
     var shouldFlush: Bool
     if backPressure == 0 {
       shouldFlush = true
     } else if backPressure == 1 {
       let numScheduled = numScheduledBatches.load(ordering: .relaxed)
-      shouldFlush = numCommitted == numScheduled
+      shouldFlush = numCommittedBatches == numScheduled
     } else {
       shouldFlush = false
     }
@@ -52,21 +50,13 @@ extension Context {
           shouldFlush else {
       return
     }
-    precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
-    
-    // If it flushed because the batch was really long, don't include the very last operation.
-    // `maybeFlushStream` is called in the middle of submitting an operation, and all of the inputs
-    // are being retained. That prevents fusion.
-    var currentOperation: EagerOperation?
-    if eagerOperations.count > Context.maxCommandsPerSmallBatch {
-      currentOperation = eagerOperations.removeLast()
-    }
-    defer {
-      if let currentOperation = currentOperation {
-        precondition(eagerOperations.count == 0)
-        eagerOperations.append(currentOperation)
+    if eagerOperations.count > Context.maxCommandsPerBatch + 1 {
+      for _ in 0..<10 {
+        usleep(200_000)
+        print("YO EJEUEEHEHUEUEEUH")
       }
     }
+    precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
     
     // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
     // slow start right after reading a buffer's contents, being unable to fuse unary operations and
@@ -82,6 +72,54 @@ extension Context {
     // Perhaps to query a reasonable minimum for command buffer latency, I can send an empty one at
     // program startup. It should take longer than most because the system isn't fired up, but it
     // will at least be smaller than a supermassive batch with 128 unique commands in it.
+    
+    if justFinishedBarrier && backPressure == 0 {
+      justFinishedBarrier = false
+      if eagerOperations.count <= Context.maxCommandsPerBatch {
+        waitingOnTimer = true
+        let currentNumCommittedBatches = numCommittedBatches
+        let delay = Int(schedulingLatency.average)
+        
+        let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        schedulingQueue.async {
+          // Use a spin loop. Asking the dispatch queue to execute at a specific deadline drives the
+          // actual delay to 300 µs (it should be 50 µs).
+          var end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+          while end - start < delay {
+            usleep(10)
+            end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+          }
+
+          let ctx = Context.global
+          ctx.sync {
+            ctx.waitingOnTimer = false
+            guard ctx.numCommittedBatches == currentNumCommittedBatches else {
+              return
+            }
+            ctx.flushStream()
+          }
+        }
+      }
+    }
+    
+    if eagerOperations.count <= Context.maxCommandsPerBatch,
+       waitingOnTimer && backPressure == 0 {
+      return
+    }
+    
+    // If it flushed because the batch was really long, don't include the very last operation.
+    // `maybeFlushStream` is called in the middle of submitting an operation, and all of the inputs
+    // are being retained. That prevents fusion.
+    var currentOperation: EagerOperation?
+    if eagerOperations.count > Context.maxCommandsPerSmallBatch {
+      currentOperation = eagerOperations.removeLast()
+    }
+    defer {
+      if let currentOperation = currentOperation {
+        precondition(eagerOperations.count == 0)
+        eagerOperations.append(currentOperation)
+      }
+    }
     
     // TODO: Heuristic that holds off on encoding 128 operations at least one has fully completed.
     // The GPU might be running its first convolution op, then you make 128 equally long convolution
@@ -145,9 +183,8 @@ extension Context {
 private extension Context {
   @inline(__always)
   func queryQueueBackPressure() -> Int {
-    let numCommitted = numCommittedBatches.load(ordering: .relaxed)
     let numCompleted = numCompletedBatches.load(ordering: .relaxed)
-    return numCommitted - numCompleted
+    return numCommittedBatches - numCompleted
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
@@ -191,7 +228,7 @@ private extension Context {
       return
     }
     
-    var commandBufferID = numCommittedBatches.load(ordering: .relaxed)
+    var commandBufferID = numCommittedBatches
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -215,12 +252,9 @@ private extension Context {
         retainer = .passRetained(Retainer(retaining: Array(instructions[range])))
       }
       
-      // Instead of `wrappingIncrement(ordering:)`, this code section uses `store(_:ordering:)`. It
-      // always executes on the same thread, so it's okay to increment in a way that isn't perfectly
-      // atomic.
       let currentCommandBufferID = commandBufferID
-      commandBufferID += 1
-      numCommittedBatches.store(commandBufferID, ordering: .relaxed)
+      commandBufferID = currentCommandBufferID + 1
+      numCommittedBatches = currentCommandBufferID + 1
       
       // TODO: Look back into the latency here. If the CPU does a control flow operation depending
       // on flushing the command stream, checking numCommitted == numCompleted here could halve
@@ -236,9 +270,19 @@ private extension Context {
       //
       // This comment relates to the comment in `maybeFlushStream` above the call to
       // `flushStream(precomputedBackpressure:)`.
+      let scheduleStart = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       encodingContext.commandBuffer.addScheduledHandler { commandBuffer in
         precondition(commandBuffer.status == .scheduled, commandBuffer.errorMessage)
         self.numScheduledBatches.wrappingIncrement(ordering: .relaxed)
+        let scheduleEnd = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let scheduleDuration = scheduleEnd - scheduleStart
+        
+        DispatchQueue.global().async {
+          let ctx = Context.global
+          ctx.sync {
+            ctx.schedulingLatency.append(scheduleDuration)
+          }
+        }
       }
       
       encodingContext.commandBuffer.addCompletedHandler { commandBuffer in
@@ -248,9 +292,9 @@ private extension Context {
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
         DispatchQueue.global().async {
-          Context.global.sync {
+          let ctx = Context.global
+          ctx.sync {
             // Captures `currentCommandBufferID` declared above.
-            let ctx = Context.global
             ctx.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()
             
@@ -295,7 +339,7 @@ private extension Context {
           }
         }
         if encounteredError {
-          if numCommittedBatches.load(ordering: .relaxed) == 0 {
+          if numCommittedBatches == 0 {
             if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
               print("""
                 One of the first commands ever submitted was to interact with an exorbitant amount \

@@ -15,17 +15,23 @@ public class Context {
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
-  var justFinishedBarrier = true
+  
   // If just finished barrier, spin off a timer that force-flushes the stream. If a command buffer
   // was committed since then, abort the timer.
   
   static let maxBatchesInFlight = 10
   static var maxCommandsPerBatch = 128
   static var maxCommandsPerSmallBatch = 16
-  var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
+  var numCommittedBatches = 0
   var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
   var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
   var eagerOperations: [EagerOperation] = []
+  
+  var justFinishedBarrier = true
+  var waitingOnTimer = false
+  var schedulingLatency = MovingAverage<UInt64>(repeating: 0, count: 8)
+  var schedulingQueue = DispatchQueue(
+    label: "com.s4tf.metal.Context.schedulingQueue", qos: .userInteractive)
   
   var nextAllocationID: UInt64 = 0
   var numDeinitializedAllocations: UInt64 = 0
@@ -58,7 +64,6 @@ public class Context {
   }
   
   deinit {
-    numCommittedBatches.destroy()
     numScheduledBatches.destroy()
     numCompletedBatches.destroy()
     
