@@ -24,7 +24,7 @@ extension Context {
   // Flush the command stream before calling this function.
   @inline(__always)
   func _internalBarrier(commandBufferID chosenID: Int? = nil) {
-    let commandBufferID = chosenID ?? (numCommittedBatches - 1)
+    let commandBufferID = chosenID ?? (_fastLoadCommittedBatches() - 1)
     if let lastCommandBuffer = commandBufferDictionary[commandBufferID] {
       if lastCommandBuffer.status != .completed {
         releaseMutex()
@@ -36,13 +36,16 @@ extension Context {
   }
   
   func maybeFlushStream() {
-    let backPressure = queryQueueBackPressure()
+    let numCommitted = _fastLoadCommittedBatches()
+    let numCompleted = numCompletedBatches.load(ordering: .relaxed)
+    let backPressure = numCommitted - numCompleted
+    
     var shouldFlush: Bool
     if backPressure == 0 {
       shouldFlush = true
     } else if backPressure == 1 {
       let numScheduled = numScheduledBatches.load(ordering: .relaxed)
-      shouldFlush = numCommittedBatches == numScheduled
+      shouldFlush = numCommitted == numScheduled
     } else {
       shouldFlush = false
     }
@@ -50,58 +53,52 @@ extension Context {
           shouldFlush else {
       return
     }
-    if eagerOperations.count > Context.maxCommandsPerBatch + 1 {
-      for _ in 0..<10 {
-        usleep(200_000)
-        print("YO EJEUEEHEHUEUEEUH")
-      }
-    }
     precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
     
-    // TODO: Add a heuristic that waits a few instructions before submitting. It gets off to a very
-    // slow start right after reading a buffer's contents, being unable to fuse unary operations and
-    // creating a no-op pass through the compiler.
-    //
-    // Idea: After a "read" instruction, you have a certain window of time to delay the next command
-    // buffer. This should compound with the CPU-side "constant folding". To prevent this from
-    // harming GPU-executed performance in the future, it wears off after a fixed number of µs. For
-    // example, the timer could be 1/2 the round-trip latency of a command buffer (1/2 * 200 µs, but
-    // can vary between platforms). I could track the minimum command buffer latency at runtime to
-    // get a better estimate of its value across all GPUs.
-    //
-    // Perhaps to query a reasonable minimum for command buffer latency, I can send an empty one at
-    // program startup. It should take longer than most because the system isn't fired up, but it
-    // will at least be smaller than a supermassive batch with 128 unique commands in it.
-    
-    if justFinishedBarrier && backPressure == 0 {
+    // The stream gets off to a very slow start right after reading a buffer's contents, being
+    // unable to fuse unary operations and creating a no-op pass through the compiler. This
+    // mechanism waits X microseconds before flushing again, letting the queue fill up. The timer's
+    // delay is ~1/4 the round-trip latency of a command buffer, but almost exactly enough time for
+    // 128 commands to queue up.
+    if !waitingOnTimer && justFinishedBarrier && backPressure == 0 {
       justFinishedBarrier = false
       if eagerOperations.count <= Context.maxCommandsPerBatch {
         waitingOnTimer = true
-        let currentNumCommittedBatches = numCommittedBatches
-        let delay = Int(schedulingLatency.average)
         
+        let delay = Int(schedulingLatency.average)
+        let currentNumCommittedBatches = _fastLoadCommittedBatches()
         let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         schedulingQueue.async {
+          func loadCommitted() -> Int {
+            self.numCommittedBatches.load(ordering: .relaxed)
+          }
+          if loadCommitted() > currentNumCommittedBatches {
+            self.waitingOnTimer = false
+            return
+          }
+          
           // Use a spin loop. Asking the dispatch queue to execute at a specific deadline drives the
           // actual delay to 300 µs (it should be 50 µs).
           var end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
           while end - start < delay {
             usleep(10)
-            end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
-          }
-
-          let ctx = Context.global
-          ctx.sync {
-            ctx.waitingOnTimer = false
-            guard ctx.numCommittedBatches == currentNumCommittedBatches else {
+            if loadCommitted() > currentNumCommittedBatches {
+              self.waitingOnTimer = false
               return
             }
-            ctx.flushStream()
+            end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+          }
+          
+          self.sync {
+            self.waitingOnTimer = false
+            guard self._fastLoadCommittedBatches() == currentNumCommittedBatches else {
+              return
+            }
+            self.flushStream()
           }
         }
       }
     }
-    
     if eagerOperations.count <= Context.maxCommandsPerBatch,
        waitingOnTimer && backPressure == 0 {
       return
@@ -183,8 +180,9 @@ extension Context {
 private extension Context {
   @inline(__always)
   func queryQueueBackPressure() -> Int {
+    let numCommitted = _fastLoadCommittedBatches()
     let numCompleted = numCompletedBatches.load(ordering: .relaxed)
-    return numCommittedBatches - numCompleted
+    return numCommitted - numCompleted
   }
   
   func flushStream(precomputedBackPressure: Int? = nil) {
@@ -228,7 +226,7 @@ private extension Context {
       return
     }
     
-    var commandBufferID = numCommittedBatches
+    var commandBufferID = _fastLoadCommittedBatches()
     var encodingContext = EncodingContext(
       commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -253,23 +251,9 @@ private extension Context {
       }
       
       let currentCommandBufferID = commandBufferID
-      commandBufferID = currentCommandBufferID + 1
-      numCommittedBatches = currentCommandBufferID + 1
+      commandBufferID += 1
+      numCommittedBatches.wrappingIncrement(ordering: .relaxed)
       
-      // TODO: Look back into the latency here. If the CPU does a control flow operation depending
-      // on flushing the command stream, checking numCommitted == numCompleted here could halve
-      // total latency. I originally settled on using the completion handler because in the
-      // scheduled handler, it was so unreliable and often harmed performance or did nothing. I
-      // should revisit this once I confirm the delay for a total stop of the pipeline is 400 μs.
-      // If done right, I could sometimes reduce it to 200 μs here.
-      //
-      // "constant folding" on the CPU should reduce the overhead of scalar-wise operations after
-      // the read to near-zero, so maybe we don't need to wait for two command buffers to come
-      // through (2 x 200 μs). In that case, flushing the command stream in this scheduled handler
-      // would be pointless. The delay is 200 μs in every case.
-      //
-      // This comment relates to the comment in `maybeFlushStream` above the call to
-      // `flushStream(precomputedBackpressure:)`.
       let scheduleStart = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
       encodingContext.commandBuffer.addScheduledHandler { commandBuffer in
         precondition(commandBuffer.status == .scheduled, commandBuffer.errorMessage)
@@ -278,9 +262,8 @@ private extension Context {
         let scheduleDuration = scheduleEnd - scheduleStart
         
         DispatchQueue.global().async {
-          let ctx = Context.global
-          ctx.sync {
-            ctx.schedulingLatency.append(scheduleDuration)
+          self.sync {
+            self.schedulingLatency.append(scheduleDuration)
           }
         }
       }
@@ -292,15 +275,14 @@ private extension Context {
         // For when the CPU does something I/O blocking, yet the GPU has commands to execute. The
         // frontend never calls into the backend, leaving the GPU starved of work.
         DispatchQueue.global().async {
-          let ctx = Context.global
-          ctx.sync {
+          self.sync {
             // Captures `currentCommandBufferID` declared above.
-            ctx.commandBufferDictionary[currentCommandBufferID] = nil
+            self.commandBufferDictionary[currentCommandBufferID] = nil
             retainer.release()
             
-            if ctx.eagerOperations.count > 0,
-               ctx.queryQueueBackPressure() == 0 {
-              ctx.flushStream()
+            if self.eagerOperations.count > 0,
+               self.queryQueueBackPressure() == 0 {
+              self.flushStream()
             }
           }
         }
@@ -339,7 +321,7 @@ private extension Context {
           }
         }
         if encounteredError {
-          if numCommittedBatches == 0 {
+          if _fastLoadCommittedBatches() == 0 {
             if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
               print("""
                 One of the first commands ever submitted was to interact with an exorbitant amount \

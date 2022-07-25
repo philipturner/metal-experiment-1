@@ -22,10 +22,16 @@ public class Context {
   static let maxBatchesInFlight = 10
   static var maxCommandsPerBatch = 128
   static var maxCommandsPerSmallBatch = 16
-  var numCommittedBatches = 0
+  var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
   var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
   var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
   var eagerOperations: [EagerOperation] = []
+  
+  // Read the atomic from the same thread that's modifying it.
+  func _fastLoadCommittedBatches() -> Int {
+    let ptr = unsafeBitCast(numCommittedBatches, to: UnsafePointer<Int>.self)
+    return ptr.pointee
+  }
   
   var justFinishedBarrier = true
   var waitingOnTimer = false
