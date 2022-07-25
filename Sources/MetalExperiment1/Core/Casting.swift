@@ -126,7 +126,7 @@ extension UnaryOperationType2 {
           self = .cast_u64_to_f32
         }
       case .bool:
-        self = .cast_i64_to_bool
+        self = .cast_i64_u64_to_bool
       default:
         // Sign mask determined in shader with `(mask ^ (mask >> 1))`.
         var mask: UInt64
@@ -144,7 +144,7 @@ extension UnaryOperationType2 {
           default:
             fatalError("This should never happen.")
           }
-          self = .cast_u64_to_i32
+          self = .cast_i64_u64_to_i32
         } else {
           switch output {
           case .uint8:
@@ -159,7 +159,7 @@ extension UnaryOperationType2 {
           default:
             fatalError("This should never happen.")
           }
-          self = .cast_u64_to_u32
+          self = .cast_i64_u64_to_u32
         }
         metadata = mask
       }

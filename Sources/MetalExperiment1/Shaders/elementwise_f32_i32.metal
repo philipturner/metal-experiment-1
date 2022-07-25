@@ -167,7 +167,7 @@ enum ElementwiseOperationType: ushort {
   // Ternary (2000 - 2999)
   
   clip_by_value_f32 = 2000,
-  clip_by_value_i32_bool = 2001,
+  clip_by_value_i32 = 2001,
 };
 
 // MARK: - Classes

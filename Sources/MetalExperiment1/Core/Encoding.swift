@@ -127,6 +127,20 @@ private extension Context {
       }
     }
     
+    enum MemoryCast2: UInt16, RawRepresentable {
+      case i64_u64_native = 0
+      
+      @inline(__always)
+      init(dataTypeRawValue: UInt16) {
+        fatalError()
+      }
+      
+      @inline(__always)
+      var readSize: UInt16 {
+        fatalError()
+      }
+    }
+    
     struct ReadParams {
       var layout: UInt16
       var memory_cast: MemoryCast.RawValue
@@ -148,7 +162,8 @@ private extension Context {
         inputHandle1: AllocationHandle,
         inputHandle2: AllocationHandle?,
         inputHandle3: AllocationHandle?,
-        outputHandle: AllocationHandle
+        outputHandle: AllocationHandle,
+        usingLargeRepresentation: Bool
       ) {
         var dataTypeRawValues = SIMD4<UInt16>(repeating: .max)
         var byteCounts = SIMD4<Int32>(repeating: 0)
@@ -180,9 +195,17 @@ private extension Context {
           guard dataTypeRawValue != .max else {
             continue
           }
-          let memoryCast = MemoryCast(dataTypeRawValue: dataTypeRawValue)
-          memoryCastRawValues[i] = memoryCast.rawValue
-          var layoutMask = memoryCast.readSize
+          
+          var layoutMask: UInt16
+          if usingLargeRepresentation {
+            let memoryCast = MemoryCast2(dataTypeRawValue: dataTypeRawValue)
+            memoryCastRawValues[i] = memoryCast.rawValue
+            layoutMask = memoryCast.readSize
+          } else {
+            let memoryCast = MemoryCast(dataTypeRawValue: dataTypeRawValue)
+            memoryCastRawValues[i] = memoryCast.rawValue
+            layoutMask = memoryCast.readSize
+          }
           
           let dataType = DataType(rawValue: dataTypeRawValue).unsafelyUnwrapped
           if dataType.stride == byteCounts[i] {
@@ -207,7 +230,8 @@ private extension Context {
       inputHandle1: instruction.input1.handle,
       inputHandle2: instruction.input2?.handle,
       inputHandle3: instruction.input3?.handle,
-      outputHandle: instruction.output.handle)
+      outputHandle: instruction.output.handle,
+      usingLargeRepresentation: instruction.dataGroup == .u32_i64_u64)
     encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 0)
     
     withUnsafeTemporaryAllocation(of: UInt16.self, capacity: numOperations) { bufferPointer in

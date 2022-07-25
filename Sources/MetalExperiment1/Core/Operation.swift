@@ -79,16 +79,13 @@ enum UnaryOperationType2: UInt16 {
   case cast_f32_to_i64 = 11
   case cast_i64_to_f16 = 12
   case cast_i64_to_f32 = 13
-  case cast_i64_to_bool = 14
-  // cast_i64_to_i32 = cast_u64_to_i32,
-  // cast_i64_to_u32 = cast_u64_to_u32
+  case cast_i64_u64_to_bool = 14
   
   case cast_f32_to_u64 = 20
   case cast_u64_to_f16 = 21
   case cast_u64_to_f32 = 22
-  // cast_u64_to_bool = cast_i64_to_bool
-  case cast_u64_to_i32 = 23 // requires metadata
-  case cast_u64_to_u32 = 24 // requires metadata
+  case cast_i64_u64_to_i32 = 23 // requires metadata
+  case cast_i64_u64_to_u32 = 24 // requires metadata
   
   case scalar_add_i64 = 30 // requires metadata
   case scalar_mul_i64 = 31 // requires metadata
