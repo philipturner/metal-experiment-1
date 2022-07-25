@@ -137,6 +137,60 @@ public:
   }
 };
 
+class Register {
+  ulong2 data;
+  
+public:
+  // Memory cast setters
+  
+  void set_vector_i64_u64(CompressedRegister compressed) {
+    data = compressed.get_vector_u64();
+  }
+  
+  void set_vector_i32(CompressedRegister compressed) {
+    int2 in = as_type<int2>(compressed.get_vector_u32());
+    long2 casted = long2(in);
+    data = as_type<ulong2>(casted);
+  }
+  
+  void set_vector_i16(CompressedRegister compressed) {
+    short2 in = as_type<short2>(compressed.get_vector_u16());
+    long2 casted = long2(in);
+    data = as_type<ulong2>(casted);
+  }
+  
+  void set_vector_i8(CompressedRegister compressed) {
+    char2 in = as_type<char2>(compressed.get_vector_u8());
+    long2 casted = long2(in);
+    data = as_type<ulong2>(casted);
+  }
+  
+  void set_vector_u32(CompressedRegister compressed) {
+    data = ulong2(compressed.get_vector_u32());
+  }
+  
+  void set_vector_u16(CompressedRegister compressed) {
+    data = ulong2(compressed.get_vector_u16());
+  }
+  
+  void set_vector_u8(CompressedRegister compressed) {
+    data = ulong2(compressed.get_vector_u8());
+  }
+  
+  void set_vector_f32(CompressedRegister compressed) {
+    float2 in = as_type<float2>(compressed.get_vector_u32());
+    data[0] = as_type<ulong>(in);
+  }
+  
+  void set_vector_f16(CompressedRegister compressed) {
+    half2 in = as_type<half2>(compressed.get_vector_u16());
+    float2 casted = float2(in);
+    data[0] = as_type<ulong>(casted);
+  }
+  
+  // Memory cast getters
+};
+
 kernel void elementwise_u32_i64_u64(
   constant DispatchParams &params [[buffer(0)]],
   constant ElementwiseOperationType *operations [[buffer(1)]],
