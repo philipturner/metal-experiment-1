@@ -87,7 +87,7 @@ enum UnaryOperationType2: UInt16 {
   case cast_i64_u64_to_i32 = 23 // requires metadata
   case cast_i64_u64_to_u32 = 24 // requires metadata
   
-  case scalar_add_i64 = 30 // requires metadata
+  case scalar_add_i64_u64 = 30 // requires metadata
   case scalar_mul_i64 = 31 // requires metadata
   case scalar_mul_u64 = 32 // requires metadata
   
@@ -104,17 +104,20 @@ enum UnaryOperationType2: UInt16 {
         return nil
       }
     case .neg_i32:
-      if dataType == .int64 {
-        self = .neg_i64
-      } else {
-        return nil
-      }
+      // Produce the same behavior with signed and unsigned integers.
+      // TODO: Run a test utilizing the _Raw namespace to check this behavior for `f32_i32`.
+      self = .neg_i64
+//      if dataType == .int64 {
+//
+//      } else {
+//        fatalError("Attempted to negate an unsigned integer of type \(dataType).")
+//      }
     case .sign_i32:
-      self = (dataType == .uint64) ? .sign_u64 : .sign_i64
+      self = (dataType == .int64) ? .sign_i64 : .sign_u64
     case .scalar_add_i32:
-      self = .scalar_add_i64
+      self = .scalar_add_i64_u64
     case .scalar_mul_i32:
-      self = (dataType == .uint64) ? .scalar_mul_u64 : .scalar_mul_i64
+      self = (dataType == .int64) ? .scalar_mul_i64 : .scalar_mul_u64
     default:
       return nil
     }

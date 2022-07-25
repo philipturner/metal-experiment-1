@@ -587,7 +587,6 @@ kernel void elementwise_f32_i32(
             x &= int4(masks[0]); // truncate
             
             if (masks[1] != 0) { // sign extend
-              // TODO: Force-unroll this loop for performance.
               int inverted_mask = ~masks[0];
               for (int i = 0; i < 4; ++i) {
                 // Sign mask has one bit activated.
@@ -750,7 +749,7 @@ kernel void elementwise_f32_i32(
             GET_SET_F32(precise::tanh)
           }
         }
-      } else {
+      } else /*(operation <= scalar_mul_i32)*/ {
         auto operation_metadata = get_metadata(metadata, metadata_index);
         uint rhs_mask = ((constant uint*)operation_metadata)[0];
         switch (operation) {

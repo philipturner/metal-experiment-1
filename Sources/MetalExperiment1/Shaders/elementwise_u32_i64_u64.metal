@@ -39,7 +39,6 @@ struct DispatchParams {
   MemoryCast write_memory_cast;
 };
 
-// TODO: Investigate whether to include native u32 instructions.
 enum ElementwiseOperationType: ushort {
   // Unary (0 - 999)
   
@@ -62,7 +61,7 @@ enum ElementwiseOperationType: ushort {
   cast_i64_u64_to_i32 = 23, // requires metadata
   cast_i64_u64_to_u32 = 24, // requires metadata
   
-  scalar_add_i64 = 30, // requires metadata
+  scalar_add_i64_u64 = 30, // requires metadata
   scalar_mul_i64 = 31, // requires metadata
   scalar_mul_u64 = 32, // requires metadata
   
@@ -260,6 +259,12 @@ break;                   \
 register1.set_f32(expr); \
 break;                   \
 
+#define GET_SET_I64(expr)          \
+SET_I64(expr(register1.get_i64())) \
+
+#define GET_SET_U64(expr)          \
+SET_U64(expr(register1.get_u64())) \
+
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
 
@@ -394,12 +399,127 @@ kernel void elementwise_u32_i64_u64(
     }
   }
   
+  ushort metadata_index = 0;
+  
   // pc = program counter
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
     ElementwiseOperationType operation = operations[pc];
     if (operation < 1000) {
       // Unary
-      
+      if (operation <= square_u64) {
+        switch (operation) {
+          case abs_i64: {
+            GET_SET_I64(abs)
+          }
+          case neg_i64: {
+            GET_SET_I64(-)
+          }
+          case sign_i64: {
+            auto x = register1.get_i64();
+            auto mask = select(long2(1), long2(-1), x < 0);
+            mask = select(mask, long2(0), x == 0);
+            SET_I64(mask);
+          }
+          case sign_u64: {
+            auto x = register1.get_u64();
+            x = ulong2(bool2(x));
+            SET_U64(x);
+          }
+          case square_i64: {
+            auto x = register1.get_i64();
+            SET_I64(x * x)
+          }
+          default: /*square_u64*/ {
+            auto x = register1.get_u64();
+            SET_U64(x * x)
+          }
+        }
+      } else if (operation <= cast_i64_u64_to_bool) {
+        switch (operation) {
+          case cast_f32_to_u32: {
+            auto x = register1.get_f32();
+            auto casted = long2(uint2(x));
+            SET_I64(casted);
+          }
+          case cast_f32_to_i64: {
+            auto x = register1.get_f32();
+            auto casted = long2(x);
+            SET_I64(casted);
+          }
+          case cast_i64_to_f16: {
+            auto x = register1.get_i64();
+            auto casted = float2(half2(x));
+            SET_F32(casted);
+          }
+          case cast_i64_to_f32: {
+            auto x = register1.get_i64();
+            auto casted = float2(x);
+            SET_F32(casted);
+          }
+          default: /*cast_i64_u64_to_bool*/ {
+            auto x = register1.get_i64();
+            auto casted = long2(bool2(x));
+            SET_I64(casted);
+          }
+        }
+      } else if (operation <= cast_i64_u64_to_u32) {
+        switch (operation) {
+          case cast_f32_to_u64: {
+            auto x = register1.get_f32();
+            auto casted = ulong2(x);
+            SET_U64(casted);
+          }
+          case cast_u64_to_f16: {
+            auto x = register1.get_u64();
+            auto casted = float2(half2(x));
+            SET_F32(casted);
+          }
+          case cast_u64_to_f32: {
+            auto x = register1.get_u64();
+            auto casted = float2(x);
+            SET_F32(casted);
+          }
+          default: /*cast_i64_u64_to_i32
+                     cast_i64_u64_to_u32*/ {
+            auto x = register1.get_u64();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            ulong mask = ((constant ulong*)operation_metadata)[0];
+            x &= ulong2(mask); // truncate
+            
+            if (operation == cast_i64_u64_to_i32) { // sign extend
+              ulong sign_mask = mask ^ (mask >> 1);
+              ulong inverted_mask = ~mask;
+              for (int i = 0; i < 2; ++i) {
+                // Sign mask has one bit activated.
+                if (x[i] & sign_mask) {
+                  x[i] |= inverted_mask;
+                }
+              }
+            }
+            SET_U64(x)
+          }
+        }
+      } else /*(operation <= scalar_mul_u64)*/ {
+        auto operation_metadata = get_metadata(metadata, metadata_index);
+        ulong rhs_mask = ((constant ulong*)operation_metadata)[0];
+        switch (operation) {
+          case scalar_add_i64_u64: {
+            auto x = register1.get_i64();
+            x += as_type<long>(rhs_mask);
+            SET_I64(x)
+          }
+          case scalar_mul_i64: {
+            auto x = register1.get_i64();
+            x *= as_type<long>(rhs_mask);
+            SET_I64(x)
+          }
+          default: /*scalar_mul_u64*/ {
+            auto x = register1.get_u64();
+            x *= as_type<ulong>(rhs_mask);
+            SET_U64(x)
+          }
+        }
+      }
     } else if (operation < 2000) {
       // Binary
       
