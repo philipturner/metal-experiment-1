@@ -244,6 +244,30 @@ public:
   }
 };
 
+// MARK: - Shader Function Utilities
+
+#define SET_I64(expr)    \
+register1.set_i64(expr); \
+break;                   \
+
+#define SET_U64(expr)    \
+register1.set_u64(expr); \
+break;                   \
+
+#define SET_F32(expr)    \
+register1.set_f32(expr); \
+break;                   \
+
+// Bytes of metadata allowed per operation.
+constant ushort METADATA_BYTES = 8;
+
+// Warning: `index` is a captured mutable reference.
+inline constant void* get_metadata(constant void *metadata, thread ushort &index) {
+  ushort byte_offset = index * METADATA_BYTES;
+  index += 1;
+  return (constant uchar*)metadata + byte_offset;
+}
+
 kernel void elementwise_u32_i64_u64(
   constant DispatchParams &params [[buffer(0)]],
   constant ElementwiseOperationType *operations [[buffer(1)]],

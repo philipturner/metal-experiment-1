@@ -316,7 +316,7 @@ SET_I32(expr(register1.get_i32())) \
 constant ushort METADATA_BYTES = 8;
 
 // Warning: `index` is a captured mutable reference.
-constant void* get_metadata(constant void *metadata, thread ushort &index) {
+inline constant void* get_metadata(constant void *metadata, thread ushort &index) {
   ushort byte_offset = index * METADATA_BYTES;
   index += 1;
   return (constant uchar*)metadata + byte_offset;
