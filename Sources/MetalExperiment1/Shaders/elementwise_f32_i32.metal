@@ -170,7 +170,7 @@ enum ElementwiseOperationType: ushort {
   clip_by_value_i32 = 2001,
 };
 
-// MARK: - Classes
+// MARK: - Virtual Assembly Registers
 
 class CompressedRegister {
   uint4 data;

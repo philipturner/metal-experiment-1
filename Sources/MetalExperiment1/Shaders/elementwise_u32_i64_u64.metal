@@ -74,8 +74,71 @@ enum ElementwiseOperationType: ushort {
   clip_by_value_u64 = 2001,
 };
 
+// MARK: - Virtual Assembly Registers
+
+class CompressedRegister {
+  ulong2 data;
+  
+public:
+  // Scalar setters
+  
+  void set_scalar_u8(uchar mem_slice) {
+    set_vector_u8(uchar2(mem_slice));
+  }
+  
+  void set_scalar_u16(ushort mem_slice) {
+    set_vector_u16(ushort2(mem_slice));
+  }
+  
+  void set_scalar_u32(uint mem_slice) {
+    set_vector_u32(uint2(mem_slice));
+  }
+  
+  void set_scalar_u64(ulong mem_slice) {
+    set_vector_u64(ulong2(mem_slice));
+  }
+  
+  // Vector setters
+  
+  void set_vector_u8(uchar2 mem_slice) {
+    data[0] = as_type<ushort>(mem_slice);
+  }
+  
+  void set_vector_u16(ushort2 mem_slice) {
+    data[0] = as_type<uint>(mem_slice);
+  }
+  
+  void set_vector_u32(uint2 mem_slice) {
+    data[0] = as_type<ulong>(mem_slice);
+  }
+  
+  void set_vector_u64(ulong2 mem_slice) {
+    data = mem_slice;
+  }
+  
+  // Vector getters
+  
+  uchar2 get_vector_u8() const {
+    ushort mask = as_type<ushort4>(data[0])[0];
+    return as_type<uchar2>(mask);
+  }
+  
+  ushort2 get_vector_u16() const {
+    uint mask = as_type<uint2>(data[0])[0];
+    return as_type<ushort2>(mask);
+  }
+  
+  uint2 get_vector_u32() const {
+    return as_type<uint2>(data[0]);
+  }
+  
+  ulong2 get_vector_u64() const {
+    return data;
+  }
+};
+
 kernel void elementwise_u32_i64_u64(
-//  constant DispatchParams &params [[buffer(0)]],
+  constant DispatchParams &params [[buffer(0)]],
   constant ElementwiseOperationType *operations [[buffer(1)]],
   constant void *metadata [[buffer(2)]],
   device void *input1 [[buffer(3)]],
