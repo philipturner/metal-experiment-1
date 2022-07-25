@@ -9,14 +9,17 @@ import Atomics
 import Metal
 
 public class Context {
+  static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
+  
   static let global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
+  var justFinishedBarrier = true
+  // If just finished barrier, spin off a timer that force-flushes the stream. If a command buffer
+  // was committed since then, abort the timer.
+  
   static let maxBatchesInFlight = 10
-  
-  static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
-  
   static var maxCommandsPerBatch = 128
   static var maxCommandsPerSmallBatch = 16
   var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
