@@ -63,9 +63,6 @@ public class Context {
     pthread_mutex_init(&_mutex, nil)
     #endif
     
-    // Loads all commonly used shaders. Operations that reference these SHOULD NOT call
-    // `enqueue(_:)` on the shader cache, because that's redundant and wastes clock cycles. I don't
-    // know why anything would call `enqueue(_:)`, but it's there for if something needs to.
     ShaderCache.load(device: device)
   }
   
