@@ -640,3 +640,5 @@ extension OperationRegistry {
     dispatchUnaryScalar(&args, .scalar_mul_f32, .scalar_mul_i32)
   }
 }
+
+// Pass binary comparison operations like others, just make a utility that generates metadata.

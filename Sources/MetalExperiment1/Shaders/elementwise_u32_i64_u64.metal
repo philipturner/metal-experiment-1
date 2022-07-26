@@ -618,11 +618,6 @@ kernel void elementwise_u32_i64_u64(
           }
         }
       } else if (operation <= mod_u64) {
-        /*
-         squared_difference_i64 = 1030,
-         squared_difference_u64 = 1031,
-         sub_i64 = 1032,
-         */
         switch (operation) {
           case minimum_i64: {
             GET_SET_BINARY_I64(min)

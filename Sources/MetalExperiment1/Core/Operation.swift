@@ -91,12 +91,12 @@ enum UnaryOperationType2: UInt16 {
   case scalar_mul_i64 = 31 // requires metadata
   case scalar_mul_u64 = 32 // requires metadata
   
-  init?(_ type32: UnaryOperationType, dataType: DataType) {
-    guard !dataType.representableByInt32 else {
-      return nil
+  init?(_ smallOperation: UnaryOperationType, dataType: DataType) {
+    guard dataType.requiresLargeRepresentation else {
+      fatalError("Data type '\(dataType)' does not require large representation.")
     }
     
-    switch type32 {
+    switch smallOperation {
     case .abs_i32:
       if dataType == .int64 {
         self = .abs_i64
@@ -110,13 +110,12 @@ enum UnaryOperationType2: UInt16 {
       self = (dataType == .int64) ? .sign_i64 : .sign_u64
     case .square_i32:
       self = (dataType == .int64) ? .square_i64 : .square_u64
-    
     case .scalar_add_i32:
       self = .scalar_add_i64_u64
     case .scalar_mul_i32:
       self = (dataType == .int64) ? .scalar_mul_i64 : .scalar_mul_u64
     default:
-      return nil
+      fatalError("Unary operation '\(smallOperation)' has no large counterpart.")
     }
   }
 }
@@ -154,6 +153,53 @@ enum BinaryOperationType: UInt16 {
   case sub_f32 = 42
   case sub_i32 = 43
   case xdivy_f32 = 44
+}
+
+enum BinaryOperationType2: UInt16 {
+  case add_i64_u64 = 0
+  case comparison_i64 = 1 // requires metadata
+  case comparison_u64 = 2 // requires metadata
+  
+  case div_i64 = 10
+  case div_u64 = 11
+  case maximum_i64 = 12
+  case maximum_u64 = 13
+  
+  case minimum_i64 = 20
+  case minimum_u64 = 21
+  case mod_i64 = 22
+  case mod_u64 = 23
+  
+  case squared_difference_i64 = 30
+  case squared_difference_u64 = 31
+  case sub_i64_u64 = 32
+  
+  init?(_ smallOperation: BinaryOperationType, dataType: DataType) {
+    guard dataType.requiresLargeRepresentation else {
+      fatalError("Data type '\(dataType)' does not require large representation.")
+    }
+    
+    switch smallOperation {
+    case .add_i32:
+      self = .add_i64_u64
+    case .comparison_i32:
+      self = (dataType == .int64) ? .comparison_i64 : .comparison_u64
+    case .div_i32:
+      self = (dataType == .int64) ? .div_i64 : .div_u64
+    case .maximum_i32:
+      self = (dataType == .int64) ? .maximum_i64 : .maximum_u64
+    case .minimum_i32:
+      self = (dataType == .int64) ? .minimum_i64 : .minimum_u64
+    case .mod_i32:
+      self = (dataType == .int64) ? .mod_i64 : .mod_u64
+    case .squared_difference_i32:
+      self = (dataType == .int64) ? .squared_difference_i64 : .squared_difference_u64
+    case .sub_i32:
+      self = .sub_i64_u64
+    default:
+      fatalError("Binary operation '\(smallOperation)' has no large counterpart.")
+    }
+  }
 }
 
 enum DataGroup {
