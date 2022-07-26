@@ -163,11 +163,44 @@ enum ElementwiseOperationType: ushort {
   
   add_f32 = 1000,
   add_i32 = 1001,
+  approximate_equal_f32 = 1002, // requires metadata
+  comparison_f32 = 1003, // requires metadata
+  comparison_i32 = 1004, // requires metadata
   
-  // Ternary (2000 - 2999)
+  div_f32 = 1010,
+  div_i32 = 1011,
+  elu_grad_f32 = 1012,
+  leaky_relu_grad_f32 = 1013,
+  maximum_f32 = 1014,
+  maximum_i32 = 1015,
+  
+  minimum_f32 = 1020,
+  minimum_i32 = 1021,
+  mod_f32 = 1022,
+  mod_i32 = 1023,
+  pow_f32 = 1024,
+  relu6_grad_f32 = 1025,
+  
+  relu_grad_f32 = 1030,
+  rsqrt_grad_f32 = 1031,
+  selu_grad_f32 = 1032,
+  sigmoid_grad_f32 = 1033,
+  softplus_grad_f32 = 1034,
+  softsign_grad_f32 = 1035,
+  
+  squared_difference_f32 = 1040,
+  squared_difference_i32 = 1041,
+  sub_f32 = 1042,
+  sub_i32 = 1043,
+  xdivy_f32 = 1044,
+  
+  // Other (2000+)
   
   clip_by_value_f32 = 2000,
   clip_by_value_i32 = 2001,
+  select_f32_i32 = 2002,
+  
+  swap_registers = 3000,
 };
 
 // MARK: - Virtual Assembly Registers
@@ -306,11 +339,23 @@ break;                   \
 register1.set_i32(expr); \
 break;                   \
 
-#define GET_SET_F32(expr)          \
+#define GET_SET_UNARY_F32(expr)    \
 SET_F32(expr(register1.get_f32())) \
 
-#define GET_SET_I32(expr)          \
+#define GET_SET_UNARY_I32(expr)    \
 SET_I32(expr(register1.get_i32())) \
+
+#define GET_SET_BINARY_F32(expr)                        \
+SET_F32(expr(register1.get_f32(), register2.get_f32())) \
+
+#define GET_SET_BINARY_I32(expr)                        \
+SET_I32(expr(register1.get_i32(), register2.get_i32())) \
+
+#define GET_SET_BINARY_INFIX_F32(infix_expr)                \
+SET_F32(register1.get_f32() infix_expr register2.get_f32()) \
+
+#define GET_SET_BINARY_INFIX_I32(infix_expr)                \
+SET_I32(register1.get_i32() infix_expr register2.get_i32()) \
 
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
@@ -520,28 +565,28 @@ kernel void elementwise_f32_i32(
       if (operation <= atanh_f32) {
         switch (operation) {
           case abs_f32: {
-            GET_SET_F32(precise::abs)
+            GET_SET_UNARY_F32(precise::abs)
           }
           case abs_i32: {
-            GET_SET_I32(abs)
+            GET_SET_UNARY_I32(abs)
           }
           case acos_f32: {
-            GET_SET_F32(precise::acos)
+            GET_SET_UNARY_F32(precise::acos)
           }
           case acosh_f32: {
-            GET_SET_F32(precise::acosh)
+            GET_SET_UNARY_F32(precise::acosh)
           }
           case asin_f32: {
-            GET_SET_F32(precise::asin)
+            GET_SET_UNARY_F32(precise::asin)
           }
           case asinh_f32: {
-            GET_SET_F32(precise::asinh)
+            GET_SET_UNARY_F32(precise::asinh)
           }
           case atan_f32: {
-            GET_SET_F32(precise::atan)
+            GET_SET_UNARY_F32(precise::atan)
           }
           default: /*atanh_f32*/ {
-            GET_SET_F32(precise::atanh)
+            GET_SET_UNARY_F32(precise::atanh)
           }
         }
       } else if (operation <= cast_i32_to_i32) {
@@ -601,13 +646,13 @@ kernel void elementwise_f32_i32(
       } else if (operation <= floor_f32) {
         switch (operation) {
           case ceil_f32: {
-            GET_SET_F32(precise::ceil)
+            GET_SET_UNARY_F32(precise::ceil)
           }
           case cos_f32: {
-            GET_SET_F32(precise::cos)
+            GET_SET_UNARY_F32(precise::cos)
           }
           case cosh_f32: {
-            GET_SET_F32(precise::cosh)
+            GET_SET_UNARY_F32(precise::cosh)
           }
           case elu_f32: {
             auto x = register1.get_f32();
@@ -615,13 +660,13 @@ kernel void elementwise_f32_i32(
             SET_F32(x)
           }
           case exp_f32: {
-            GET_SET_F32(precise::exp)
+            GET_SET_UNARY_F32(precise::exp)
           }
           case expm1_f32: {
-            GET_SET_F32(precise::expm1)
+            GET_SET_UNARY_F32(precise::expm1)
           }
           default: /*floor_f32*/ {
-            GET_SET_F32(precise::floor)
+            GET_SET_UNARY_F32(precise::floor)
           }
         }
       } else if (operation <= is_nan_f32) {
@@ -652,7 +697,7 @@ kernel void elementwise_f32_i32(
             SET_F32(x);
           }
           case log_f32: {
-            GET_SET_F32(precise::log);
+            GET_SET_UNARY_F32(precise::log);
           }
           case log1p_f32: {
             auto x = register1.get_f32();
@@ -665,10 +710,10 @@ kernel void elementwise_f32_i32(
             SET_I32(mask)
           }
           case neg_f32: {
-            GET_SET_F32(-)
+            GET_SET_UNARY_F32(-)
           }
           case neg_i32: {
-            GET_SET_I32(-)
+            GET_SET_UNARY_I32(-)
           }
           case relu_f32: {
             auto x = register1.get_f32();
@@ -679,13 +724,13 @@ kernel void elementwise_f32_i32(
             SET_F32(precise::clamp(x, 0, 6))
           }
           default: /*round_f32*/ {
-            GET_SET_F32(precise::rint)
+            GET_SET_UNARY_F32(precise::rint)
           }
         }
       } else if (operation <= softplus_f32) {
         switch (operation) {
           case rsqrt_f32: {
-            GET_SET_F32(precise::rsqrt)
+            GET_SET_UNARY_F32(precise::rsqrt)
           }
           case selu_f32: {
             auto x = register1.get_f32();
@@ -702,7 +747,7 @@ kernel void elementwise_f32_i32(
             SET_F32(x);
           }
           case sign_f32: {
-            GET_SET_F32(sign)
+            GET_SET_UNARY_F32(sign)
           }
           case sign_i32: {
             auto x = register1.get_i32();
@@ -711,10 +756,10 @@ kernel void elementwise_f32_i32(
             SET_I32(mask)
           }
           case sin_f32: {
-            GET_SET_F32(precise::sin)
+            GET_SET_UNARY_F32(precise::sin)
           }
           case sinh_f32: {
-            GET_SET_F32(precise::sinh)
+            GET_SET_UNARY_F32(precise::sinh)
           }
           default: /*softplus_f32*/ {
             auto x = register1.get_f32();
@@ -732,7 +777,7 @@ kernel void elementwise_f32_i32(
             SET_F32(x)
           }
           case sqrt_f32: {
-            GET_SET_F32(precise::sqrt)
+            GET_SET_UNARY_F32(precise::sqrt)
           }
           case square_f32: {
             auto x = register1.get_f32();
@@ -743,10 +788,10 @@ kernel void elementwise_f32_i32(
             SET_I32(x * x)
           }
           case tan_f32: {
-            GET_SET_F32(precise::tan)
+            GET_SET_UNARY_F32(precise::tan)
           }
           default: /*tanh_f32*/ {
-            GET_SET_F32(precise::tanh)
+            GET_SET_UNARY_F32(precise::tanh)
           }
         }
       } else /*(operation <= scalar_mul_i32)*/ {
@@ -777,9 +822,96 @@ kernel void elementwise_f32_i32(
       }
     } else if (operation < 2000) {
       // MARK: - Binary
-      
+      if (operation <= comparison_i32) {
+        switch (operation) {
+          case add_f32: {
+            GET_SET_BINARY_INFIX_F32(+);
+          }
+          case add_i32: {
+            GET_SET_BINARY_INFIX_I32(+);
+          }
+          case approximate_equal_f32: {
+            auto x = register1.get_f32();
+            auto y = register2.get_f32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            float tolerance = ((constant float*)operation_metadata)[0];
+            float4 difference = abs(x - y);
+            bool4 mask = bool4(difference < tolerance);
+            SET_I32(int4(mask));
+          }
+          case comparison_f32: {
+            auto x = register1.get_f32();
+            auto y = register2.get_f32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            ushort2 codes = ((constant ushort2*)operation_metadata)[0];
+            
+            bool4 out;
+            switch (codes[0]) {
+              case 0:
+                out = x == y;
+              case 1:
+                out = x < y;
+              default: /*2*/ {
+                out = x > y;
+              }
+            }
+            if (codes[1] == 1) {
+              out = !out;
+            }
+            SET_I32(int4(out))
+          }
+          default: /*comparison_i32*/ {
+            auto x = register1.get_i32();
+            auto y = register2.get_i32();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            ushort2 codes = ((constant ushort2*)operation_metadata)[0];
+            
+            bool4 out;
+            switch (codes[0]) {
+              case 0:
+                out = x == y;
+              case 1:
+                out = x < y;
+              default: /*2*/ {
+                out = x > y;
+              }
+            }
+            if (codes[1] == 1) {
+              out = !out;
+            }
+            SET_I32(int4(out))
+          }
+        }
+      } else if (operation <= maximum_i32) {
+        switch (operation) {
+          case div_f32: {
+            GET_SET_BINARY_F32(precise::divide);
+          }
+          case div_i32: {
+            GET_SET_BINARY_INFIX_I32(/);
+          }
+          case elu_grad_f32: {
+            break;
+          }
+          case leaky_relu_grad_f32: {
+            break;
+          }
+          case maximum_f32: {
+            GET_SET_BINARY_F32(precise::max);
+          }
+          default: /*maximum_i32*/ {
+            GET_SET_BINARY_I32(max);
+          }
+        }
+      } else if (operation <= relu6_grad_f32) {
+        
+      } else if (operation <= softsign_grad_f32) {
+        
+      } else /*(operation <= xdivy_f32)*/ {
+        
+      }
     } else {
-      // MARK: - Ternary
+      // MARK: - Other
       
     }
   }

@@ -70,10 +70,13 @@ enum ElementwiseOperationType: ushort {
   add_i64 = 1000,
   add_u64 = 1001,
   
-  // Ternary (2000 - 2999)
+  // Other (2000+)
   
   clip_by_value_i64 = 2000,
   clip_by_value_u64 = 2001,
+  select_i64_u64 = 2002,
+  
+  swap_registers = 3000,
 };
 
 // MARK: - Virtual Assembly Registers
@@ -526,7 +529,7 @@ kernel void elementwise_u32_i64_u64(
       // MARK: - Binary
       
     } else {
-      // MARK: - Ternary
+      // MARK: - Other
       
     }
   }
