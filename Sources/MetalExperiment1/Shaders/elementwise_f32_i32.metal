@@ -516,7 +516,7 @@ kernel void elementwise_f32_i32(
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
     ElementwiseOperationType operation = operations[pc];
     if (operation < 1000) {
-      // Unary
+      // MARK: - Unary
       if (operation <= atanh_f32) {
         switch (operation) {
           case abs_f32: {
@@ -776,10 +776,10 @@ kernel void elementwise_f32_i32(
         }
       }
     } else if (operation < 2000) {
-      // Binary
+      // MARK: - Binary
       
     } else {
-      // Ternary
+      // MARK: - Ternary
       
     }
   }

@@ -407,7 +407,7 @@ kernel void elementwise_u32_i64_u64(
   for (ushort pc = 0; pc < params.num_operations; ++pc) {
     ElementwiseOperationType operation = operations[pc];
     if (operation < 1000) {
-      // Unary
+      // MARK: - Unary
       if (operation <= square_u64) {
         switch (operation) {
           case abs_i64: {
@@ -523,10 +523,10 @@ kernel void elementwise_u32_i64_u64(
         }
       }
     } else if (operation < 2000) {
-      // Binary
+      // MARK: - Binary
       
     } else {
-      // Ternary
+      // MARK: - Ternary
       
     }
   }
