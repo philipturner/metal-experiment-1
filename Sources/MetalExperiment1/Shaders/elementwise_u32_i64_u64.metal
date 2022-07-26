@@ -423,12 +423,12 @@ kernel void elementwise_u32_i64_u64(
             auto x = register1.get_i64();
             auto mask = select(long2(1), long2(-1), x < 0);
             mask = select(mask, long2(0), x == 0);
-            SET_I64(mask);
+            SET_I64(mask)
           }
           case sign_u64: {
             auto x = register1.get_u64();
             x = ulong2(bool2(x));
-            SET_U64(x);
+            SET_U64(x)
           }
           case square_i64: {
             auto x = register1.get_i64();
@@ -444,27 +444,27 @@ kernel void elementwise_u32_i64_u64(
           case cast_f32_to_u32: {
             auto x = register1.get_f32();
             auto casted = long2(uint2(x));
-            SET_I64(casted);
+            SET_I64(casted)
           }
           case cast_f32_to_i64: {
             auto x = register1.get_f32();
             auto casted = long2(x);
-            SET_I64(casted);
+            SET_I64(casted)
           }
           case cast_i64_to_f16: {
             auto x = register1.get_i64();
             auto casted = float2(half2(x));
-            SET_F32(casted);
+            SET_F32(casted)
           }
           case cast_i64_to_f32: {
             auto x = register1.get_i64();
             auto casted = float2(x);
-            SET_F32(casted);
+            SET_F32(casted)
           }
           default: /*cast_i64_u64_to_bool*/ {
             auto x = register1.get_i64();
             auto casted = long2(bool2(x));
-            SET_I64(casted);
+            SET_I64(casted)
           }
         }
       } else if (operation <= cast_i64_u64_to_u32) {
@@ -472,17 +472,17 @@ kernel void elementwise_u32_i64_u64(
           case cast_f32_to_u64: {
             auto x = register1.get_f32();
             auto casted = ulong2(x);
-            SET_U64(casted);
+            SET_U64(casted)
           }
           case cast_u64_to_f16: {
             auto x = register1.get_u64();
             auto casted = float2(half2(x));
-            SET_F32(casted);
+            SET_F32(casted)
           }
           case cast_u64_to_f32: {
             auto x = register1.get_u64();
             auto casted = float2(x);
-            SET_F32(casted);
+            SET_F32(casted)
           }
           default: /*cast_i64_u64_to_i32
                      cast_i64_u64_to_u32*/ {
