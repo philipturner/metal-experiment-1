@@ -9,11 +9,8 @@ import Atomics
 import MetalPerformanceShadersGraph
 
 extension Context {
-  // Returns (handle, rank) to match the style of other function calls.
-  //
-  // Avoids a possible second virtual function call by transforming the generic parameter into
-  // something statically typed. There is already massive overhead from calling into
-  // `withDispatchQueue`, but it should still be minimized.
+  // Returns (handle, rank) to match the style of other function calls. Avoids a possible second
+  // virtual function call by transforming the generic parameter into something statically typed.
   @inline(never)
   public static func allocateBuffer(
     _ type: Any.Type,

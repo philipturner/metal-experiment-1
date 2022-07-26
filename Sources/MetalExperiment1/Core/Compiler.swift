@@ -87,10 +87,10 @@ extension Context {
       
       // Due to custom reference counting semantics, the fusion tail object might be deallocated if
       // its reference count is zero. Emphasis on "might", because the frontend could have released
-      // it and would be waiting on `dispatchQueue` to deallocate it. In that case, the allocation
-      // could still exist when returning in the above statement. There is nothing wrong the
-      // allocation existing there. If it didn't return early and the object was deallocated, then
-      // there would be a problem.
+      // it and would be waiting on the mutex to deallocate it. In that case, the allocation could
+      // still exist when returning in the above statement. There is nothing wrong the allocation
+      // existing there. If it didn't return early and the object was deallocated, then there would
+      // be a problem.
       let fusionTailAllocation = fusionTail.reference!.takeUnretainedValue()
       
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
