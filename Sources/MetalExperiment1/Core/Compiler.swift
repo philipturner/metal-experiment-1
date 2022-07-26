@@ -197,7 +197,7 @@ extension Context {
       
       case .binary(let binary):
         let (input1, input2, output) = (binary.input1, binary.input2, binary.output)
-        
+        // Before fusing, factor in whether enough heads are available.
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
