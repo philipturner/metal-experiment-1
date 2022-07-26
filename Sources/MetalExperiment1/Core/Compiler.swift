@@ -45,6 +45,8 @@ extension Context {
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
     var fusionSize: Int = -9999
+    var numFusedUnaryOperations: Int = 0
+    var numFusedNonUnaryOperations: Int = 0
     
     // Call this before encoding operations that can't be fused. Avoid proactively peeking at the
     // next operation and seeing whether the fusion ends, because that's costly (0.03 - 0.04 µs).
@@ -60,6 +62,8 @@ extension Context {
         fusionTailReferenceCount = -9999
         fusionTail = nil
         fusionSize = -9999
+        numFusedUnaryOperations = 0
+        numFusedNonUnaryOperations = 0
       }
       guard let fusionHeadAllocation1 = fusionHeadAllocation1,
             fusionTailReferenceCount >= 0,
@@ -108,11 +112,18 @@ extension Context {
         size: fusionSize)
       instructions.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
-        if fusionOperations.count >= 2 {
-          // This number does not include no-ops that were fused.
-          print("*** Fused \(fusionOperations.count) unary operations ***")
+        let numFusedOperations = numFusedUnaryOperations + numFusedNonUnaryOperations
+        if numFusedUnaryOperations >= 2 {
+          print("""
+              Fused \(numFusedOperations) operations (\(numFusedUnaryOperations) unary, \
+            \(numFusedNonUnaryOperations) non-unary)
+            """)
+        } else if numFusedUnaryOperations == 1 {
+          print("  Appended single unary operation")
+        } else if numFusedNonUnaryOperations == 1 {
+          print("  Appended single non-unary operation")
         } else {
-          print("Appended single unary operation")
+          print("  Appended copying operation")
         }
       }
     }
@@ -171,6 +182,7 @@ extension Context {
             fusionMetadata.append(metadata)
           }
         }
+        numFusedUnaryOperations += 1
         
         // Release input.
         if referenceCount == 0 {
@@ -182,6 +194,10 @@ extension Context {
         // Update fusion tail.
         fusionTailReferenceCount = _internalRelease(output)
         fusionTail = output
+      
+      case .binary(let binary):
+        let (input1, input2, output) = (binary.input1, binary.input2, binary.output)
+        
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {

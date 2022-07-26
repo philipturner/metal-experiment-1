@@ -269,6 +269,7 @@ enum EagerOperation {
       self.metadata = metadata
     }
   }
+  case binary(Binary)
   
   struct ExplicitCopy {
     var input: AllocationHandle
