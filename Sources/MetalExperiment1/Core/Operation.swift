@@ -6,6 +6,8 @@
 //
 
 enum UnaryOperationType: UInt16 {
+  case no_op = 65535
+  
   case abs_f32 = 0
   case abs_i32 = 1 // integer operation
   case acos_f32 = 2
@@ -68,6 +70,8 @@ enum UnaryOperationType: UInt16 {
 }
 
 enum UnaryOperationType2: UInt16 {
+  case no_op = 65535
+  
   case abs_i64 = 0
   case neg_i64 = 1
   case sign_i64 = 2
@@ -91,7 +95,7 @@ enum UnaryOperationType2: UInt16 {
   case scalar_mul_i64 = 31 // requires metadata
   case scalar_mul_u64 = 32 // requires metadata
   
-  init?(_ smallOperation: UnaryOperationType, dataType: DataType) {
+  init(_ smallOperation: UnaryOperationType, dataType: DataType) {
     guard dataType.requiresLargeRepresentation else {
       fatalError("Data type '\(dataType)' does not require large representation.")
     }
@@ -101,7 +105,7 @@ enum UnaryOperationType2: UInt16 {
       if dataType == .int64 {
         self = .abs_i64
       } else {
-        return nil
+        self = .no_op
       }
     case .neg_i32:
       // Produce the same behavior with signed and unsigned integers.
@@ -174,7 +178,7 @@ enum BinaryOperationType2: UInt16 {
   case squared_difference_u64 = 31
   case sub_i64_u64 = 32
   
-  init?(_ smallOperation: BinaryOperationType, dataType: DataType) {
+  init(_ smallOperation: BinaryOperationType, dataType: DataType) {
     guard dataType.requiresLargeRepresentation else {
       fatalError("Data type '\(dataType)' does not require large representation.")
     }
@@ -213,10 +217,9 @@ enum EagerOperation {
   struct Unary {
     // `metadata` stored before `operation` to make the memory layout more compact.
     var metadata: UInt64? = nil
-    var isNoOp: Bool = false
     var dataGroup: DataGroup
     
-    // `operation` is the raw value of either a `UnaryOperationType` or a `UnaryOperationType2`.
+    // `operation` is the raw value of either a `UnaryOperationType` or `UnaryOperationType2`.
     var operation: UInt16
     var input: AllocationHandle
     var output: AllocationHandle
@@ -227,18 +230,45 @@ enum EagerOperation {
       _ input: AllocationHandle,
       _ output: AllocationHandle,
       _ dataGroup: DataGroup,
-      _ metadata: UInt64?,
-      _ isNoOp: Bool
+      _ metadata: UInt64?
     ) {
       self.operation = operation
       self.input = input
       self.output = output
       self.dataGroup = dataGroup
       self.metadata = metadata
-      self.isNoOp = isNoOp
     }
   }
   case unary(Unary)
+  
+  struct Binary {
+    // `metadata` stored before `operation` to make the memory layout more compact.
+    var metadata: UInt64? = nil
+    var dataGroup: DataGroup
+    
+    // `operation` is the raw value of either a `BinaryOperationType` or `BinaryOperationType2`.
+    var operation: UInt16
+    var input1: AllocationHandle
+    var input2: AllocationHandle
+    var output: AllocationHandle
+    
+    @inline(__always)
+    init(
+      _ operation: UInt16,
+      _ input1: AllocationHandle,
+      _ input2: AllocationHandle,
+      _ output: AllocationHandle,
+      _ dataGroup: DataGroup,
+      _ metadata: UInt64?
+    ) {
+      self.operation = operation
+      self.input1 = input1
+      self.input2 = input2
+      self.output = output
+      self.dataGroup = dataGroup
+      self.metadata = metadata
+    }
+  }
   
   struct ExplicitCopy {
     var input: AllocationHandle
@@ -252,8 +282,9 @@ enum EagerOperation {
 // easier to implement and more performant.
 enum Instruction {
   struct Elementwise {
-    // `metadata` much less vector capacity of `operations`. It doesn't need as much storage because
-    // it's serialized efficiently. Metadata is only recorded after each operation that needs it.
+    // `metadata` has much less vector capacity of `operations`. It doesn't need as much storage
+    // because it's serialized efficiently. Metadata is only recorded after each operation that
+    // needs it.
     var operations: SmallVector<SIMD8<UInt16>>
     
     // Warning: `SIMD2` does not mean 2 operations worth of metadata. It means the total capacity

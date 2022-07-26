@@ -163,9 +163,9 @@ extension Context {
         // Append operation.
         precondition(
           input.shape.elementsEqual(output.shape), "Input shape did not match output shape.")
-        if !unary.isNoOp {
-          precondition(
-            unary.operation != UInt16.max, "'unary.operation' had the raw value of a no-op.")
+        if unary.operation == .max {
+          // Skip no-ops.
+        } else {
           fusionOperations.append(unary.operation)
           if let metadata = unary.metadata {
             fusionMetadata.append(metadata)

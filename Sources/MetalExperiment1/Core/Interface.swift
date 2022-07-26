@@ -248,7 +248,7 @@ extension OperationRegistry {
     
     // Select operation.
     var operation: UInt16
-    var dataGroup: DataGroup = .f32_i32
+    var dataGroup: DataGroup
     if let operation_bool = operation_bool {
       precondition(dataType == .bool, dataMismatch(operation_bool))
       guard operation_f32 == nil,
@@ -256,29 +256,34 @@ extension OperationRegistry {
         fatalError("This should never happen.")
       }
       operation = operation_bool.rawValue
+      dataGroup = .f32_i32
     } else {
       precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
       if let operation_f32 = operation_f32 {
         if let operation_i32 = operation_i32 {
           if dataType.isFloatingPoint {
             operation = operation_f32.rawValue
+            dataGroup = .f32_i32
           } else if dataType.representableByInt32 {
             operation = operation_i32.rawValue
+            dataGroup = .f32_i32
           } else {
-            operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+            operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
             dataGroup = .u32_i64_u64
           }
         } else {
           precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
           operation = operation_f32.rawValue
+          dataGroup = .f32_i32
         }
       } else {
         if let operation_i32 = operation_i32 {
           precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
           if dataType.representableByInt32 {
             operation = operation_i32.rawValue
+            dataGroup = .f32_i32
           } else {
-            operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+            operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
             dataGroup = .u32_i64_u64
           }
         } else {
@@ -289,7 +294,7 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata, false)))
+      operation, input, output, dataGroup, metadata)))
   }
   
   // Named after the Metal Standard Library header, `metal_relational`.
@@ -320,7 +325,7 @@ extension OperationRegistry {
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation.rawValue, input, output, .f32_i32, nil, false)))
+      operation.rawValue, input, output, .f32_i32, nil)))
   }
   
   static func dispatchUnaryScalar(
@@ -349,9 +354,8 @@ extension OperationRegistry {
     
     // Select operation.
     var operation: UInt16
-    var dataGroup: DataGroup = .f32_i32
+    var dataGroup: DataGroup
     var metadata: UInt64
-    var isNoOp: Bool
     if dataType.isFloatingPoint {
       var rhs: Float
       switch dataType {
@@ -365,9 +369,13 @@ extension OperationRegistry {
         fatalError("This should never happen.")
       }
       
-      operation = operation_f32.rawValue
+      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
+        operation = .max
+      } else {
+        operation = operation_f32.rawValue
+      }
       metadata = UInt64(rhs.bitPattern)
-      isNoOp = (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1)
+      dataGroup = .f32_i32
     } else if dataType.representableByInt32 {
       var rhs: Int32
       switch dataType {
@@ -385,9 +393,13 @@ extension OperationRegistry {
         fatalError("This should never happen.")
       }
       
-      operation = operation_i32.rawValue
+      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
+        operation = .max
+      } else {
+        operation = operation_i32.rawValue
+      }
       metadata = UInt64(truncatingIfNeeded: rhs)
-      isNoOp = (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1)
+      dataGroup = .f32_i32
     } else {
       switch dataType {
       case .uint32:
@@ -396,15 +408,18 @@ extension OperationRegistry {
         metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt64)
       }
       
-      operation = UnaryOperationType2(operation_i32, dataType: dataType)!.rawValue
+      if (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1) {
+        operation = .max
+      } else {
+        operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
+      }
       dataGroup = .u32_i64_u64
-      isNoOp = (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1)
     }
     advanceAtom(&args.attributes)
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata, isNoOp)))
+      operation, input, output, dataGroup, metadata)))
   }
   
   static func dispatchCast(
@@ -429,35 +444,28 @@ extension OperationRegistry {
     var operation: UInt16
     var dataGroup: DataGroup
     var metadata: UInt64?
-    var isNoOp: Bool
     let inputDataType = input.dataType
     if inputDataType.requiresLargeRepresentation || outputDataType.requiresLargeRepresentation {
-      let cast = UnaryOperationType2(
-        casting: inputDataType, to: outputDataType, metadata: &metadata)
-      if let cast = cast {
+      if let cast = UnaryOperationType2(
+           casting: inputDataType, to: outputDataType, metadata: &metadata) {
         operation = cast.rawValue
-        isNoOp = false
       } else {
         operation = .max
-        isNoOp = true
       }
       dataGroup = .u32_i64_u64
     } else {
-      let cast = UnaryOperationType(
-        casting: inputDataType, to: outputDataType, metadata: &metadata)
-      if let cast = cast {
+      if let cast = UnaryOperationType(
+           casting: inputDataType, to: outputDataType, metadata: &metadata) {
         operation = cast.rawValue
-        isNoOp = false
       } else {
         operation = .max
-        isNoOp = true
       }
       dataGroup = .f32_i32
     }
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata, isNoOp)))
+      operation, input, output, dataGroup, metadata)))
   }
 }
 
