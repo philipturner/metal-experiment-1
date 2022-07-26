@@ -170,7 +170,7 @@ enum ElementwiseOperationType: ushort {
   div_f32 = 1010,
   div_i32 = 1011,
   elu_grad_f32 = 1012,
-  leaky_relu_grad_f32 = 1013,
+  leaky_relu_grad_f32 = 1013, // requires metadata
   maximum_f32 = 1014,
   maximum_i32 = 1015,
   
@@ -926,11 +926,7 @@ kernel void elementwise_f32_i32(
             GET_SET_BINARY_INFIX_I32(%)
           }
           case pow_f32: {
-            auto x = register1.get_f32();
-            auto y = register2.get_f32();
-            auto out = precise::powr(x, y);
-            out = select(NAN, out, x >= 0);
-            SET_F32(out)
+            GET_SET_BINARY_F32(precise::pow)
           }
           default: /*relu6_grad_f32*/ {
             auto x = register1.get_f32();
@@ -995,7 +991,7 @@ kernel void elementwise_f32_i32(
           case squared_difference_i32: {
             auto x = register1.get_i32();
             auto y = register2.get_i32();
-            auto out = x - y;
+            auto out = int4(absdiff(x, y));
             out = out * out;
             SET_I32(out)
           }
@@ -1014,7 +1010,7 @@ kernel void elementwise_f32_i32(
           }
         }
       }
-    } else {
+    } else /*(operation <= sub_u64)*/ {
       // MARK: - Other
       
     }

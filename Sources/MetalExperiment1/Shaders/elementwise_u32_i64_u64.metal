@@ -67,8 +67,23 @@ enum ElementwiseOperationType: ushort {
   
   // Binary (1000 - 1999)
   
-  add_i64 = 1000,
-  add_u64 = 1001,
+  add_i64_u64 = 1000,
+  comparison_i64 = 1001, // requires metadata
+  comparison_u64 = 1002, // requires metadata
+  
+  div_i64 = 1010,
+  div_u64 = 1011,
+  maximum_i64 = 1012,
+  maximum_u64 = 1013,
+  
+  minimum_i64 = 1020,
+  minimum_u64 = 1021,
+  mod_i64 = 1022,
+  mod_u64 = 1023,
+  
+  squared_difference_i64 = 1030,
+  squared_difference_u64 = 1031,
+  sub_i64_u64 = 1032,
   
   // Other (2000+)
   
@@ -267,6 +282,18 @@ SET_I64(expr(register1.get_i64())) \
 
 #define GET_SET_U64(expr)          \
 SET_U64(expr(register1.get_u64())) \
+
+#define GET_SET_BINARY_I64(expr)                        \
+SET_I64(expr(register1.get_i64(), register2.get_i64())) \
+
+#define GET_SET_BINARY_U64(expr)                        \
+SET_U64(expr(register1.get_u64(), register2.get_u64())) \
+
+#define GET_SET_BINARY_INFIX_I64(infix_expr)                \
+SET_I64(register1.get_i64() infix_expr register2.get_i64()) \
+
+#define GET_SET_BINARY_INFIX_U64(infix_expr)                \
+SET_U64(register1.get_u64() infix_expr register2.get_u64()) \
 
 // Bytes of metadata allowed per operation.
 constant ushort METADATA_BYTES = 8;
@@ -527,8 +554,111 @@ kernel void elementwise_u32_i64_u64(
       }
     } else if (operation < 2000) {
       // MARK: - Binary
-      
-    } else {
+      if (operation <= comparison_u64) {
+        switch (operation) {
+          case add_i64_u64: {
+            GET_SET_BINARY_INFIX_I64(+)
+          }
+          case comparison_i64: {
+            auto x = register1.get_i64();
+            auto y = register2.get_i64();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            ushort2 codes = ((constant ushort2*)operation_metadata)[0];
+            
+            bool2 out;
+            switch (codes[0]) {
+              case 0:
+                out = x == y;
+              case 1:
+                out = x < y;
+              default: /*2*/ {
+                out = x > y;
+              }
+            }
+            if (codes[1] == 1) {
+              out = !out;
+            }
+            SET_I64(long2(out))
+          }
+          default: /*comparison_u64*/ {
+            auto x = register1.get_u64();
+            auto y = register2.get_u64();
+            auto operation_metadata = get_metadata(metadata, metadata_index);
+            ushort2 codes = ((constant ushort2*)operation_metadata)[0];
+            
+            bool2 out;
+            switch (codes[0]) {
+              case 0:
+                out = x == y;
+              case 1:
+                out = x < y;
+              default: /*2*/ {
+                out = x > y;
+              }
+            }
+            if (codes[1] == 1) {
+              out = !out;
+            }
+            SET_U64(ulong2(out))
+          }
+        }
+      } else if (operation <= maximum_u64) {
+        switch (operation) {
+          case div_i64: {
+            GET_SET_BINARY_INFIX_I64(/)
+          }
+          case div_u64: {
+            GET_SET_BINARY_INFIX_U64(/)
+          }
+          case maximum_i64: {
+            GET_SET_BINARY_I64(max)
+          }
+          default: /*maximum_u64*/ {
+            GET_SET_BINARY_U64(max)
+          }
+        }
+      } else if (operation <= mod_u64) {
+        /*
+         squared_difference_i64 = 1030,
+         squared_difference_u64 = 1031,
+         sub_i64 = 1032,
+         */
+        switch (operation) {
+          case minimum_i64: {
+            GET_SET_BINARY_I64(min)
+          }
+          case minimum_u64: {
+            GET_SET_BINARY_U64(min)
+          }
+          case mod_i64: {
+            GET_SET_BINARY_INFIX_I64(%)
+          }
+          default: /*mod_u64*/ {
+            GET_SET_BINARY_INFIX_U64(%)
+          }
+        }
+      } else /*(operation <= sub_u64)*/ {
+        switch (operation) {
+          case squared_difference_i64: {
+            auto x = register1.get_i64();
+            auto y = register2.get_i64();
+            auto out = long2(absdiff(x, y));
+            out = out * out;
+            SET_I64(out)
+          }
+          case squared_difference_u64: {
+            auto x = register1.get_u64();
+            auto y = register2.get_u64();
+            auto out = ulong2(absdiff(x, y));
+            out = out * out;
+            SET_U64(out)
+          }
+          default: /*sub_i64_u64*/ {
+            GET_SET_BINARY_INFIX_I64(-)
+          }
+        }
+      }
+    } else /*(operation >= 2000)*/ {
       // MARK: - Other
       
     }

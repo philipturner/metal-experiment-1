@@ -121,6 +121,41 @@ enum UnaryOperationType2: UInt16 {
   }
 }
 
+enum BinaryOperationType: UInt16 {
+  case add_f32 = 0
+  case add_i32 = 1
+  case approximate_equal_f32 = 2 // requires metadata
+  case comparison_f32 = 3 // requires metadata
+  case comparison_i32 = 4 // requires metadata
+  
+  case div_f32 = 10
+  case div_i32 = 11
+  case elu_grad_f32 = 12
+  case leaky_relu_grad_f32 = 13 // requires metadata
+  case maximum_f32 = 14
+  case maximum_i32 = 15
+  
+  case minimum_f32 = 20
+  case minimum_i32 = 21
+  case mod_f32 = 22
+  case mod_i32 = 23
+  case pow_f32 = 24
+  case relu6_grad_f32 = 25
+  
+  case relu_grad_f32 = 30
+  case rsqrt_grad_f32 = 31
+  case selu_grad_f32 = 32
+  case sigmoid_grad_f32 = 33
+  case softplus_grad_f32 = 34
+  case softsign_grad_f32 = 35
+  
+  case squared_difference_f32 = 40
+  case squared_difference_i32 = 41
+  case sub_f32 = 42
+  case sub_i32 = 43
+  case xdivy_f32 = 44
+}
+
 enum DataGroup {
   case f32_i32
   case u32_i64_u64

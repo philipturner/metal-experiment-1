@@ -19,7 +19,7 @@ public class Context {
   // If just finished barrier, spin off a timer that force-flushes the stream. If a command buffer
   // was committed since then, abort the timer.
   
-  static let maxBatchesInFlight = 10
+  static let maxBatchesInFlight = 3
   static var maxCommandsPerBatch = 128
   static var maxCommandsPerSmallBatch = 16
   var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
@@ -35,7 +35,7 @@ public class Context {
   
   var justFinishedBarrier = true
   var waitingOnTimer = false
-  var schedulingLatency = MovingAverage<UInt64>(repeating: 0, count: 8)
+  var schedulingLatency = MovingAverage<UInt64>(repeating: 50_000, count: 16)
   var schedulingQueue = DispatchQueue(
     label: "com.s4tf.metal.Context.schedulingQueue", qos: .userInteractive)
   
