@@ -908,7 +908,7 @@ kernel void elementwise_f32_i32(
             GET_SET_BINARY_F32(precise::max)
           }
           default: /*maximum_i32*/ {
-            GET_SET_BINARY_I32(max);
+            GET_SET_BINARY_I32(max)
           }
         }
       } else if (operation <= relu6_grad_f32) {
@@ -937,7 +937,7 @@ kernel void elementwise_f32_i32(
             auto dx = register2.get_f32();
             auto out = clamp(x, 0, 6);
             out = select(0, dx, x == out);
-            SET_F32(out);
+            SET_F32(out)
           }
         }
       } else if (operation <= softsign_grad_f32) {
@@ -946,12 +946,12 @@ kernel void elementwise_f32_i32(
             auto x = register1.get_f32();
             auto dx = register2.get_f32();
             auto out = select(0, dx, x > 0);
-            SET_F32(out);
+            SET_F32(out)
           }
           case rsqrt_grad_f32: {
             auto x = register1.get_f32();
-            auto y = precise::rsqrt(x);
-            auto out = -0.5 * (y * y * y);
+            auto out = precise::rsqrt(x);
+            out = -0.5 * (out * out * out);
             SET_BINARY_GRADIENT_F32(out)
           }
           case selu_grad_f32: {
@@ -963,28 +963,56 @@ kernel void elementwise_f32_i32(
           }
           case sigmoid_grad_f32: {
             auto x = register1.get_f32();
-            auto y = 1 + precise::exp(-x);
-            y = precise::divide(1, y);
-            auto out = y * (1 - y);
+            auto out = 1 + precise::exp(-x);
+            out = precise::divide(1, out);
+            out = out * (1 - out);
             SET_BINARY_GRADIENT_F32(out)
           }
           case softplus_grad_f32: {
             auto x = register1.get_f32();
             auto dx = register2.get_f32();
-            auto y = 1 + precise::exp(-x);
-            auto out = precise::divide(dx, y);
-            SET_F32(out);
+            auto out = 1 + precise::exp(-x);
+            out = precise::divide(dx, out);
+            SET_F32(out)
           }
           default: /*softsign_grad_f32*/ {
             auto x = register1.get_f32();
             auto dx = register2.get_f32();
-            auto y = 1 + precise::abs(x);
-            auto out = precise::divide(dx, y * y);
-            SET_F32(out);
+            auto out = 1 + precise::abs(x);
+            out = precise::divide(dx, out * out);
+            SET_F32(out)
           }
         }
       } else /*(operation <= xdivy_f32)*/ {
-        
+        switch (operation) {
+          case squared_difference_f32: {
+            auto x = register1.get_f32();
+            auto y = register2.get_f32();
+            auto out = x - y;
+            out = out * out;
+            SET_F32(out)
+          }
+          case squared_difference_i32: {
+            auto x = register1.get_i32();
+            auto y = register2.get_i32();
+            auto out = x - y;
+            out = out * out;
+            SET_I32(out)
+          }
+          case sub_f32: {
+            GET_SET_BINARY_INFIX_F32(-);
+          }
+          case sub_i32: {
+            GET_SET_BINARY_INFIX_I32(-);
+          }
+          default: /*xdivy_f32*/ {
+            auto x = register1.get_f32();
+            auto y = register2.get_f32();
+            auto out = precise::divide(x, y);
+            out = select(out, 0, x == 0);
+            SET_F32(out);
+          }
+        }
       }
     } else {
       // MARK: - Other
