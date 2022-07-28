@@ -675,10 +675,10 @@ kernel void elementwise_u32_i64_u64(
           SET_U64(out);
         }
         default: /*select_i64_u64*/ {
-          auto a = register1.get_u64();
-          auto b = register2.get_u64();
-          auto c = register3.get_u64();
-          auto out = select(a, b, bool2(c));
+          auto x = register1.get_u64();
+          auto y = register2.get_u64();
+          auto z = register3.get_vector_i16_u16();
+          auto out = select(x, y, bool2(z));
           SET_U64(out);
         }
       }

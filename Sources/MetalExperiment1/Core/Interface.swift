@@ -218,7 +218,7 @@ extension OperationRegistry {
     precondition(
       args.inputs.count == 1, "Passed \(args.inputs.count) inputs into a unary operation.")
     precondition(
-      args.outputs.count == 1, "Passed \(args.outputs.count) inputs into a unary operation.")
+      args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a unary operation.")
   }
   
   static func dispatchUnary(
@@ -649,4 +649,25 @@ extension OperationRegistry {
   }
 }
 
+// MARK: - Binary Operations
+
+// Pass add/sub/mul in a custom way, allowing transformation into scalar add/mul operations. When
+// implementing constant folding, the transformation will actually occur.
+
 // Pass binary comparison operations like others, just make a utility that generates metadata.
+
+// To start off, pass the minimum/maximum operations.
+
+extension OperationRegistry {
+  @inline(__always)
+  static func commonBinaryPrecondition(_ args: Arguments) {
+    precondition(
+      args.inputs.count == 2, "Passed \(args.inputs.count) inputs into a binary operation.")
+    precondition(
+      args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a binary operation.")
+  }
+  
+//  static func dispatchBinary(
+//    _ args: inout Arguments,
+//    _ operation_f32: )
+}
