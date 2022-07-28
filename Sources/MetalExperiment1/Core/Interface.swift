@@ -96,6 +96,11 @@ extension OperationRegistry {
     
     "ScalarAdd": scalarAdd,
     "ScalarMul": scalarMul,
+    
+    // Binary
+    
+    "Maximum": maximum,
+    "Minimum": minimum,
   ]
 }
 
@@ -651,10 +656,6 @@ extension OperationRegistry {
 
 // MARK: - Binary Operations
 
-// Pass binary comparison operations like others, just make a utility that generates metadata.
-
-// To start off, pass the minimum/maximum operations.
-
 extension OperationRegistry {
   @inline(__always)
   static func commonBinaryPrecondition(_ args: Arguments) {
@@ -763,5 +764,19 @@ extension OperationRegistry {
     // Append operation.
     ctx.eagerOperations.append(.binary(.init(
       operation, input1, input2, output, dataGroup, metadata)))
+  }
+}
+
+extension OperationRegistry {
+  // Pass binary comparison operations like others, just make a utility that generates metadata.
+  
+  static let maximum = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .maximum_f32, .maximum_i32, nil, nil, true)
+  }
+  
+  static let minimum = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .minimum_f32, .minimum_i32, nil, nil, true)
   }
 }

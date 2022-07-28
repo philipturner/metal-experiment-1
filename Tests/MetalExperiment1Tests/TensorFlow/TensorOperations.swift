@@ -228,3 +228,15 @@ public func tan<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.tanh(x)
 }
+
+// Binary
+
+@inlinable
+public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
+  _Raw.maximum(lhs, rhs)
+}
+
+@inlinable
+public func min<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
+  _Raw.minimum(lhs, rhs)
+}

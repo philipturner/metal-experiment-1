@@ -54,6 +54,21 @@ func dispatchUnaryRelational<T0>(
 }
 
 @inlinable @inline(__always)
+func dispatchBinary<T0, T1, T2>(
+  _ name: StaticString,
+  _ input1: Tensor<T0>,
+  _ input2: Tensor<T1>
+) -> Tensor<T2> {
+  return decodeOutputs { outputs in
+    encodeInputs(input1, input2) { inputs in
+      let name = encodeName(name)
+      let attributes = encodeAttributes()
+      Context.executeOperation(name, attributes, inputs, outputs)
+    }
+  }
+}
+
+@inlinable @inline(__always)
 func encodeName(_ name: StaticString) -> UnsafeRawBufferPointer {
   let start = name.utf8Start
   let count = name.utf8CodeUnitCount
@@ -246,10 +261,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func leakyRelu<T>(
-    features: Tensor<T>,
-    alpha: Double = 0.2
-  ) -> Tensor<T> {
+  public static func leakyRelu<T>(features: Tensor<T>, alpha: Double = 0.2) -> Tensor<T> {
     dispatchUnary("LeakyRelu", features, alpha)
   }
   
@@ -355,18 +367,24 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func scalarAdd<T>(
-    _ input: Tensor<T>,
-    rhs: T
-  ) -> Tensor<T> {
+  public static func scalarAdd<T>(_ input: Tensor<T>, rhs: T) -> Tensor<T> {
     dispatchUnary("ScalarAdd", input, rhs)
   }
   
   @inlinable @inline(__always)
-  public static func scalarMul<T>(
-    _ input: Tensor<T>,
-    rhs: T
-  ) -> Tensor<T> {
+  public static func scalarMul<T>(_ input: Tensor<T>, rhs: T) -> Tensor<T> {
     dispatchUnary("ScalarMul", input, rhs)
+  }
+  
+  // Binary
+  
+  @inlinable @inline(__always)
+  public static func maximum<T>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+    dispatchBinary("Maximum", x, y)
+  }
+  
+  @inlinable @inline(__always)
+  public static func minimum<T>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+    dispatchBinary("Minimum", x, y)
   }
 }
