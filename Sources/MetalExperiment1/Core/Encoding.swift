@@ -10,8 +10,8 @@ import MetalPerformanceShaders
 struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
-  private var encoder: MTLComputeCommandEncoder?
-  private var encoderID: Int = -1
+  private var computeEncoder: MTLComputeCommandEncoder?
+  private var computeEncoderID: Int = -1
   var pipelineStateID: Int = -1
   var synchronizedResources: Set<AllocationHandle> = []
   
@@ -36,34 +36,37 @@ struct EncodingContext {
   }
   
   @inline(__always)
-  mutating func makeEncoder() -> MTLComputeCommandEncoder {
-    if let encoder = encoder {
-      return encoder
+  mutating func makeComputeCommandEncoder() -> MTLComputeCommandEncoder {
+    if let computeEncoder = computeEncoder {
+      return computeEncoder
     } else {
-      return makeEncoderSlowPath()
+      return makeComputeCommandEncoderSlowPath()
     }
   }
   
   @inline(never)
-  private mutating func makeEncoderSlowPath() -> MTLComputeCommandEncoder {
+  private mutating func makeComputeCommandEncoderSlowPath() -> MTLComputeCommandEncoder {
+    encodeWaitForEvent()
     precondition(synchronizedResources.isEmpty, "This should never happen.")
-    let encoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
-    self.encoder = encoder
-    self.encoderID += 1
-    return encoder
+    let computeEncoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
+    self.computeEncoder = computeEncoder
+    self.computeEncoderID += 1
+    return computeEncoder
   }
   
   @inline(__always)
-  mutating func finishEncoder() {
-    if let encoder = encoder {
-      finishEncoderSlowPath(encoder)
+  mutating func finishComputeCommandEncoder() {
+    if let computeEncoder = computeEncoder {
+      finishComputeCommandEncoderSlowPath(computeEncoder)
     }
   }
   
   @inline(never)
-  private mutating func finishEncoderSlowPath(_ encoder: MTLComputeCommandEncoder) {
-    encoder.endEncoding()
-    self.encoder = nil
+  private mutating func finishComputeCommandEncoderSlowPath(
+    _ computeEncoder: MTLComputeCommandEncoder
+  ) {
+    computeEncoder.endEncoding()
+    self.computeEncoder = nil
     self.pipelineStateID = -1
     self.synchronizedResources.removeAll(keepingCapacity: true)
     encodeSignalEvent()
@@ -73,8 +76,8 @@ struct EncodingContext {
   mutating func useAllocation(_ allocation: Allocation) {
     precondition(allocation.lastModifiedCommandBufferID == -1, "Cannot initialize something twice.")
     allocation.lastModifiedCommandBufferID = commandBufferID
-    if encoder != nil {
-      allocation.lastModifiedCommandEncoderID = encoderID
+    if computeEncoder != nil {
+      allocation.lastModifiedCommandEncoderID = computeEncoderID
       synchronizedResources.insert(allocation.handle)
     }
   }
@@ -83,7 +86,7 @@ struct EncodingContext {
   @inline(__always)
   mutating func memoryBarrier(allocation: Allocation) -> Bool {
     guard allocation.lastModifiedCommandBufferID == commandBufferID,
-          allocation.lastModifiedCommandEncoderID == encoderID else {
+          allocation.lastModifiedCommandEncoderID == computeEncoderID else {
       return false
     }
     memoryBarrierSlowPath(allocation)
@@ -120,7 +123,7 @@ private extension Context {
     _ instruction: Instruction.Elementwise,
     into ectx: inout EncodingContext
   ) throws {
-    let encoder = ectx.makeEncoder()
+    let encoder = ectx.makeComputeCommandEncoder()
     switch instruction.dataGroup {
     case .f32_i32:
       // Avoid overhead of Metal API call if possible.
@@ -142,16 +145,19 @@ private extension Context {
     do {
       let input1 = instruction.input1
       try input1.materialize()
+      encoder.memoryBarrier(resources: [input1.mtlBuffer!])
       encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
       shouldBarrier1 = ectx.memoryBarrier(allocation: input1)
     }
     if let input2 = instruction.input2 {
       try input2.materialize()
+      encoder.memoryBarrier(resources: [input2.mtlBuffer!])
       encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
       shouldBarrier2 = ectx.memoryBarrier(allocation: input2)
     }
     if let input3 = instruction.input3 {
       try input3.materialize()
+      encoder.memoryBarrier(resources: [input3.mtlBuffer!])
       encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
       shouldBarrier3 = ectx.memoryBarrier(allocation: input3)
     }
@@ -173,6 +179,7 @@ private extension Context {
     do {
       let output = instruction.output
       try output.materialize()
+      encoder.memoryBarrier(resources: [output.mtlBuffer!])
       encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
       ectx.useAllocation(output)
     }
@@ -425,7 +432,7 @@ private extension Context {
     // `finishBlitEncoder` just for this command. There is a very low chance that two explicit copy
     // operations appear next to each other. This is a viable optimization that I could pursue down
     // the road, alongside other enhancements to reading data from the GPU.
-    ectx.finishEncoder()
+    ectx.finishComputeCommandEncoder()
     ectx.encodeWaitForEvent()
     let blitEncoder = ectx.commandBuffer.makeBlitCommandEncoder()!
     defer {

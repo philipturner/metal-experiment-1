@@ -220,7 +220,7 @@ private extension Context {
       }
     }
     
-    // If the compiler removes all eager operations by constant folding, avoid the overhead of
+    // If the compiler removes all eager operations with constant folding, avoid the overhead of
     // creating a command buffer.
     if instructions.count == 0 {
       return
@@ -234,7 +234,7 @@ private extension Context {
     
     // Only called in one location, the loop that iterates over each operation.
     func submitBatch(range: Range<Int>) {
-      encodingContext.finishEncoder()
+      encodingContext.finishComputeCommandEncoder()
       
       // Force the memory allocations to stay alive until the command buffer finishes.
       class Retainer {

@@ -160,7 +160,10 @@ class HeapBlock: AllocatorBlockProtocol {
       desc.size = kRoundLarge * ((size + kRoundLarge - 1) / kRoundLarge)
     }
     desc.storageMode = isShared ? .shared : .private
-    desc.hazardTrackingMode = .tracked
+    
+    // Don't automatically track contents. The context's encoding process manually tracks
+    // dependencies between commands for better performance.
+    desc.hazardTrackingMode = .untracked
     
     let device = Context.global.device
     return device.makeHeap(descriptor: desc)
@@ -171,6 +174,7 @@ class HeapBlock: AllocatorBlockProtocol {
     guard let buffer = buffer else {
       return nil
     }
+    precondition(buffer.hazardTrackingMode == .untracked, "This should never happen.")
     availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
     numBuffers += 1
     return buffer
