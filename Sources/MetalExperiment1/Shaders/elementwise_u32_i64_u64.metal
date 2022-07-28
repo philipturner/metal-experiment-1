@@ -91,7 +91,9 @@ enum ElementwiseOperationType: ushort {
   clip_by_value_u64 = 2001,
   select_i64_u64 = 2002,
   
-  swap_registers = 3000,
+  swap_registers_1_2 = 3000,
+  swap_registers_1_3 = 3001,
+  swap_registers_2_3 = 3002,
 };
 
 // MARK: - Virtual Assembly Registers
@@ -578,7 +580,7 @@ kernel void elementwise_u32_i64_u64(
             if (codes[1] == 1) {
               out = !out;
             }
-            SET_I64(long2(out))
+            SET_U64(ulong2(out))
           }
           default: /*comparison_u64*/ {
             auto x = register1.get_u64();
@@ -655,7 +657,55 @@ kernel void elementwise_u32_i64_u64(
       }
     } else /*(operation >= 2000)*/ {
       // MARK: - Other
-      
+      if (operation <= select_i64_u64) {
+        switch (operation) {
+          case clip_by_value_i64: {
+            auto x = register1.get_i64();
+            auto y = register2.get_i64();
+            auto z = register3.get_i64();
+            auto out = clamp(x, y, z);
+            SET_I64(out);
+          }
+          case clip_by_value_u64: {
+            auto x = register1.get_u64();
+            auto y = register2.get_u64();
+            auto z = register3.get_u64();
+            auto out = clamp(x, y, z);
+            SET_U64(out);
+          }
+          default: /*select_i64_u64*/ {
+            auto a = register1.get_u64();
+            auto b = register2.get_u64();
+            auto c = register3.get_u64();
+            auto out = select(a, b, bool2(c));
+            SET_U64(out);
+          }
+        }
+      } else /*(operation <= swap_registers_2_3)*/ {
+        switch (operation) {
+          case swap_registers_1_2: {
+            auto lhs = register1.get_u64();
+            auto rhs = register2.get_u64();
+            register2.set_u64(lhs);
+            register1.set_u64(rhs);
+            break;
+          }
+          case swap_registers_1_3: {
+            auto lhs = register1.get_u64();
+            auto rhs = register3.get_u64();
+            register3.set_u64(lhs);
+            register1.set_u64(rhs);
+            break;
+          }
+          default: /*swap_registers_2_3*/ {
+            auto lhs = register2.get_u64();
+            auto rhs = register3.get_u64();
+            register3.set_u64(lhs);
+            register2.set_u64(rhs);
+            break;
+          }
+        }
+      }
     }
   }
   
