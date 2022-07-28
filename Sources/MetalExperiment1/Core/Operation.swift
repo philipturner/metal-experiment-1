@@ -233,6 +233,12 @@ enum TernaryOperationType2: UInt16 {
   }
 }
 
+enum RegisterSwapType: UInt16 {
+  case swap_registers_1_2 = 0
+  case swap_registers_1_3 = 1
+  case swap_registers_2_3 = 2
+}
+
 enum DataGroup {
   case f32_i32
   case u32_i64_u64

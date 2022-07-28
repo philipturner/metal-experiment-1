@@ -223,30 +223,84 @@ extension Context {
         if !restartingFusion {
           if input1 == fusionTail {
             restartingFusion = referenceCount1 > 0
-          } else /*input2 == fusionTail*/ {
+          } else if input2 == fusionTail {
             restartingFusion = referenceCount2 > 0
+          } else {
+            fatalError("This should never happen.")
           }
         }
         
         // Check shape.
+        var firstShapeMatch: AllocationHandle?
         var numMatches = 0
         var numOnes = 0
         for i in 0..<2 {
           let input = (i == 0) ? input1 : input2
           if input.shape.elementsEqual(output.shape) {
+            if firstShapeMatch == nil {
+              firstShapeMatch = input
+            }
             numMatches += 1
           } else if input.dataType.stride == input.byteCount {
             numOnes += 1
           }
         }
-        guard numMatches >= 1 && (numMatches + numOnes == 2) else {
+        guard let firstShapeMatch = firstShapeMatch,
+              (numMatches + numOnes == 2) else {
           preconditionFailure("""
             Use explicit broadcast if one binary input needs broadcasting and is not a single \
             scalar.
             """)
         }
         
-        // Extract the operation type, add 1000
+        // Restart operation fusion.
+        if restartingFusion {
+          if fusionDataGroup != nil {
+            appendOperationFusion()
+          }
+          fusionHeadAllocation1 = input1.reference!.takeUnretainedValue()
+          fusionSize = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
+          fusionDataGroup = binary.dataGroup
+        }
+        
+        // Ensure operands are in correct registers.
+        if fusionTail == nil {
+          // No tail exists yet; beginning of operation fusion.
+          fusionHeadAllocation2 = input2.reference!.takeUnretainedValue()
+        } else {
+          // Take special care to avoid bugs when input1 == input2, or either input has already been
+          // read. Previous tail is always register 1, fetch other input from device RAM.
+          guard let fusionTail = fusionTail else {
+            preconditionFailure("Fusion tail was absent when compiling binary operation.")
+          }
+          
+          if input1 == fusionTail {
+            let newHead = input2.reference!.takeUnretainedValue()
+            if fusionHeadAllocation2 == nil {
+              fusionHeadAllocation2 = newHead
+            } else {
+              fusionHeadAllocation3 = newHead
+              fusionOperations.append(RegisterSwapType.swap_registers_2_3.rawValue)
+            }
+          } else if input2 == fusionTail {
+            fusionOperations.append(RegisterSwapType.swap_registers_1_2.rawValue)
+            let newHead = input1.reference!.takeUnretainedValue()
+            if fusionHeadAllocation2 == nil {
+              fusionHeadAllocation2 = newHead
+            } else {
+              fusionHeadAllocation3 = newHead
+              fusionOperations.append(RegisterSwapType.swap_registers_1_3.rawValue)
+            }
+          } else {
+            fatalError("This should never happen.")
+          }
+        }
+        
+        // Append operation.
+        fusionOperations.append(1000 + binary.operation)
+        if let metadata = binary.metadata {
+          fusionMetadata.append(metadata)
+        }
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
