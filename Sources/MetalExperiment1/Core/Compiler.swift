@@ -194,7 +194,7 @@ extension Context {
         // Update fusion tail.
         fusionTailReferenceCount = _internalRelease(output)
         fusionTail = output
-      
+        
       case .binary(let binary):
         let (input1, input2, output) = (binary.input1, binary.input2, binary.output)
         var restartingFusion = true
@@ -279,18 +279,22 @@ extension Context {
             if fusionHeadAllocation2 == nil {
               fusionHeadAllocation2 = newHead
             } else {
+              // RHS: reg3 -> reg2
               fusionHeadAllocation3 = newHead
-              fusionOperations.append(RegisterSwapType.swap_registers_2_3.rawValue)
+              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
             }
           } else if input2 == fusionTail {
-            fusionOperations.append(RegisterSwapType.swap_registers_1_2.rawValue)
             let newHead = input1.reference!.takeUnretainedValue()
             if fusionHeadAllocation2 == nil {
               fusionHeadAllocation2 = newHead
             } else {
+              // LHS: reg3 -> reg2
               fusionHeadAllocation3 = newHead
-              fusionOperations.append(RegisterSwapType.swap_registers_1_3.rawValue)
+              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
             }
+            // LHS: reg2 -> reg1
+            // RHS: reg1 -> reg2
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
           } else {
             fatalError("This should never happen.")
           }
@@ -301,6 +305,23 @@ extension Context {
         if let metadata = binary.metadata {
           fusionMetadata.append(metadata)
         }
+        numFusedNonUnaryOperations += 1
+        
+        // Release inputs.
+        if referenceCount1 == 0 {
+          let reference = input1.reference!
+          input1.reference = nil
+          reference.release()
+        }
+        if referenceCount2 == 0 {
+          let reference = input2.reference!
+          input2.reference = nil
+          reference.release()
+        }
+        
+        // Update fusion tail.
+        fusionTailReferenceCount = _internalRelease(output)
+        fusionTail = output
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
