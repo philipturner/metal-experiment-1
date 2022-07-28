@@ -197,7 +197,54 @@ extension Context {
       
       case .binary(let binary):
         let (input1, input2, output) = (binary.input1, binary.input2, binary.output)
-        // Before fusing, factor in whether enough heads are available.
+        var restartingFusion = true
+        if input1 == fusionTail || input2 == fusionTail {
+          // In the middle of an operation fusion.
+          if fusionDataGroup! == binary.dataGroup {
+            // Before fusing, factor in whether enough heads are available.
+            if fusionHeadAllocation3 == nil {
+              restartingFusion = false
+            }
+          }
+          
+          // The tail was the output of previous operation. Something initialized by the frontend
+          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
+          // only perform it in debug mode.
+          assert(!fusionTail!.reference!.takeUnretainedValue().initialized)
+        }
+        
+        // Decrement each input's reference count.
+        let referenceCount1 = input1.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        let referenceCount2 = input2.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        if Allocation.debugInfoEnabled {
+          _internalReleaseSlowPath(input1, referenceCount1)
+          _internalReleaseSlowPath(input2, referenceCount2)
+        }
+        if !restartingFusion {
+          if input1 == fusionTail {
+            restartingFusion = referenceCount1 > 0
+          } else /*input2 == fusionTail*/ {
+            restartingFusion = referenceCount2 > 0
+          }
+        }
+        
+        // Check shape.
+        var numMatches = 0
+        var numOnes = 0
+        for i in 0..<2 {
+          let input = (i == 0) ? input1 : input2
+          if input.shape.elementsEqual(output.shape) {
+            numMatches += 1
+          } else if input.dataType.stride == input.byteCount {
+            numOnes += 1
+          }
+        }
+        guard numMatches >= 1 && (numMatches + numOnes == 2) else {
+          preconditionFailure("""
+            Use explicit broadcast if one binary input needs broadcasting and is not a single \
+            scalar.
+            """)
+        }
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {

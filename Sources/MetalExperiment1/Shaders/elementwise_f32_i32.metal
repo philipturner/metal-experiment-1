@@ -200,7 +200,9 @@ enum ElementwiseOperationType: ushort {
   clip_by_value_i32 = 2001,
   select_f32_i32 = 2002,
   
-  swap_registers = 3000,
+  swap_registers_1_2 = 3000,
+  swap_registers_1_3 = 3001,
+  swap_registers_2_3 = 3001,
 };
 
 // MARK: - Virtual Assembly Registers
