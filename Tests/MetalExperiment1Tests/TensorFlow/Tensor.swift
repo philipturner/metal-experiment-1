@@ -30,7 +30,7 @@ public class PluggableDeviceTensorHandle {
   deinit {
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
     if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-      Context.deallocateBuffer(_cTensorHandle)
+      Context.deallocate(_cTensorHandle)
     }
   }
   
@@ -79,9 +79,9 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
     let (cTensorHandle, _) = shape.withUnsafeBufferPointer {
-      Context.allocateBuffer(Scalar.self, $0)
+      Context.allocate(Scalar.self, $0)
     }
-    Context.initializeBuffer(cTensorHandle) { buffer in
+    Context.initialize(cTensorHandle) { buffer in
       let pointer = buffer.assumingMemoryBound(to: Scalar.self)
       scalarsInitializer(pointer.baseAddress!)
     }
@@ -105,7 +105,7 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @inline(never)
   func makeHostCopy() -> [Scalar] {
     var output: [Scalar]?
-    Context.readBuffer(_cTensorHandle) { tensorBuffer in
+    Context.read(_cTensorHandle) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)

@@ -12,7 +12,7 @@ extension Context {
   // Returns (handle, rank) to match the style of other function calls. Avoids a possible second
   // virtual function call by transforming the generic parameter into something statically typed.
   @inline(never)
-  public static func allocateBuffer(
+  public static func allocate(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>
   ) -> (OpaquePointer, Int) {
@@ -25,7 +25,7 @@ extension Context {
   }
   
   @inline(never)
-  public static func initializeBuffer(
+  public static func initialize(
     _ cHandle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
@@ -37,7 +37,7 @@ extension Context {
   }
   
   @inline(never)
-  public static func readBuffer(
+  public static func read(
     _ cHandle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
@@ -49,7 +49,7 @@ extension Context {
   }
   
   @inline(never)
-  public static func deallocateBuffer(
+  public static func deallocate(
     _ cHandle: OpaquePointer
   ) {
     Context.global.sync {
