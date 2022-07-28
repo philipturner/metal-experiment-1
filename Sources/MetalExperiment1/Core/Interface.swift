@@ -243,7 +243,7 @@ extension OperationRegistry {
     // Fetch data type.
     let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
-      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
     }
     
     // Select operation.
@@ -312,7 +312,7 @@ extension OperationRegistry {
     // Fetch data type.
     let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
-      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
     }
     precondition(dataType.isFloatingPoint, dataMismatch(operation))
     let stridePowerOf2 = (dataType == .float16) ? 2.trailingZeroBitCount : 4.trailingZeroBitCount
@@ -348,7 +348,7 @@ extension OperationRegistry {
     // Fetch data type.
     let dataType = input.dataType
     func dataMismatch(_ operation: UnaryOperationType) -> String {
-      "Operation with code '\(operation.rawValue)' does not accept data type '\(dataType)'."
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
     }
     precondition(dataType != .bool, dataMismatch(operation_f32))
     
@@ -651,9 +651,6 @@ extension OperationRegistry {
 
 // MARK: - Binary Operations
 
-// Pass add/sub/mul in a custom way, allowing transformation into scalar add/mul operations. When
-// implementing constant folding, the transformation will actually occur.
-
 // Pass binary comparison operations like others, just make a utility that generates metadata.
 
 // To start off, pass the minimum/maximum operations.
@@ -667,7 +664,104 @@ extension OperationRegistry {
       args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a binary operation.")
   }
   
-//  static func dispatchBinary(
-//    _ args: inout Arguments,
-//    _ operation_f32: )
+  static func dispatchBinary(
+    _ args: inout Arguments,
+    _ operation_f32: BinaryOperationType?,
+    _ operation_i32: BinaryOperationType?,
+    _ operation_bool: BinaryOperationType?,
+    _ metadata: UInt64? = nil,
+    _ enableBroadcasting: Bool = false
+  ) {
+    let ctx = Context.global
+    commonBinaryPrecondition(args)
+    
+    // Fetch inputs.
+    let input1 = decodeInput(&args.inputs)
+    let input2 = decodeInput(&args.inputs)
+    ctx._internalRetain(input1)
+    ctx._internalRetain(input2)
+    
+    // Determine output shape.
+    var referenceInput: AllocationHandle
+    if input1.shape.elementsEqual(input2.shape) {
+      referenceInput = input1
+    } else if enableBroadcasting {
+      // TODO: Convert to scalar add/mul if the data type has a unary equivalent.
+      if input1.dataType.stride == input1.byteCount {
+        // Scalar broadcasting supported natively.
+        referenceInput = input2
+      } else if input2.dataType.stride == input1.byteCount {
+        // Scalar broadcasting supported natively.
+        referenceInput = input1
+      } else {
+        fatalError("Binary operations do not yet support broadcasting.")
+      }
+    } else {
+      let operation = (operation_f32 ?? operation_i32 ?? operation_bool)!
+      fatalError("Operation '\(operation)' does not support broadcasting.")
+    }
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let output = ctx._internalAllocate(2, referenceInput)
+    encodeOutput(&args.outputs, output)
+    
+    // Fetch data type.
+    let dataType = input1.dataType
+    func dataMismatch(_ operation: BinaryOperationType) -> String {
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
+    }
+    precondition(
+      dataType == input2.dataType, "Data type '\(dataType)' does not match '\(input2.dataType)'.")
+    
+    // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    if let operation_bool = operation_bool {
+      precondition(dataType == .bool, dataMismatch(operation_bool))
+      guard operation_f32 == nil,
+            operation_i32 == nil else {
+        fatalError("This should never happen.")
+      }
+      operation = operation_bool.rawValue
+      dataGroup = .f32_i32
+    } else {
+      precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
+      if let operation_f32 = operation_f32 {
+        if let operation_i32 = operation_i32 {
+          if dataType.isFloatingPoint {
+            operation = operation_f32.rawValue
+            dataGroup = .f32_i32
+          } else if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+            dataGroup = .f32_i32
+          } else {
+            operation = BinaryOperationType2(operation_i32, dataType: dataType).rawValue
+            dataGroup = .u32_i64_u64
+          }
+        } else {
+          precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
+          operation = operation_f32.rawValue
+          dataGroup = .f32_i32
+        }
+      } else {
+        if let operation_i32 = operation_i32 {
+          precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
+          if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+            dataGroup = .f32_i32
+          } else {
+            operation = BinaryOperationType2(operation_i32, dataType: dataType).rawValue
+            dataGroup = .u32_i64_u64
+          }
+        } else {
+           fatalError("This should never happen.")
+        }
+      }
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.binary(.init(
+      operation, input1, input2, output, dataGroup, metadata)))
+  }
 }
