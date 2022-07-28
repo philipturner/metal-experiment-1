@@ -246,6 +246,8 @@ extension Context {
             """)
         }
         
+        // Extract the operation type, add 1000
+        
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
           appendOperationFusion()

@@ -206,6 +206,33 @@ enum BinaryOperationType2: UInt16 {
   }
 }
 
+enum TernaryOperationType: UInt16 {
+  case clip_by_value_f32 = 0
+  case clip_by_value_i32 = 1
+  case select_f32_i32 = 2
+}
+
+enum TernaryOperationType2: UInt16 {
+  case clip_by_value_i64 = 0
+  case clip_by_value_u64 = 1
+  case select_i64_u64 = 2
+  
+  init(_ smallOperation: TernaryOperationType, dataType: DataType) {
+    guard dataType.requiresLargeRepresentation else {
+      fatalError("Data type '\(dataType)' does not require large representation.")
+    }
+    
+    switch smallOperation {
+    case .clip_by_value_i32:
+      self = (dataType == .int64) ? .clip_by_value_i64 : .clip_by_value_u64
+    case .select_f32_i32:
+      self = .select_i64_u64
+    default:
+      fatalError("Ternary operation '\(smallOperation)' has no large counterpart.")
+    }
+  }
+}
+
 enum DataGroup {
   case f32_i32
   case u32_i64_u64

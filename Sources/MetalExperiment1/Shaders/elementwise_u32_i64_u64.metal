@@ -85,11 +85,13 @@ enum ElementwiseOperationType: ushort {
   squared_difference_u64 = 1031,
   sub_i64_u64 = 1032,
   
-  // Other (2000+)
+  // Ternary (2000 - 2999)
   
   clip_by_value_i64 = 2000,
   clip_by_value_u64 = 2001,
   select_i64_u64 = 2002,
+  
+  // Other (3000+)
   
   swap_registers_1_2 = 3000,
   swap_registers_1_3 = 3001,
@@ -655,55 +657,54 @@ kernel void elementwise_u32_i64_u64(
           }
         }
       }
-    } else /*(operation >= 2000)*/ {
-      // MARK: - Other
-      if (operation <= select_i64_u64) {
-        switch (operation) {
-          case clip_by_value_i64: {
-            auto x = register1.get_i64();
-            auto y = register2.get_i64();
-            auto z = register3.get_i64();
-            auto out = clamp(x, y, z);
-            SET_I64(out);
-          }
-          case clip_by_value_u64: {
-            auto x = register1.get_u64();
-            auto y = register2.get_u64();
-            auto z = register3.get_u64();
-            auto out = clamp(x, y, z);
-            SET_U64(out);
-          }
-          default: /*select_i64_u64*/ {
-            auto a = register1.get_u64();
-            auto b = register2.get_u64();
-            auto c = register3.get_u64();
-            auto out = select(a, b, bool2(c));
-            SET_U64(out);
-          }
+    } else if (operation < 3000) {
+      // MARK: - Ternary
+      switch (operation) {
+        case clip_by_value_i64: {
+          auto x = register1.get_i64();
+          auto y = register2.get_i64();
+          auto z = register3.get_i64();
+          auto out = clamp(x, y, z);
+          SET_I64(out);
         }
-      } else /*(operation <= swap_registers_2_3)*/ {
-        switch (operation) {
-          case swap_registers_1_2: {
-            auto lhs = register1.get_u64();
-            auto rhs = register2.get_u64();
-            register2.set_u64(lhs);
-            register1.set_u64(rhs);
-            break;
-          }
-          case swap_registers_1_3: {
-            auto lhs = register1.get_u64();
-            auto rhs = register3.get_u64();
-            register3.set_u64(lhs);
-            register1.set_u64(rhs);
-            break;
-          }
-          default: /*swap_registers_2_3*/ {
-            auto lhs = register2.get_u64();
-            auto rhs = register3.get_u64();
-            register3.set_u64(lhs);
-            register2.set_u64(rhs);
-            break;
-          }
+        case clip_by_value_u64: {
+          auto x = register1.get_u64();
+          auto y = register2.get_u64();
+          auto z = register3.get_u64();
+          auto out = clamp(x, y, z);
+          SET_U64(out);
+        }
+        default: /*select_i64_u64*/ {
+          auto a = register1.get_u64();
+          auto b = register2.get_u64();
+          auto c = register3.get_u64();
+          auto out = select(a, b, bool2(c));
+          SET_U64(out);
+        }
+      }
+    } else /*(operation >= 3000)*/ {
+      // MARK: - Other
+      switch (operation) {
+        case swap_registers_1_2: {
+          auto lhs = register1.get_u64();
+          auto rhs = register2.get_u64();
+          register2.set_u64(lhs);
+          register1.set_u64(rhs);
+          break;
+        }
+        case swap_registers_1_3: {
+          auto lhs = register1.get_u64();
+          auto rhs = register3.get_u64();
+          register3.set_u64(lhs);
+          register1.set_u64(rhs);
+          break;
+        }
+        default: /*swap_registers_2_3*/ {
+          auto lhs = register2.get_u64();
+          auto rhs = register3.get_u64();
+          register3.set_u64(lhs);
+          register2.set_u64(rhs);
+          break;
         }
       }
     }

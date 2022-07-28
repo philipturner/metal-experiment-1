@@ -194,11 +194,13 @@ enum ElementwiseOperationType: ushort {
   sub_i32 = 1043,
   xdivy_f32 = 1044,
   
-  // Other (2000+)
+  // Ternary (2000 - 2999)
   
   clip_by_value_f32 = 2000,
   clip_by_value_i32 = 2001,
   select_f32_i32 = 2002,
+  
+  // Other (3000+)
   
   swap_registers_1_2 = 3000,
   swap_registers_1_3 = 3001,
@@ -1012,55 +1014,54 @@ kernel void elementwise_f32_i32(
           }
         }
       }
-    } else /*(operation <= sub_u64)*/ {
-      // MARK: - Other
-      if (operation <= select_f32_i32) {
-        switch (operation) {
-          case clip_by_value_f32: {
-            auto x = register1.get_f32();
-            auto y = register2.get_f32();
-            auto z = register3.get_f32();
-            auto out = precise::clamp(x, y, z);
-            SET_F32(out);
-          }
-          case clip_by_value_i32: {
-            auto x = register1.get_i32();
-            auto y = register2.get_i32();
-            auto z = register3.get_i32();
-            auto out = clamp(x, y, z);
-            SET_I32(out);
-          }
-          default: /*select_f32_i32*/ {
-            auto a = register1.get_i32();
-            auto b = register2.get_i32();
-            auto c = register3.get_i32();
-            auto out = select(a, b, bool4(c));
-            SET_I32(out);
-          }
+    } else if (operation < 3000) {
+      // MARK: - Ternary
+      switch (operation) {
+        case clip_by_value_f32: {
+          auto x = register1.get_f32();
+          auto y = register2.get_f32();
+          auto z = register3.get_f32();
+          auto out = precise::clamp(x, y, z);
+          SET_F32(out);
         }
-      } else /*(operation <= swap_registers_2_3)*/ {
-        switch (operation) {
-          case swap_registers_1_2: {
-            auto lhs = register1.get_i32();
-            auto rhs = register2.get_i32();
-            register2.set_i32(lhs);
-            register1.set_i32(rhs);
-            break;
-          }
-          case swap_registers_1_3: {
-            auto lhs = register1.get_i32();
-            auto rhs = register3.get_i32();
-            register3.set_i32(lhs);
-            register1.set_i32(rhs);
-            break;
-          }
-          default: /*swap_registers_2_3*/ {
-            auto lhs = register2.get_i32();
-            auto rhs = register3.get_i32();
-            register3.set_i32(lhs);
-            register2.set_i32(rhs);
-            break;
-          }
+        case clip_by_value_i32: {
+          auto x = register1.get_i32();
+          auto y = register2.get_i32();
+          auto z = register3.get_i32();
+          auto out = clamp(x, y, z);
+          SET_I32(out);
+        }
+        default: /*select_f32_i32*/ {
+          auto a = register1.get_i32();
+          auto b = register2.get_i32();
+          auto c = register3.get_i32();
+          auto out = select(a, b, bool4(c));
+          SET_I32(out);
+        }
+      }
+    } else /*(operation >= 3000)*/ {
+      // MARK: - Other
+      switch (operation) {
+        case swap_registers_1_2: {
+          auto lhs = register1.get_i32();
+          auto rhs = register2.get_i32();
+          register2.set_i32(lhs);
+          register1.set_i32(rhs);
+          break;
+        }
+        case swap_registers_1_3: {
+          auto lhs = register1.get_i32();
+          auto rhs = register3.get_i32();
+          register3.set_i32(lhs);
+          register1.set_i32(rhs);
+          break;
+        }
+        default: /*swap_registers_2_3*/ {
+          auto lhs = register2.get_i32();
+          auto rhs = register3.get_i32();
+          register3.set_i32(lhs);
+          register2.set_i32(rhs);
+          break;
         }
       }
     }
