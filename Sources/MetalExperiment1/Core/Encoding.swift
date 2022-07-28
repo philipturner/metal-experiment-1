@@ -301,6 +301,8 @@ private extension Context {
       numThreads = (instruction.size + 1) / 2
     }
     encoder.dispatchThreadgroups(MTLSize(numThreads), threadsPerThreadgroup: 1)
+    
+    // TODO: Create Swift pseudocode that parses an elementwise instruction and explains what it does.
   }
   
   func encodeExplicitCopy(

@@ -118,19 +118,31 @@ final class TensorTests: XCTestCase {
     do {
       // First fusion is 4 ops
       // Second fusion is 2 ops
-      // Third fusion is 3 ops
+      // Third fusion is 1 op
+      // Fourth fusion is 2 ops
       //
       // What second fusion actually is:
-      // reg1 = READ input1
-      // reg2 = READ input2
-      // reg1 = max(reg1, reg2)
-      // reg1 = -reg1
-      // WRITE reg1
+      // var reg1 = input1[i]
+      // var reg2 = input2[i]
+      // reg1 = maximum_f32(reg1, reg2)
+      // reg1 = neg_f32(reg1)
+      // output[i] = reg1
       //
-      // What third fusion actually is:
-      // 
+      // What fourth fusion actually is:
+      // var reg1 = input1[i]
+      // var reg2 = input2[i]
+      // reg1 = neg_f32(reg1)
+      // swap(&reg1, &reg2)
+      // reg1 = maximum_f32(reg1, reg2)
+      // reg1 = square_f32(reg1)
+      // output[i] = reg1
       //
       // What both could be:
+      // var reg1 = input1[i]
+      // var reg2 = input2[i]
+      // reg1 = maximum_f32(reg1, reg2)
+      // reg1 = square_f32(reg1)
+      // output[i] = reg1
       //
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 25, shape: [2])
@@ -142,10 +154,10 @@ final class TensorTests: XCTestCase {
         let tensor6 = max(tensor5, .init(repeating: -3.0, shape: [2])) // -3.0
         let tensor7 = -tensor6 // 3.0
         // Fusion break
-        let tensor8 = -Tensor<Float>(repeating: -4, shape: [2])
-        let tensor9 = max(tensor7, tensor8)
-        let tensor10 = square(tensor9) // 16.0
-        return tensor10
+        _ = -Tensor<Float>(repeating: -4, shape: [2])
+        let tensor8 = max(tensor7, .init(repeating: 4, shape: [2])) // 4.0
+        let tensor9 = square(tensor8) // 16.0
+        return tensor9
       }
       XCTAssertEqual(getOutput().scalars, [16.0, 16.0])
     }
