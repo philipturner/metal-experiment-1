@@ -12,6 +12,7 @@ struct EncodingContext {
   let commandBufferID: Int
   private var computeEncoder: MTLComputeCommandEncoder?
   private var computeEncoderID: Int = -1
+  private var blitEncoder: MTLBlitCommandEncoder?
   var pipelineStateID: Int = -1
   var synchronizedResources: Set<AllocationHandle> = []
   
@@ -55,21 +56,44 @@ struct EncodingContext {
   }
   
   @inline(__always)
-  mutating func finishComputeCommandEncoder() {
+  mutating func finishCommandEncoder() {
     if let computeEncoder = computeEncoder {
-      finishComputeCommandEncoderSlowPath(computeEncoder)
+      finishComputePass(computeEncoder, usingEvent: true)
+    } else if let blitEncoder = blitEncoder {
+      finishBlitPass(blitEncoder, usingEvent: true)
     }
   }
   
   @inline(never)
-  private mutating func finishComputeCommandEncoderSlowPath(
-    _ computeEncoder: MTLComputeCommandEncoder
+  private mutating func finishComputePass(
+    _ computeEncoder: MTLComputeCommandEncoder,
+    usingEvent: Bool
   ) {
+    if !usingEvent {
+      // Use fence.
+    }
     computeEncoder.endEncoding()
     self.computeEncoder = nil
     self.pipelineStateID = -1
     self.synchronizedResources.removeAll(keepingCapacity: true)
-    encodeSignalEvent()
+    if usingEvent {
+      encodeSignalEvent()
+    }
+  }
+  
+  @inline(never)
+  private mutating func finishBlitPass(
+    _ blitEncoder: MTLBlitCommandEncoder,
+    usingEvent: Bool
+  ) {
+    if !usingEvent {
+      // Use fence.
+    }
+    blitEncoder.endEncoding()
+    self.blitEncoder = nil
+    if usingEvent {
+      encodeSignalEvent()
+    }
   }
   
   @inline(__always)
@@ -432,7 +456,7 @@ private extension Context {
     // `finishBlitEncoder` just for this command. There is a very low chance that two explicit copy
     // operations appear next to each other. This is a viable optimization that I could pursue down
     // the road, alongside other enhancements to reading data from the GPU.
-    ectx.finishComputeCommandEncoder()
+    ectx.finishCommandEncoder()
     ectx.encodeWaitForEvent()
     let blitEncoder = ectx.commandBuffer.makeBlitCommandEncoder()!
     defer {

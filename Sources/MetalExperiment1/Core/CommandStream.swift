@@ -234,7 +234,7 @@ private extension Context {
     
     // Only called in one location, the loop that iterates over each operation.
     func submitBatch(range: Range<Int>) {
-      encodingContext.finishComputeCommandEncoder()
+      encodingContext.finishCommandEncoder()
       
       // Force the memory allocations to stay alive until the command buffer finishes.
       class Retainer {
