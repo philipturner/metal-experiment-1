@@ -483,8 +483,23 @@ kernel void elementwise_f32_i32(
     ReadParams read_params = params.read_params[i];
     CompressedRegister compressed;
     
+    device void *input;
+    switch (i) {
+      case 0: {
+        input = input1;
+        break;
+      }
+      case 1: {
+        input = input2;
+        break;
+      }
+      default: /*2*/ {
+        input = input3;
+        break;
+      }
+    }
     if (read_params.layout & 128) {
-      uint mem_slice_u32 = ((device uint*)input1)[0];
+      uint mem_slice_u32 = ((device uint*)input)[0];
       switch (read_params.layout) {
         case 128 + 1: {
           uchar mem_slice = uchar(mem_slice_u32);
@@ -505,17 +520,17 @@ kernel void elementwise_f32_i32(
     } else {
       switch (read_params.layout) {
         case 1: {
-          uchar4 mem_slice = ((device uchar4*)input1)[tid];
+          uchar4 mem_slice = ((device uchar4*)input)[tid];
           compressed.set_vector_u8(mem_slice);
           break;
         }
         case 2: {
-          ushort4 mem_slice = ((device ushort4*)input1)[tid];
+          ushort4 mem_slice = ((device ushort4*)input)[tid];
           compressed.set_vector_u16(mem_slice);
           break;
         }
         default: /*4*/ {
-          uint4 mem_slice = ((device uint4*)input1)[tid];
+          uint4 mem_slice = ((device uint4*)input)[tid];
           compressed.set_vector_u32(mem_slice);
           break;
         }
@@ -927,6 +942,8 @@ kernel void elementwise_f32_i32(
       } else if (operation <= mod_i32) {
         switch (operation) {
           case maximum_f32: {
+            register1.set_f32(register2.get_f32());
+            continue;
             GET_SET_BINARY_F32(precise::max)
           }
           case maximum_i32: {

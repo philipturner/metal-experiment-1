@@ -326,8 +326,23 @@ kernel void elementwise_u32_i64_u64(
     ReadParams read_params = params.read_params[i];
     CompressedRegister compressed;
     
+    device void *input;
+    switch (i) {
+      case 0: {
+        input = input1;
+        break;
+      }
+      case 1: {
+        input = input2;
+        break;
+      }
+      default: /*2*/ {
+        input = input3;
+        break;
+      }
+    }
     if (read_params.layout & 128) {
-      ulong mem_slice_u64 = ((device ulong*)input1)[0];
+      ulong mem_slice_u64 = ((device ulong*)input)[0];
       switch (read_params.layout) {
         case 128 + 8: {
           ulong mem_slice = ulong(mem_slice_u64);
@@ -353,22 +368,22 @@ kernel void elementwise_u32_i64_u64(
     } else {
       switch (read_params.layout) {
         case 8: {
-          ulong2 mem_slice = ((device ulong2*)input1)[tid];
+          ulong2 mem_slice = ((device ulong2*)input)[tid];
           compressed.set_vector_u64(mem_slice);
           break;
         }
         case 4: {
-          uint2 mem_slice = ((device uint2*)input1)[tid];
+          uint2 mem_slice = ((device uint2*)input)[tid];
           compressed.set_vector_u32(mem_slice);
           break;
         }
         case 2: {
-          ushort2 mem_slice = ((device ushort2*)input1)[tid];
+          ushort2 mem_slice = ((device ushort2*)input)[tid];
           compressed.set_vector_u16(mem_slice);
           break;
         }
         default: /*1*/ {
-          uchar2 mem_slice = ((device uchar2*)input1)[tid];
+          uchar2 mem_slice = ((device uchar2*)input)[tid];
           compressed.set_vector_u8(mem_slice);
           break;
         }
