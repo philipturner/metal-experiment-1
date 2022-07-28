@@ -109,8 +109,8 @@ final class TensorBinaryOperationTests: XCTestCase {
     test4(
       max, lhs1: Float(5), rhs1: 6, expected1: 6,
       min, lhs2: Float(5), rhs2: 6, expected2: 5,
-      max, lhs3: SmallFloat(5), rhs3: 6, expected3: 6,
-      min, lhs4: SmallFloat(5), rhs4: 6, expected4: 5)
+      max, lhs3: SmallFloat(6), rhs3: 5, expected3: 6,
+      min, lhs4: SmallFloat(6), rhs4: 5, expected4: 5)
     
     test4(
       max, lhs1: Int8(-6), rhs1: -5, expected1: -5,
@@ -120,8 +120,8 @@ final class TensorBinaryOperationTests: XCTestCase {
     test4(
       max, lhs1: Int8(-6), rhs1: 5, expected1: 5,
       max, lhs2: Int16(-6), rhs2: 5, expected2: 5,
-      max, lhs3: Int32(-6), rhs3: 5, expected3: 5,
-      max, lhs4: Int64(-6), rhs4: 5, expected4: 5)
+      max, lhs3: Int32(5), rhs3: -6, expected3: 5,
+      max, lhs4: Int64(5), rhs4: -6, expected4: 5)
     test4(
       min, lhs1: Int8(-6), rhs1: -5, expected1: -6,
       min, lhs2: Int16(-6), rhs2: -5, expected2: -6,
@@ -130,13 +130,18 @@ final class TensorBinaryOperationTests: XCTestCase {
     test4(
       min, lhs1: Int8(-6), rhs1: 5, expected1: -6,
       min, lhs2: Int16(-6), rhs2: 5, expected2: -6,
-      min, lhs3: Int32(-6), rhs3: 5, expected3: -6,
-      min, lhs4: Int64(-6), rhs4: 5, expected4: -6)
+      min, lhs3: Int32(5), rhs3: -6, expected3: -6,
+      min, lhs4: Int64(5), rhs4: -6, expected4: -6)
     
     test4(
-      min, lhs1: UInt8(5), rhs1: 6, expected1: 5,
+      max, lhs1: UInt8(6), rhs1: 5, expected1: 6,
+      max, lhs2: UInt16(5), rhs2: 6, expected2: 6,
+      max, lhs3: UInt32(6), rhs3: 5, expected3: 6,
+      max, lhs4: UInt64(5), rhs4: 6, expected4: 6)
+    test4(
+      min, lhs1: UInt8(6), rhs1: 5, expected1: 5,
       min, lhs2: UInt16(5), rhs2: 6, expected2: 5,
-      min, lhs3: UInt32(5), rhs3: 6, expected3: 5,
+      min, lhs3: UInt32(6), rhs3: 5, expected3: 5,
       min, lhs4: UInt64(5), rhs4: 6, expected4: 5)
   }
 }

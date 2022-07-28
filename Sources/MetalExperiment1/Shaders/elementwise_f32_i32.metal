@@ -942,8 +942,6 @@ kernel void elementwise_f32_i32(
       } else if (operation <= mod_i32) {
         switch (operation) {
           case maximum_f32: {
-            register1.set_f32(register2.get_f32());
-            continue;
             GET_SET_BINARY_F32(precise::max)
           }
           case maximum_i32: {

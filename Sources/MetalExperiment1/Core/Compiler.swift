@@ -113,14 +113,16 @@ extension Context {
       instructions.append(.elementwise(elementwise))
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         let numFusedOperations = numFusedUnaryOperations + numFusedNonUnaryOperations
-        if numFusedUnaryOperations >= 2 {
+        if numFusedOperations >= 2 {
           print("""
               Fused \(numFusedOperations) operations (\(numFusedUnaryOperations) unary, \
             \(numFusedNonUnaryOperations) non-unary)
             """)
         } else if numFusedUnaryOperations == 1 {
+          precondition(numFusedNonUnaryOperations == 0)
           print("  Appended single unary operation")
         } else if numFusedNonUnaryOperations == 1 {
+          precondition(numFusedUnaryOperations == 0)
           print("  Appended single non-unary operation")
         } else {
           print("  Appended copying operation")
