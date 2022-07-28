@@ -59,6 +59,22 @@ final class TensorTests: XCTestCase {
   func testFusion() throws {
     testHeader("Tensor operation fusion")
     
+    // Enable this to check the dump. Compilation is non-deterministic, so never assert that a
+    // fusion produces any specific output.
+    #if false
+    Context.barrier()
+    Instruction.Elementwise.enableDump = true
+    defer {
+      Context.barrier()
+      Instruction.Elementwise.enableDump = false
+    }
+    let showMarkers = true
+    #else
+    // Suppress warning "Will never be executed".
+//    let showMarkers = false
+    let showMarkers = Bool.random() && false
+    #endif
+    
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
     typealias SmallFloat = Float
     #else
@@ -66,13 +82,21 @@ final class TensorTests: XCTestCase {
     #endif
     
     do {
+      if showMarkers {
+        print("MARKER 1")
+      }
+//      var reg1 = input1[i]
+//      reg1 = square_f32(reg1)
+//      reg1 = cast_f32_to_i32(reg1)
+//      reg1 = cast_i32_to_f32(reg1)
+//      reg1 = sqrt_f32(reg1)
+//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
         let tensor3 = Tensor<Int8>(tensor2) // 25
         let tensor4 = Tensor<SmallFloat>(tensor3) // 5.0
         let tensor5 = sqrt(tensor4) // 5.0
-        // Fusion break
         return tensor5
       }
       XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
@@ -80,6 +104,21 @@ final class TensorTests: XCTestCase {
     
     // Fusion is interrupted by replacing `Int8` with `UInt64`.
     do {
+      if showMarkers {
+        print("MARKER 2")
+      }
+//      var reg1 = input1[i]
+//      reg1 = square_f32(reg1)
+//      output[i] = reg1
+      
+//      var reg1 = input1[i]
+//      reg1 = cast_f32_to_i64(reg1)
+//      reg1 = cast_i64_to_f32(reg1)
+//      output[i] = reg1
+      
+//      var reg1 = input1[i]
+//      reg1 = sqrt_f32(reg1)
+//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
@@ -88,7 +127,6 @@ final class TensorTests: XCTestCase {
         let tensor4 = Tensor<SmallFloat>(tensor3) // 5.0
         // Fusion break
         let tensor5 = sqrt(tensor4) // 5.0
-        // Fusion break
         return tensor5
       }
       XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
@@ -96,6 +134,32 @@ final class TensorTests: XCTestCase {
     
     // Binary operation fusion
     do {
+      if showMarkers {
+        print("MARKER 3")
+      }
+//      var reg1 = input1[i]
+//      reg1 = square_f32(reg1)
+//      output[i] = reg1
+//
+//      var reg1 = input1[i]
+//      reg1 = cast_f32_to_i64(reg1)
+//      reg1 = cast_i64_to_f32(reg1)
+//      output[i] = reg1
+//
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      var reg3 = input3[i]
+//      reg1 = sqrt_f32(reg1)
+//      reg1 = minimum_f32(reg1, reg2)
+//      swap(&reg2, &reg3)
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = neg_f32(reg1)
+//      output[i] = reg1
+//
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      reg1 = maximum_f32(reg1, reg2)
+//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
@@ -116,34 +180,41 @@ final class TensorTests: XCTestCase {
     
     // Binary operation fusion (broken)
     do {
-      // First fusion is 4 ops
-      // Second fusion is 2 ops
-      // Third fusion is 1 op
-      // Fourth fusion is 2 ops
-      //
-      // What second fusion actually is:
-      // var reg1 = input1[i]
-      // var reg2 = input2[i]
-      // reg1 = maximum_f32(reg1, reg2)
-      // reg1 = neg_f32(reg1)
-      // output[i] = reg1
-      //
-      // What fourth fusion actually is:
-      // var reg1 = input1[i]
-      // var reg2 = input2[i]
-      // reg1 = neg_f32(reg1)
-      // swap(&reg1, &reg2)
-      // reg1 = maximum_f32(reg1, reg2)
-      // reg1 = square_f32(reg1)
-      // output[i] = reg1
-      //
-      // What both could be:
-      // var reg1 = input1[i]
-      // var reg2 = input2[i]
-      // reg1 = maximum_f32(reg1, reg2)
-      // reg1 = square_f32(reg1)
-      // output[i] = reg1
-      //
+      if showMarkers {
+        print("MARKER 4")
+      }
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      var reg3 = input3[i]
+//      reg1 = sqrt_f32(reg1)
+//      reg1 = minimum_f32(reg1, reg2)
+//      swap(&reg2, &reg3)
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = neg_f32(reg1)
+//      output[i] = reg1
+//
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = neg_f32(reg1)
+//      output[i] = reg1
+//
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = square_f32(reg1)
+//      output[i] = reg1
+
+      // After implementing non-adjacent operation fusion, the 2nd and 3rd fusions will combine:
+//      var reg1 = input1[i]
+//      var reg2 = input2[i]
+//      var reg3 = input3[i]
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = neg_f32(reg1)
+//      swap(&reg2, &reg3)
+//      reg1 = maximum_f32(reg1, reg2)
+//      reg1 = square_f32(reg1)
+//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 25, shape: [2])
         let tensor2 = sqrt(tensor1) // 5.0
@@ -155,6 +226,7 @@ final class TensorTests: XCTestCase {
         let tensor7 = -tensor6 // 3.0
         // Fusion break
         _ = -Tensor<Float>(repeating: -4, shape: [2])
+        // Fusion break
         let tensor8 = max(tensor7, .init(repeating: 4, shape: [2])) // 4.0
         let tensor9 = square(tensor8) // 16.0
         return tensor9

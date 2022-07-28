@@ -353,3 +353,89 @@ extension Context {
     return instructions
   }
 }
+
+extension Instruction.Elementwise {
+  static var enableDump = false
+  
+  func dump() -> String {
+    func dumpRead(register: Int) -> String {
+      "var reg\(register) = input\(register)[i]"
+    }
+    
+    func dumpWrite() -> String {
+      "output[i] = reg1"
+    }
+    
+    func dumpUnary(code: UInt16) -> String {
+      var operationDesc: String
+      if self.dataGroup == .f32_i32 {
+        let unary = UnaryOperationType(rawValue: code)!
+        operationDesc = String(describing: unary)
+      } else {
+        let unary = UnaryOperationType2(rawValue: code)!
+        operationDesc = String(describing: unary)
+      }
+      return "reg1 = \(operationDesc)(reg1)"
+    }
+    
+    func dumpBinary(code: UInt16) -> String {
+      var operationDesc: String
+      if self.dataGroup == .f32_i32 {
+        let unary = BinaryOperationType(rawValue: code)!
+        operationDesc = String(describing: unary)
+      } else {
+        let unary = BinaryOperationType2(rawValue: code)!
+        operationDesc = String(describing: unary)
+      }
+      return "reg1 = \(operationDesc)(reg1, reg2)"
+    }
+    
+    func dumpTernary(code: UInt16) -> String {
+      var operationDesc: String
+      if self.dataGroup == .f32_i32 {
+        let unary = TernaryOperationType(rawValue: code)!
+        operationDesc = String(describing: unary)
+      } else {
+        let unary = TernaryOperationType2(rawValue: code)!
+        operationDesc = String(describing: unary)
+      }
+      return "reg1 = \(operationDesc)(reg1, reg2, reg3)"
+    }
+    
+    func dumpSwap(code: UInt16) -> String {
+      let swapType = RegisterSwapType(rawValue: code)!
+      switch swapType {
+      case .swap_registers_1_2:
+        return "swap(&reg1, &reg2)"
+      case .swap_registers_1_3:
+        return "swap(&reg1, &reg3)"
+      case .swap_registers_2_3:
+        return "swap(&reg2, &reg3)"
+      }
+    }
+    
+    var output: [String] = []
+    output.append(dumpRead(register: 1))
+    if input2 != nil {
+      output.append(dumpRead(register: 2))
+    }
+    if input3 != nil {
+      output.append(dumpRead(register: 3))
+    }
+    
+    for i in 0..<operations.count {
+      let code = operations[i]
+      if code < 1000 {
+        output.append(dumpUnary(code: code - 0))
+      } else if code < 2000 {
+        output.append(dumpBinary(code: code - 1000))
+      } else if code < 3000 {
+        output.append(dumpTernary(code: code - 2000))
+      } else if code < 4000 {
+        output.append(dumpSwap(code: code - 3000))
+      }
+    }
+    output.append(dumpWrite())
+    return output.joined(separator: "\n")
+  }
+}

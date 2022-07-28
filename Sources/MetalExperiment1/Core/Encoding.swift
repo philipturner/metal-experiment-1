@@ -302,7 +302,11 @@ private extension Context {
     }
     encoder.dispatchThreadgroups(MTLSize(numThreads), threadsPerThreadgroup: 1)
     
-    // TODO: Create Swift pseudocode that parses an elementwise instruction and explains what it does.
+    if Instruction.Elementwise.enableDump {
+      print("~~~ DUMP START")
+      print(instruction.dump())
+      print("~~~ DUMP END")
+    }
   }
   
   func encodeExplicitCopy(
