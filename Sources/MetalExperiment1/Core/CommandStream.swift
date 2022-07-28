@@ -228,7 +228,8 @@ private extension Context {
     
     var commandBufferID = _fastLoadCommittedBatches()
     var encodingContext = EncodingContext(
-      commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
+      commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
+      commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
     
     // Only called in one location, the loop that iterates over each operation.

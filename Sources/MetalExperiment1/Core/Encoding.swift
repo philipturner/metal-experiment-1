@@ -11,10 +11,28 @@ struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
   private var encoder: MTLComputeCommandEncoder?
+  private var encoderID: Int = -1
+  var pipelineStateID: Int = -1
+  var synchronizedResources: Set<AllocationHandle> = []
   
+  @inline(__always)
   init(commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
     self.commandBuffer = commandBuffer
     self.commandBufferID = commandBufferID
+  }
+  
+  @inline(__always)
+  func encodeWaitForEvent() {
+    let ctx = Context.global
+    commandBuffer.encodeWaitForEvent(ctx.synchronizationEvent, value: ctx.synchronizationCounter)
+  }
+  
+  @inline(__always)
+  func encodeSignalEvent() {
+    let ctx = Context.global
+    let newCounter = ctx.synchronizationCounter + 1
+    ctx.synchronizationCounter = newCounter
+    commandBuffer.encodeSignalEvent(ctx.synchronizationEvent, value: newCounter)
   }
   
   @inline(__always)
@@ -22,18 +40,64 @@ struct EncodingContext {
     if let encoder = encoder {
       return encoder
     } else {
-      let encoder = commandBuffer.makeComputeCommandEncoder()!
-      self.encoder = encoder
-      return encoder
+      return makeEncoderSlowPath()
     }
+  }
+  
+  @inline(never)
+  private mutating func makeEncoderSlowPath() -> MTLComputeCommandEncoder {
+    precondition(synchronizedResources.isEmpty, "This should never happen.")
+    let encoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
+    self.encoder = encoder
+    self.encoderID += 1
+    return encoder
   }
   
   @inline(__always)
   mutating func finishEncoder() {
     if let encoder = encoder {
-      encoder.endEncoding()
-      self.encoder = nil
+      finishEncoderSlowPath(encoder)
     }
+  }
+  
+  @inline(never)
+  private mutating func finishEncoderSlowPath(_ encoder: MTLComputeCommandEncoder) {
+    encoder.endEncoding()
+    self.encoder = nil
+    self.pipelineStateID = -1
+    self.synchronizedResources.removeAll(keepingCapacity: true)
+    encodeSignalEvent()
+  }
+  
+  @inline(__always)
+  mutating func useAllocation(_ allocation: Allocation) {
+    precondition(allocation.lastModifiedCommandBufferID == -1, "Cannot initialize something twice.")
+    allocation.lastModifiedCommandBufferID = commandBufferID
+    if encoder != nil {
+      allocation.lastModifiedCommandEncoderID = encoderID
+      synchronizedResources.insert(allocation.handle)
+    }
+  }
+  
+  // Returns whether the encoder should wait on the resource.
+  @inline(__always)
+  mutating func memoryBarrier(allocation: Allocation) -> Bool {
+    guard allocation.lastModifiedCommandBufferID == commandBufferID,
+          allocation.lastModifiedCommandEncoderID == encoderID else {
+      return false
+    }
+    memoryBarrierSlowPath(allocation)
+    return true
+  }
+  
+  @inline(never)
+  private mutating func memoryBarrierSlowPath(_ allocation: Allocation) {
+    let handle = allocation.handle
+    precondition(
+      synchronizedResources.contains(handle),
+      "Did not erase encoder ID after executing memory barrier on resource.")
+    synchronizedResources.remove(handle)
+    allocation.lastModifiedCommandEncoderID = -1
   }
 }
 
@@ -59,26 +123,59 @@ private extension Context {
     let encoder = ectx.makeEncoder()
     switch instruction.dataGroup {
     case .f32_i32:
-      encoder.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+      // Avoid overhead of Metal API call if possible.
+      if ectx.pipelineStateID != 1 {
+        encoder.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+        ectx.pipelineStateID = 1
+      }
     case .u32_i64_u64:
-      encoder.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
+      // Avoid overhead of Metal API call if possible.
+      if ectx.pipelineStateID != 2 {
+        encoder.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
+        ectx.pipelineStateID = 2
+      }
     }
     
-    let input1 = instruction.input1
-    try input1.materialize()
-    encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
+    var shouldBarrier1: Bool
+    var shouldBarrier2: Bool = false
+    var shouldBarrier3: Bool = false
+    do {
+      let input1 = instruction.input1
+      try input1.materialize()
+      encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
+      shouldBarrier1 = ectx.memoryBarrier(allocation: input1)
+    }
     if let input2 = instruction.input2 {
       try input2.materialize()
       encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
+      shouldBarrier2 = ectx.memoryBarrier(allocation: input2)
     }
     if let input3 = instruction.input3 {
       try input3.materialize()
       encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
+      shouldBarrier3 = ectx.memoryBarrier(allocation: input3)
     }
-    let output = instruction.output
-    try output.materialize()
-    output.lastModifiedCommandBufferID = ectx.commandBufferID
-    encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
+    if shouldBarrier1 || shouldBarrier2 || shouldBarrier3 {
+      var resources: [MTLBuffer] = []
+      resources.reserveCapacity(3)
+      if shouldBarrier1 {
+        resources.append(instruction.input1.mtlBuffer!)
+      }
+      if shouldBarrier2 {
+        resources.append(instruction.input2!.mtlBuffer!)
+      }
+      if shouldBarrier3 {
+        resources.append(instruction.input3!.mtlBuffer!)
+      }
+      encoder.memoryBarrier(resources: resources)
+    }
+    
+    do {
+      let output = instruction.output
+      try output.materialize()
+      encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
+      ectx.useAllocation(output)
+    }
     
     enum MemoryCast: UInt16, RawRepresentable {
       case f32_i32_native = 0
@@ -208,7 +305,7 @@ private extension Context {
         dataTypeRawValues[0] = inputHandle1.dataType.rawValue
         byteCounts[0] = Int32(clamping: inputHandle1.byteCount)
         
-        // Output's byte count will not be used.
+        // Output's byte count will never be used.
         dataTypeRawValues[3] = outputHandle.dataType.rawValue
         // byteCounts[3] = Int32(clamping: outputHandle.byteCount)
         
@@ -317,7 +414,7 @@ private extension Context {
     try input.materialize()
     let output = instruction.output
     try output.materialize()
-    output.lastModifiedCommandBufferID = ectx.commandBufferID
+    ectx.useAllocation(output)
     
     // Use a blit encoder because this command's dominant use case is marshalling data over PCIe. I
     // don't know the performance characteristics of PCIe, so it's best to delegate that to Apple's
@@ -329,9 +426,11 @@ private extension Context {
     // operations appear next to each other. This is a viable optimization that I could pursue down
     // the road, alongside other enhancements to reading data from the GPU.
     ectx.finishEncoder()
+    ectx.encodeWaitForEvent()
     let blitEncoder = ectx.commandBuffer.makeBlitCommandEncoder()!
     defer {
       blitEncoder.endEncoding()
+      ectx.encodeSignalEvent()
     }
     
     blitEncoder.copy(

@@ -187,6 +187,9 @@ class Allocation {
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int = -1
   
+  // The command encoder within the command buffer above that initialized this.
+  var lastModifiedCommandEncoderID: Int = -1
+  
   init(
     id: UInt64,
     referenceCount: Int,

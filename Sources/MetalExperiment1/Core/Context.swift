@@ -15,9 +15,8 @@ public class Context {
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
-  
-  // If just finished barrier, spin off a timer that force-flushes the stream. If a command buffer
-  // was committed since then, abort the timer.
+  var synchronizationEvent: MTLEvent
+  var synchronizationCounter: UInt64 = 0
   
   static let maxBatchesInFlight = 3
   static var maxCommandsPerBatch = 128
@@ -55,6 +54,7 @@ public class Context {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
     self.preferSharedStorage = device.hasUnifiedMemory
+    self.synchronizationEvent = device.makeEvent()!
     
     self._mutex = .init()
     #if os(Windows)
