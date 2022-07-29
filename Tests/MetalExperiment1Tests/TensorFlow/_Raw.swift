@@ -180,49 +180,49 @@ public enum _Raw {
   // Unary
   
   @inlinable @inline(__always)
-  public static func abs<T>(
+  public static func abs<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Abs", x)
   }
   
   @inlinable @inline(__always)
-  public static func acos<T>(
+  public static func acos<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Acos", x)
   }
   
   @inlinable @inline(__always)
-  public static func acosh<T>(
+  public static func acosh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Acosh", x)
   }
   
   @inlinable @inline(__always)
-  public static func asin<T>(
+  public static func asin<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Asin", x)
   }
   
   @inlinable @inline(__always)
-  public static func asinh<T>(
+  public static func asinh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Asinh", x)
   }
   
   @inlinable @inline(__always)
-  public static func atan<T>(
+  public static func atan<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Atan", x)
   }
   
   @inlinable @inline(__always)
-  public static func atanh<T>(
+  public static func atanh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Atanh", x)
@@ -231,58 +231,63 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func cast<T, U>(
-    _ x: Tensor<T>
-  ) -> Tensor<U> {
-    dispatchUnary("Cast", x, U.tensorFlowDataType)
+  public static func cast<
+    Srct: TensorFlowScalar,
+    Dstt: TensorFlowScalar
+  >(
+    _ x: Tensor<Srct>,
+    truncate: Bool = false
+  ) -> Tensor<Dstt> {
+    precondition(!truncate, "Truncated casts not implemented.")
+    return dispatchUnary("Cast", x, Dstt.tensorFlowDataType)
   }
   
   
   
   @inlinable @inline(__always)
-  public static func ceil<T>(
+  public static func ceil<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Ceil", x)
   }
   
   @inlinable @inline(__always)
-  public static func cos<T>(
+  public static func cos<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Cos", x)
   }
   
   @inlinable @inline(__always)
-  public static func cosh<T>(
+  public static func cosh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Cosh", x)
   }
   
   @inlinable @inline(__always)
-  public static func elu<T>(
+  public static func elu<T: FloatingPoint & TensorFlowScalar>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Elu", features)
   }
   
   @inlinable @inline(__always)
-  public static func exp<T>(
+  public static func exp<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Exp", x)
   }
   
   @inlinable @inline(__always)
-  public static func expm1<T>(
+  public static func expm1<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Expm1", x)
   }
   
   @inlinable @inline(__always)
-  public static func floor<T>(
+  public static func floor<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Floor", x)
@@ -291,21 +296,21 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func isFinite<T>(
+  public static func isFinite<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<Bool> {
     dispatchUnaryRelational("IsFinite", x)
   }
   
   @inlinable @inline(__always)
-  public static func isInf<T>(
+  public static func isInf<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<Bool> {
     dispatchUnaryRelational("IsInf", x)
   }
   
   @inlinable @inline(__always)
-  public static func isNan<T>(
+  public static func isNan<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<Bool> {
     dispatchUnaryRelational("IsNan", x)
@@ -314,7 +319,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func leakyRelu<T>(
+  public static func leakyRelu<T: FloatingPoint & TensorFlowScalar>(
     features: Tensor<T>,
     alpha: Double = 0.2
   ) -> Tensor<T> {
@@ -322,49 +327,49 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func log<T>(
+  public static func log<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Log", x)
   }
   
   @inlinable @inline(__always)
-  public static func log1p<T>(
+  public static func log1p<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Log1p", x)
   }
   
   @inlinable @inline(__always)
-  public static func logicalNot<T>(
-    _ x: Tensor<T>
-  ) -> Tensor<T> {
+  public static func logicalNot(
+    _ x: Tensor<Bool>
+  ) -> Tensor<Bool> {
     dispatchUnary("LogicalNot", x)
   }
   
   @inlinable @inline(__always)
-  public static func neg<T>(
+  public static func neg<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Neg", x)
   }
   
   @inlinable @inline(__always)
-  public static func relu<T>(
+  public static func relu<T: TensorFlowNumeric>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Relu", features)
   }
   
   @inlinable @inline(__always)
-  public static func relu6<T>(
+  public static func relu6<T: TensorFlowNumeric>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Relu6", features)
   }
   
   @inlinable @inline(__always)
-  public static func round<T>(
+  public static func round<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Round", x)
@@ -373,49 +378,49 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func rsqrt<T>(
+  public static func rsqrt<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Rsqrt", x)
   }
   
   @inlinable @inline(__always)
-  public static func selu<T>(
+  public static func selu<T: FloatingPoint & TensorFlowScalar>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Selu", features)
   }
   
   @inlinable @inline(__always)
-  public static func sigmoid<T>(
+  public static func sigmoid<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Sigmoid", x)
   }
   
   @inlinable @inline(__always)
-  public static func sign<T>(
+  public static func sign<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Sign", x)
   }
   
   @inlinable @inline(__always)
-  public static func sin<T>(
+  public static func sin<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Sin", x)
   }
   
   @inlinable @inline(__always)
-  public static func sinh<T>(
+  public static func sinh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Sinh", x)
   }
   
   @inlinable @inline(__always)
-  public static func softplus<T>(
+  public static func softplus<T: FloatingPoint & TensorFlowScalar>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Softplus", features)
@@ -424,35 +429,35 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func softsign<T>(
+  public static func softsign<T: FloatingPoint & TensorFlowScalar>(
     features: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Softsign", features)
   }
   
   @inlinable @inline(__always)
-  public static func sqrt<T>(
+  public static func sqrt<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Sqrt", x)
   }
   
   @inlinable @inline(__always)
-  public static func square<T>(
+  public static func square<T: TensorFlowNumeric>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Square", x)
   }
   
   @inlinable @inline(__always)
-  public static func tan<T>(
+  public static func tan<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   )-> Tensor<T> {
     dispatchUnary("Tan", x)
   }
   
   @inlinable @inline(__always)
-  public static func tanh<T>(
+  public static func tanh<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>
   ) -> Tensor<T> {
     dispatchUnary("Tanh", x)
@@ -461,7 +466,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func scalarAdd<T>(
+  public static func scalarAdd<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: T
   ) -> Tensor<T> {
@@ -469,7 +474,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func scalarMul<T>(
+  public static func scalarMul<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: T
   ) -> Tensor<T> {
@@ -479,7 +484,7 @@ public enum _Raw {
   // Binary
   
   @inlinable @inline(__always)
-  public static func addV2<T>(
+  public static func addV2<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -487,7 +492,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func approximateEqual<T>(
+  public static func approximateEqual<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: Tensor<T>,
     tolerance: Double = 1e-05
@@ -496,7 +501,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func equal<T>(
+  public static func equal<T: TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -504,7 +509,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func less<T>(
+  public static func less<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -512,7 +517,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func greater<T>(
+  public static func greater<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -520,7 +525,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func notEqual<T>(
+  public static func notEqual<T: TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -528,7 +533,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func greaterEqual<T>(
+  public static func greaterEqual<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -536,7 +541,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func lessEqual<T>(
+  public static func lessEqual<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<Bool> {
@@ -546,7 +551,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func div<T>(
+  public static func div<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -554,7 +559,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func eluGrad<T>(
+  public static func eluGrad<T: FloatingPoint & TensorFlowScalar>(
     gradients: Tensor<T>,
     outputs: Tensor<T>
   ) -> Tensor<T> {
@@ -562,7 +567,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func leakyReluGrad<T>(
+  public static func leakyReluGrad<T: FloatingPoint & TensorFlowScalar>(
     gradients: Tensor<T>,
     features: Tensor<T>,
     alpha: Double = 0.2
@@ -589,7 +594,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func maximum<T>(
+  public static func maximum<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -597,7 +602,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func minimum<T>(
+  public static func minimum<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -605,7 +610,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func mod<T>(
+  public static func mod<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -615,7 +620,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func mul<T>(
+  public static func mul<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -623,7 +628,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func pow<T>(
+  public static func pow<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -631,7 +636,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func relu6Grad<T>(
+  public static func relu6Grad<T: TensorFlowNumeric>(
     gradients: Tensor<T>,
     features: Tensor<T>
   ) -> Tensor<T> {
@@ -639,7 +644,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func reluGrad<T>(
+  public static func reluGrad<T: TensorFlowNumeric>(
     gradients: Tensor<T>,
     features: Tensor<T>
   ) -> Tensor<T> {
@@ -649,7 +654,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func rsqrtGrad<T>(
+  public static func rsqrtGrad<T: FloatingPoint & TensorFlowScalar>(
     _ y: Tensor<T>,
     dy: Tensor<T>
   ) -> Tensor<T> {
@@ -657,7 +662,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func seluGrad<T>(
+  public static func seluGrad<T: FloatingPoint & TensorFlowScalar>(
     gradients: Tensor<T>,
     outputs: Tensor<T>
   ) -> Tensor<T> {
@@ -665,7 +670,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func sigmoidGrad<T>(
+  public static func sigmoidGrad<T: FloatingPoint & TensorFlowScalar>(
     _ y: Tensor<T>,
     dy: Tensor<T>
   ) -> Tensor<T> {
@@ -673,7 +678,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func softplusGrad<T>(
+  public static func softplusGrad<T: FloatingPoint & TensorFlowScalar>(
     gradients: Tensor<T>,
     features: Tensor<T>
   ) -> Tensor<T> {
@@ -681,7 +686,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func softsignGrad<T>(
+  public static func softsignGrad<T: FloatingPoint & TensorFlowScalar>(
     gradients: Tensor<T>,
     features: Tensor<T>
   ) -> Tensor<T> {
@@ -691,7 +696,7 @@ public enum _Raw {
   
   
   @inlinable @inline(__always)
-  public static func squaredDifference<T>(
+  public static func squaredDifference<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -699,7 +704,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func sub<T>(
+  public static func sub<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
@@ -707,7 +712,7 @@ public enum _Raw {
   }
   
   @inlinable @inline(__always)
-  public static func xdivy<T>(
+  public static func xdivy<T: FloatingPoint & TensorFlowScalar>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {
