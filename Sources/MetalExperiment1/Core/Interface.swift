@@ -99,6 +99,15 @@ extension OperationRegistry {
     
     // Binary
     
+    "AddV2": addV2,
+    "ApproximateEqual": approximateEqual,
+    "Equal": equal,
+    "Less": less,
+    "Greater": greater,
+    "NotEqual": notEqual,
+    "GreaterEqual": greaterEqual,
+    "LessEqual": lessEqual,
+    
     "Maximum": maximum,
     "Minimum": minimum,
   ]
@@ -665,6 +674,18 @@ extension OperationRegistry {
       args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a binary operation.")
   }
   
+  enum ComparisonBase: UInt16 {
+    case equal = 0
+    case less = 1
+    case greater = 2
+  }
+  
+  @inline(__always)
+  static func createComparisonMetadata(_ base: ComparisonBase, _ flipping: Bool) -> UInt64 {
+    let vector = SIMD4<UInt16>(base.rawValue, flipping ? 1 : 0, 0, 0)
+    return unsafeBitCast(vector, to: UInt64.self)
+  }
+  
   static func dispatchBinary(
     _ args: inout Arguments,
     _ operation_f32: BinaryOperationType?,
@@ -767,8 +788,54 @@ extension OperationRegistry {
   }
 }
 
+// TODO: When implementing constant folding, transform add/mul into faster unary equivalent
+
 extension OperationRegistry {
   // Pass binary comparison operations like others, just make a utility that generates metadata.
+  
+  // Codes 0 - 4
+  static let addV2 = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .add_f32, .add_i32, nil, nil, true)
+  }
+  static let approximateEqual = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let tolerance: Double = decodeScalar(&args.attributes)
+    let metadata = UInt64(Float(tolerance).bitPattern)
+    dispatchBinary(&args, .approximate_equal_f32, nil, nil, metadata, false)
+  }
+  static let equal = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.equal, false)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  static let less = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.less, false)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  static let greater = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.greater, false)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  static let notEqual = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.equal, true)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  static let greaterEqual = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.less, true)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  static let lessEqual = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let metadata = createComparisonMetadata(.greater, true)
+    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+  }
+  
+  
   
   static let maximum = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)

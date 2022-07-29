@@ -81,9 +81,12 @@ enum ElementwiseOperationType: ushort {
   mod_i64 = 1022,
   mod_u64 = 1023,
   
-  squared_difference_i64 = 1030,
-  squared_difference_u64 = 1031,
-  sub_i64_u64 = 1032,
+  mul_i64 = 1030,
+  mul_u64 = 1031,
+  squared_difference_i64 = 1032,
+  squared_difference_u64 = 1033,
+  
+  sub_i64_u64 = 1040,
   
   // Ternary (2000 - 2999)
   
@@ -651,8 +654,14 @@ kernel void elementwise_u32_i64_u64(
             GET_SET_BINARY_INFIX_U64(%)
           }
         }
-      } else /*(operation <= sub_u64)*/ {
+      } else if (operation <= squared_difference_u64) {
         switch (operation) {
+          case mul_i64: {
+            GET_SET_BINARY_INFIX_I64(*);
+          }
+          case mul_u64: {
+            GET_SET_BINARY_INFIX_U64(*);
+          }
           case squared_difference_i64: {
             auto x = register1.get_i64();
             auto y = register2.get_i64();
@@ -660,13 +669,16 @@ kernel void elementwise_u32_i64_u64(
             out = out * out;
             SET_I64(out)
           }
-          case squared_difference_u64: {
+          default: /*squared_difference_u64*/ {
             auto x = register1.get_u64();
             auto y = register2.get_u64();
             auto out = ulong2(absdiff(x, y));
             out = out * out;
             SET_U64(out)
           }
+        }
+      } else /*(operation <= sub_i64_u64)*/ {
+        switch (operation) {
           default: /*sub_i64_u64*/ {
             GET_SET_BINARY_INFIX_I64(-)
           }

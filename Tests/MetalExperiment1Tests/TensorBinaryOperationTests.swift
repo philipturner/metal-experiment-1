@@ -96,6 +96,14 @@ func test4<
 }
 
 final class TensorBinaryOperationTests: XCTestCase {
+  // Add, Sub, Mul
+  func testScalarizedOps() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    // Test unary and binary versions of these. Also, test mutating versions of these ops.
+  }
+  
   func testMinMax() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }

@@ -145,21 +145,23 @@ enum BinaryOperationType: UInt16 {
   case mod_f32 = 24
   case mod_i32 = 25
   
-  case pow_f32 = 30
-  case relu6_grad_f32 = 31
-  case relu_grad_f32 = 32
-  case rsqrt_grad_f32 = 33
-  case selu_grad_f32 = 34
+  case mul_f32 = 30
+  case mul_i32 = 31
+  case pow_f32 = 32
+  case relu6_grad_f32 = 33
+  case relu_grad_f32 = 34
   
-  case sigmoid_grad_f32 = 40
-  case softplus_grad_f32 = 41
-  case softsign_grad_f32 = 42
-  case squared_difference_f32 = 43
-  case squared_difference_i32 = 44
+  case rsqrt_grad_f32 = 40
+  case selu_grad_f32 = 41
+  case sigmoid_grad_f32 = 42
+  case softplus_grad_f32 = 43
+  case softsign_grad_f32 = 44
   
-  case sub_f32 = 50
-  case sub_i32 = 51
-  case xdivy_f32 = 52
+  case squared_difference_f32 = 50
+  case squared_difference_i32 = 51
+  case sub_f32 = 52
+  case sub_i32 = 53
+  case xdivy_f32 = 55
 }
 
 enum BinaryOperationType2: UInt16 {
@@ -177,9 +179,12 @@ enum BinaryOperationType2: UInt16 {
   case mod_i64 = 22
   case mod_u64 = 23
   
-  case squared_difference_i64 = 30
-  case squared_difference_u64 = 31
-  case sub_i64_u64 = 32
+  case mul_i64 = 30
+  case mul_u64 = 31
+  case squared_difference_i64 = 32
+  case squared_difference_u64 = 33
+  
+  case sub_i64_u64 = 40
   
   init(_ smallOperation: BinaryOperationType, dataType: DataType) {
     guard dataType.requiresLargeRepresentation else {
@@ -199,6 +204,8 @@ enum BinaryOperationType2: UInt16 {
       self = (dataType == .int64) ? .minimum_i64 : .minimum_u64
     case .mod_i32:
       self = (dataType == .int64) ? .mod_i64 : .mod_u64
+    case .mul_i32:
+      self = (dataType == .int64) ?.mul_i64 : .mul_u64
     case .squared_difference_i32:
       self = (dataType == .int64) ? .squared_difference_i64 : .squared_difference_u64
     case .sub_i32:

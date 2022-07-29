@@ -181,21 +181,23 @@ enum ElementwiseOperationType: ushort {
   mod_f32 = 1024,
   mod_i32 = 1025,
   
-  pow_f32 = 1030,
-  relu6_grad_f32 = 1031,
-  relu_grad_f32 = 1032,
-  rsqrt_grad_f32 = 1033,
-  selu_grad_f32 = 1034,
+  mul_f32 = 1030,
+  mul_i32 = 1031,
+  pow_f32 = 1032,
+  relu6_grad_f32 = 1033,
+  relu_grad_f32 = 1034,
   
-  sigmoid_grad_f32 = 1040,
-  softplus_grad_f32 = 1041,
-  softsign_grad_f32 = 1042,
-  squared_difference_f32 = 1043,
-  squared_difference_i32 = 1044,
+  rsqrt_grad_f32 = 1040,
+  selu_grad_f32 = 1041,
+  sigmoid_grad_f32 = 1042,
+  softplus_grad_f32 = 1043,
+  softsign_grad_f32 = 1044,
   
-  sub_f32 = 1050,
-  sub_i32 = 1051,
-  xdivy_f32 = 1052,
+  squared_difference_f32 = 1050,
+  squared_difference_i32 = 1051,
+  sub_f32 = 1052,
+  sub_i32 = 1053,
+  xdivy_f32 = 1055,
   
   // Ternary (2000 - 2999)
   
@@ -959,10 +961,15 @@ kernel void elementwise_f32_i32(
           default: /*mod_i32*/ {
             GET_SET_BINARY_INFIX_I32(%)
           }
-          
         }
-      } else if (operation <= selu_grad_f32) {
+      } else if (operation <= relu_grad_f32) {
         switch (operation) {
+          case mul_f32: {
+            GET_SET_BINARY_INFIX_F32(*);
+          }
+          case mul_i32: {
+            GET_SET_BINARY_INFIX_I32(*);
+          }
           case pow_f32: {
             GET_SET_BINARY_F32(precise::pow)
           }
@@ -973,28 +980,28 @@ kernel void elementwise_f32_i32(
             out = select(0, dx, x == out);
             SET_F32(out)
           }
-          case relu_grad_f32: {
+          default: /*relu_grad_f32:*/ {
             auto x = register1.get_f32();
             auto dx = register2.get_f32();
             auto out = select(0, dx, x > 0);
             SET_F32(out)
           }
+        }
+      } else if (operation <= softsign_grad_f32) {
+        switch (operation) {
           case rsqrt_grad_f32: {
             auto x = register1.get_f32();
             auto out = precise::rsqrt(x);
             out = -0.5 * (out * out * out);
             SET_BINARY_GRADIENT_F32(out)
           }
-          default: /*selu_grad_f32*/ {
+          case selu_grad_f32: {
             auto x = register1.get_f32();
             constexpr float ALPHA = 1.6732632423543772848170429916717;
             constexpr float SCALE = 1.0507009873554804934193349852946;
             auto out = select(SCALE, (SCALE * ALPHA) * precise::exp(x), x < 0);
             SET_BINARY_GRADIENT_F32(out)
           }
-        }
-      } else if (operation <= squared_difference_i32) {
-        switch (operation) {
           case sigmoid_grad_f32: {
             auto x = register1.get_f32();
             auto out = 1 + precise::exp(-x);
@@ -1009,13 +1016,16 @@ kernel void elementwise_f32_i32(
             out = precise::divide(dx, out);
             SET_F32(out)
           }
-          case softsign_grad_f32: {
+          default: /*softsign_grad_f32*/ {
             auto x = register1.get_f32();
             auto dx = register2.get_f32();
             auto out = 1 + precise::abs(x);
             out = precise::divide(dx, out * out);
             SET_F32(out)
           }
+        }
+      } else /*(operation <= xdivy_f32)*/ {
+        switch (operation) {
           case squared_difference_f32: {
             auto x = register1.get_f32();
             auto y = register2.get_f32();
@@ -1023,16 +1033,13 @@ kernel void elementwise_f32_i32(
             out = out * out;
             SET_F32(out)
           }
-          default: /*squared_difference_i32*/ {
+          case squared_difference_i32: {
             auto x = register1.get_i32();
             auto y = register2.get_i32();
             auto out = int4(absdiff(x, y));
             out = out * out;
             SET_I32(out)
           }
-        }
-      } else /*(operation <= xdivy_f32)*/ {
-        switch (operation) {
           case sub_f32: {
             GET_SET_BINARY_INFIX_F32(-);
           }

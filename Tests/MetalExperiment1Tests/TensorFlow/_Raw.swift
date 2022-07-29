@@ -379,6 +379,13 @@ public enum _Raw {
   // Binary
   
   @inlinable @inline(__always)
+  public static func addV2<T>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+    dispatchBinary("AddV2", x, y)
+  }
+  
+  
+  
+  @inlinable @inline(__always)
   public static func maximum<T>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
     dispatchBinary("Maximum", x, y)
   }
