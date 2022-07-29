@@ -265,6 +265,22 @@ public func pow<T: TensorFlowFloatingPoint>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) 
 }
 
 @inlinable
+internal func _vjpRsqrt<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  let value = rsqrt(x)
+  return (value, { v in _Raw.rsqrtGrad(value, dy: v) })
+}
+
+@inlinable
+internal func _vjpSigmoid<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  let sigmoidValue = sigmoid(x)
+  return (sigmoidValue, { v in _Raw.sigmoidGrad(sigmoidValue, dy: v) })
+}
+
+@inlinable
 public func squaredDifference<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
   _Raw.squaredDifference(x, y)
 }

@@ -95,6 +95,29 @@ func test4<
   #endif
 }
 
+internal func assertEqual<T: TensorFlowFloatingPoint>(
+  _ x: [T], _ y: [T], accuracy: T, _ message: String = "",
+  file: StaticString = #file, line: UInt = #line
+) {
+  for (x, y) in zip(x, y) {
+    if x.isNaN || y.isNaN {
+      XCTAssertTrue(
+        x.isNaN && y.isNaN,
+        "\(x) is not equal to \(y) - \(message)",
+        file: file, line: line)
+      continue
+    }
+    XCTAssertEqual(x, y, accuracy: accuracy, message, file: file, line: line)
+  }
+}
+
+internal func assertEqual<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>, _ y: Tensor<T>, accuracy: T, _ message: String = "",
+  file: StaticString = #file, line: UInt = #line
+) {
+  assertEqual(x.scalars, y.scalars, accuracy: accuracy, message, file: file, line: line)
+}
+
 final class TensorBinaryOperationTests: XCTestCase {
   // Add, Sub, Mul, Div
   func testScalarizedOperations() throws {
@@ -250,20 +273,21 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
-    func _vjpRsqrt<T: TensorFlowFloatingPoint>(
-      _ x: Tensor<T>
-    ) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
-      let value = rsqrt(x)
-      return (value, { v in _Raw.rsqrtGrad(value, dy: v) })
-    }
+    // func _vjpRelu6
     
-    func _vjpSigmoid<T: TensorFlowFloatingPoint>(
-      _ x: Tensor<T>
-    ) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
-      let sigmoidValue = sigmoid(x)
-      return (sigmoidValue, { v in _Raw.sigmoidGrad(sigmoidValue, dy: v) })
-    }
+    // func _vjpRelu
     
+    // func _vjpRsqrt
+    
+    // func _vjpSelu
+    
+    // func _vjpSigmoid
+    
+    // func _vjpSoftplus
+    
+    // func _vjpSoftsign
+    
+    // RsqrtGrad
     do {
       let x = Tensor<Float>([1, 0.25, Float(1.0) / 9.0, 0.0625, 0.04])
       let target = Tensor<Float>([1, 2, 3, 4, 5])
@@ -274,6 +298,14 @@ final class TensorBinaryOperationTests: XCTestCase {
       XCTAssertEqual(grad.scalars, gradTarget.scalars)
     }
     
+    // Sigmoid
+    do {
+      let x = Tensor<Float>([-1, 0, 1])
+      let gradTarget = Tensor<Float>([0.1966119, 0.25, 0.1966119])
+      let (_, pullback) = _vjpSigmoid(x)
+      let grad = pullback(Tensor(repeating: 1, shape: [3]))
+      assertEqual(grad, gradTarget, accuracy: 0.0001)
+    }
   }
   
   func testMinMax() throws {
