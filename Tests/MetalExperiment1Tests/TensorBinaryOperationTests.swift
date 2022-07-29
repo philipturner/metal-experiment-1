@@ -291,6 +291,16 @@ final class TensorBinaryOperationTests: XCTestCase {
     
     // func _vjpSoftsign
     
+    // Relu6Grad
+    do {
+      let x = Tensor<Float>([-0.5, 0.5, 4, 7, 8])
+      let outGrad = Tensor<Float>([1.5, 2.5, 2, 5, 3])
+      let gradTarget = Tensor<Float>([0, 2.5, 2, 0, 0])
+      let (_, pullback) = _vjpRelu6(x)
+      let grad = pullback(outGrad)
+      XCTAssertEqual(grad.scalars, gradTarget.scalars)
+    }
+    
     // ReluGrad
     do {
       let x = Tensor<Float>([5, -5, 0])

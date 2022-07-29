@@ -1048,10 +1048,10 @@ kernel void elementwise_f32_i32(
             GET_SET_BINARY_F32(precise::pow)
           }
           case relu6_grad_f32: {
-            auto x = register1.get_f32();
-            auto dx = register2.get_f32();
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
             auto out = precise::clamp(x, 0, 6);
-            out = select(0, dx, x == out);
+            out = select(0, dy, x == out);
             SET_F32(out)
           }
           default: /*relu_grad_f32:*/ {
