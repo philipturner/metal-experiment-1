@@ -15,6 +15,7 @@ public class Context {
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
+  var synchronizationFence: MTLFence
   var synchronizationEvent: MTLEvent
   var synchronizationCounter: UInt64 = 0
   
@@ -54,6 +55,7 @@ public class Context {
     self.device = MTLCreateSystemDefaultDevice()!
     self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
     self.preferSharedStorage = device.hasUnifiedMemory
+    self.synchronizationFence = device.makeFence()!
     self.synchronizationEvent = device.makeEvent()!
     
     self._mutex = .init()

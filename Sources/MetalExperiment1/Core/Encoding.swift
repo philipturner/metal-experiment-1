@@ -10,9 +10,9 @@ import MetalPerformanceShaders
 struct EncodingContext {
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
+  private var blitEncoder: MTLBlitCommandEncoder?
   private var computeEncoder: MTLComputeCommandEncoder?
   private var computeEncoderID: Int = -1
-  private var blitEncoder: MTLBlitCommandEncoder?
   var pipelineStateID: Int = -1
   var synchronizedResources: Set<AllocationHandle> = []
   
@@ -36,41 +36,79 @@ struct EncodingContext {
     commandBuffer.encodeSignalEvent(ctx.synchronizationEvent, value: newCounter)
   }
   
+  // MARK: - Starting Encoding Passes
+  
+  @inline(__always)
+  mutating func makeBlitCommandEncoder() -> MTLBlitCommandEncoder {
+    if let blitEncoder = blitEncoder {
+      return blitEncoder
+    } else {
+      return startBlitPass()
+    }
+  }
+  
+  private mutating func startBlitPass() -> MTLBlitCommandEncoder {
+    var usingFence = false
+    if let computeEncoder = computeEncoder {
+      usingFence = true
+      finishComputePass(computeEncoder, usingEvent: false)
+    } else {
+      encodeWaitForEvent()
+    }
+    
+    let blitEncoder = commandBuffer.makeBlitCommandEncoder()!
+    if usingFence {
+      blitEncoder.waitForFence(Context.global.synchronizationFence)
+    }
+    self.blitEncoder = blitEncoder
+    return blitEncoder
+  }
+  
   @inline(__always)
   mutating func makeComputeCommandEncoder() -> MTLComputeCommandEncoder {
     if let computeEncoder = computeEncoder {
       return computeEncoder
     } else {
-      return makeComputeCommandEncoderSlowPath()
+      return startComputePass()
     }
   }
   
-  @inline(never)
-  private mutating func makeComputeCommandEncoderSlowPath() -> MTLComputeCommandEncoder {
-    encodeWaitForEvent()
+  private mutating func startComputePass() -> MTLComputeCommandEncoder {
+    var usingFence = false
+    if let blitEncoder = blitEncoder {
+      usingFence = true
+      finishBlitPass(blitEncoder, usingEvent: false)
+    } else {
+      encodeWaitForEvent()
+    }
+    
     precondition(synchronizedResources.isEmpty, "This should never happen.")
     let computeEncoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
+    if usingFence {
+      computeEncoder.waitForFence(Context.global.synchronizationFence)
+    }
     self.computeEncoder = computeEncoder
     self.computeEncoderID += 1
     return computeEncoder
   }
   
+  // MARK: - Finishing Encoding Passes
+  
   @inline(__always)
   mutating func finishCommandEncoder() {
-    if let computeEncoder = computeEncoder {
-      finishComputePass(computeEncoder, usingEvent: true)
-    } else if let blitEncoder = blitEncoder {
+    if let blitEncoder = blitEncoder {
       finishBlitPass(blitEncoder, usingEvent: true)
+    } else if let computeEncoder = computeEncoder {
+      finishComputePass(computeEncoder, usingEvent: true)
     }
   }
   
-  @inline(never)
   private mutating func finishComputePass(
     _ computeEncoder: MTLComputeCommandEncoder,
     usingEvent: Bool
   ) {
     if !usingEvent {
-      // Use fence.
+      computeEncoder.waitForFence(Context.global.synchronizationFence)
     }
     computeEncoder.endEncoding()
     self.computeEncoder = nil
@@ -81,13 +119,12 @@ struct EncodingContext {
     }
   }
   
-  @inline(never)
   private mutating func finishBlitPass(
     _ blitEncoder: MTLBlitCommandEncoder,
     usingEvent: Bool
   ) {
     if !usingEvent {
-      // Use fence.
+      blitEncoder.waitForFence(Context.global.synchronizationFence)
     }
     blitEncoder.endEncoding()
     self.blitEncoder = nil
@@ -95,6 +132,8 @@ struct EncodingContext {
       encodeSignalEvent()
     }
   }
+  
+  // MARK: - Memory Barriers
   
   @inline(__always)
   mutating func useAllocation(_ allocation: Allocation) {
@@ -127,6 +166,8 @@ struct EncodingContext {
     allocation.lastModifiedCommandEncoderID = -1
   }
 }
+
+// MARK: - Encoding
 
 extension Context {
   func encodeCompiledOperation(
@@ -169,19 +210,16 @@ private extension Context {
     do {
       let input1 = instruction.input1
       try input1.materialize()
-      encoder.memoryBarrier(resources: [input1.mtlBuffer!])
       encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
       shouldBarrier1 = ectx.memoryBarrier(allocation: input1)
     }
     if let input2 = instruction.input2 {
       try input2.materialize()
-      encoder.memoryBarrier(resources: [input2.mtlBuffer!])
       encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
       shouldBarrier2 = ectx.memoryBarrier(allocation: input2)
     }
     if let input3 = instruction.input3 {
       try input3.materialize()
-      encoder.memoryBarrier(resources: [input3.mtlBuffer!])
       encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
       shouldBarrier3 = ectx.memoryBarrier(allocation: input3)
     }
@@ -203,7 +241,6 @@ private extension Context {
     do {
       let output = instruction.output
       try output.materialize()
-      encoder.memoryBarrier(resources: [output.mtlBuffer!])
       encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
       ectx.useAllocation(output)
     }
@@ -451,18 +488,7 @@ private extension Context {
     // don't know the performance characteristics of PCIe, so it's best to delegate that to Apple's
     // optimized blit commands. If it were just copying between GPU memory regions, a specialized
     // compute shader would be just as fast and have less CPU-side overhead.
-    //
-    // I'm also not (yet) making optimized encoding utilities like `makeBlitEncoder` and
-    // `finishBlitEncoder` just for this command. There is a very low chance that two explicit copy
-    // operations appear next to each other. This is a viable optimization that I could pursue down
-    // the road, alongside other enhancements to reading data from the GPU.
-    ectx.finishCommandEncoder()
-    ectx.encodeWaitForEvent()
-    let blitEncoder = ectx.commandBuffer.makeBlitCommandEncoder()!
-    defer {
-      blitEncoder.endEncoding()
-      ectx.encodeSignalEvent()
-    }
+    let blitEncoder = ectx.makeBlitCommandEncoder()
     
     blitEncoder.copy(
       from: input.mtlBuffer!, sourceOffset: 0, to: output.mtlBuffer!, destinationOffset: 0,

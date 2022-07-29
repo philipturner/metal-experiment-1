@@ -317,7 +317,8 @@ private extension Context {
           rangeStart = nextIterator
           if encounteredError {
             encodingContext = EncodingContext(
-              commandBuffer: commandQueue.makeCommandBuffer()!, commandBufferID: commandBufferID)
+              commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
+              commandBufferID: commandBufferID)
             commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
           }
         }
