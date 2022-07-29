@@ -6,6 +6,7 @@
 //
 
 import MetalExperiment1
+import Darwin
 
 public typealias CTensorHandle = OpaquePointer
 
@@ -158,5 +159,24 @@ public struct Tensor<Scalar: TensorFlowScalar> {
       $0.initialize(repeating: repeatedValue, count: shape.contiguousSize)
     }
     self.init(handle: handle)
+  }
+  
+  @inlinable
+  public init(shape: TensorShape, scalars: [Scalar]) {
+    precondition(
+      shape.contiguousSize == scalars.count,
+      """
+      The shape requires \(shape.contiguousSize) scalars but \(scalars.count) were \
+      provided.
+      """)
+    let handle = TensorHandle<Scalar>(shape: shape.dimensions) {
+      memcpy($0, scalars, scalars.count * MemoryLayout<Scalar>.stride)
+    }
+    self.init(handle: handle)
+  }
+  
+  @inlinable
+  public init(_ scalars: [Scalar]) {
+    self.init(shape: [scalars.count], scalars: scalars)
   }
 }

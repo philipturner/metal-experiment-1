@@ -247,6 +247,32 @@ final class TensorBinaryOperationTests: XCTestCase {
   }
   
   func testGradientOperations() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    func _vjpRsqrt<T: TensorFlowFloatingPoint>(
+      _ x: Tensor<T>
+    ) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+      let value = rsqrt(x)
+      return (value, { v in _Raw.rsqrtGrad(value, dy: v) })
+    }
+    
+    func _vjpSigmoid<T: TensorFlowFloatingPoint>(
+      _ x: Tensor<T>
+    ) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+      let sigmoidValue = sigmoid(x)
+      return (sigmoidValue, { v in _Raw.sigmoidGrad(sigmoidValue, dy: v) })
+    }
+    
+    do {
+      let x = Tensor<Float>([1, 0.25, Float(1.0) / 9.0, 0.0625, 0.04])
+      let target = Tensor<Float>([1, 2, 3, 4, 5])
+      let gradTarget = Tensor<Float>([-0.5, -4.0, -13.5, -32.0, -62.5])
+      let (value, pullback) = _vjpRsqrt(x)
+      let grad = pullback(Tensor(repeating: 1, shape: [5]))
+      XCTAssertEqual(value.scalars, target.scalars)
+      XCTAssertEqual(grad.scalars, gradTarget.scalars)
+    }
     
   }
   
@@ -315,7 +341,7 @@ final class TensorBinaryOperationTests: XCTestCase {
     }
     
     func swift_pow<T: BinaryFloatingPoint>(_ x: T, _ y: T) -> T {
-      T(Foundation.pow(Float(x), Float(y)))
+      T(Darwin.pow(Float(x), Float(y)))
     }
     
     func swift_sqr_diff_f32<T: BinaryFloatingPoint>(_ x: T, _ y: T) -> T {

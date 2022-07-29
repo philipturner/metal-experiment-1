@@ -1055,37 +1055,34 @@ kernel void elementwise_f32_i32(
       } else if (operation <= softsign_grad_f32) {
         switch (operation) {
           case rsqrt_grad_f32: {
-            auto x = register1.get_f32();
-            auto out = precise::rsqrt(x);
-            out = -0.5 * (out * out * out);
+            auto y = register1.get_f32();
+            auto out = -0.5 * (y * y * y);
             SET_BINARY_GRADIENT_F32(out)
           }
           case selu_grad_f32: {
-            auto x = register1.get_f32();
+            auto y = register1.get_f32();
             constexpr float ALPHA = 1.6732632423543772848170429916717;
             constexpr float SCALE = 1.0507009873554804934193349852946;
-            auto out = select(SCALE, (SCALE * ALPHA) * precise::exp(x), x < 0);
+            auto out = select(SCALE, y + (SCALE * ALPHA), y < 0);
             SET_BINARY_GRADIENT_F32(out)
           }
           case sigmoid_grad_f32: {
-            auto x = register1.get_f32();
-            auto out = 1 + precise::exp(-x);
-            out = precise::divide(1, out);
-            out = out * (1 - out);
+            auto y = register1.get_f32();
+            auto out = y * (1 - y);
             SET_BINARY_GRADIENT_F32(out)
           }
           case softplus_grad_f32: {
             auto x = register1.get_f32();
-            auto dx = register2.get_f32();
+            auto dy = register2.get_f32();
             auto out = 1 + precise::exp(-x);
-            out = precise::divide(dx, out);
+            out = precise::divide(dy, out);
             SET_F32(out)
           }
           default: /*softsign_grad_f32*/ {
             auto x = register1.get_f32();
-            auto dx = register2.get_f32();
+            auto dy = register2.get_f32();
             auto out = 1 + precise::abs(x);
-            out = precise::divide(dx, out * out);
+            out = precise::divide(dy, out * out);
             SET_F32(out)
           }
         }

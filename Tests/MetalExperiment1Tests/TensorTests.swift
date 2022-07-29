@@ -20,6 +20,15 @@ final class TensorTests: XCTestCase {
     XCTAssertEqual(tensor4.shape, [2, 2])
     XCTAssertEqual(tensor4.scalars, [6, 6, 6, 6])
     Profiler.log("Generic tensor operation execution time")
+    
+    let tensor5 = Tensor<Float>([1, 2, 3, 4, 5])
+    let tensor6 = Tensor<UInt8>([1, 2, 3, 4, 5])
+    let tensor7 = Tensor<Bool>([false, true, false])
+    let tensor8 = Tensor<Int64>([1, 2, 3, 4, 5])
+    XCTAssertEqual(tensor5.scalars, [1, 2, 3, 4, 5])
+    XCTAssertEqual(tensor6.scalars, [1, 2, 3, 4, 5])
+    XCTAssertEqual(tensor7.scalars, [false, true, false])
+    XCTAssertEqual(tensor8.scalars, [1, 2, 3, 4, 5])
   }
   
   func testTensorShape() throws {
