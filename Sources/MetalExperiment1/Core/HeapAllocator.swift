@@ -170,11 +170,11 @@ class HeapBlock: AllocatorBlockProtocol {
   }
   
   func makeBuffer(length: Int) -> MTLBuffer? {
+    // The buffer's hazard tracking mode is always `.untracked`.
     let buffer = heap.makeBuffer(length: length, options: heap.resourceOptions)
     guard let buffer = buffer else {
       return nil
     }
-    precondition(buffer.hazardTrackingMode == .untracked, "This should never happen.")
     availableSize = heap.maxAvailableSize(alignment: Int(vm_page_size))
     numBuffers += 1
     return buffer
