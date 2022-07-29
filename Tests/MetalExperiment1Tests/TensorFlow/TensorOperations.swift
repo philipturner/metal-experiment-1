@@ -8,7 +8,7 @@
 extension Tensor where Scalar: Numeric {
   @inlinable
   public func incremented() -> Tensor {
-    return _Raw.scalarAdd(self, 1)
+    return _Raw.scalarAdd(self, scalar: 1)
   }
 }
 
@@ -229,75 +229,7 @@ public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.tanh(x)
 }
 
-//extension
-
-// TODO: Scalar Add/Mul here
-
-extension Tensor where Scalar: Numeric {
-  @inlinable
-  public static func + (lhs: Scalar, rhs: Tensor) -> Tensor {
-    _Raw.scalarAdd(rhs, lhs)
-  }
-  
-  @inlinable
-  public static func + (lhs: Tensor, rhs: Scalar) -> Tensor {
-    _Raw.scalarAdd(lhs, rhs)
-  }
-  
-//  @_disfavoredOverload // TODO: Check where this overloads
-//  @inlinable
-//  public static func - (lhs: Scalar, rhs: Tensor) -> Tensor {
-//    lhs + _Raw.neg(rhs)
-//  }
-//  
-//  @_disfavoredOverload // TODO: Check where this overloads
-//  @inlinable
-//  public static func - (lhs: Tensor, rhs: Scalar) -> Tensor {
-//    lhs + (Scalar.zero - rhs)
-////    fatalError()
-////    return lhs - Tensor(repeating: rhs, shape: [])
-//  }
-}
-
-//extension Tensor where Scalar: SignedNumeric {
-//  @inlinable
-//  public static func - (lhs: Scalar, rhs: Tensor) -> Tensor {
-//    _Raw.scalarAdd(-rhs, lhs)
-//  }
-//
-//  @inlinable
-//  public static func - (lhs: Tensor, rhs: Scalar) -> Tensor {
-//    _Raw.scalarAdd(lhs, -rhs)
-//  }
-//}
-
 // Binary
-
-extension Tensor where Scalar: Numeric {
-  public static var zero: Tensor {
-    var zero = Tensor(repeating: 0, shape: [])
-    zero._isScalarZero = true
-    return zero
-  }
-  
-  @inlinable
-  public static func + (lhs: Tensor, rhs: Tensor) -> Tensor {
-    if lhs._isScalarZero {
-      return rhs
-    } else if rhs._isScalarZero {
-      return lhs
-    }
-    return _Raw.addV2(lhs, rhs)
-  }
-  
-  @inlinable
-  public static func - (lhs: Tensor, rhs: Tensor) -> Tensor {
-    if rhs._isScalarZero {
-      return lhs
-    }
-    return _Raw.sub(lhs, rhs)
-  }
-}
 
 @inlinable
 public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {

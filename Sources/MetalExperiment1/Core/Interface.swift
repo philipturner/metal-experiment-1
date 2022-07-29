@@ -95,7 +95,11 @@ extension OperationRegistry {
     "Tanh": tanh,
     
     "ScalarAdd": scalarAdd,
+    "ScalarSub": scalarSub,
+    "ScalarSubInverse": scalarSubInverse,
     "ScalarMul": scalarMul,
+    "ScalarDiv": scalarDiv,
+    "ScalarDivInverse": scalarDivInverse,
     
     // Binary
     
@@ -686,9 +690,25 @@ extension OperationRegistry {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnaryScalar(&args, .scalar_add_f32, .scalar_add_i32)
   }
+  static let scalarSub = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryScalar(&args, .scalar_sub_f32, .scalar_sub_i32)
+  }
+  static let scalarSubInverse = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryScalar(&args, .scalar_sub_inverse_f32, .scalar_sub_inverse_i32)
+  }
   static let scalarMul = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnaryScalar(&args, .scalar_mul_f32, .scalar_mul_i32)
+  }
+  static let scalarDiv = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryScalar(&args, .scalar_div_f32, .scalar_div_i32)
+  }
+  static let scalarDivInverse = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchUnaryScalar(&args, .scalar_div_inverse_f32, .scalar_div_inverse_i32)
   }
 }
 

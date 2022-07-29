@@ -63,14 +63,14 @@ enum ElementwiseOperationType: ushort {
   
   scalar_add_i64_u64 = 30, // requires metadata
   scalar_sub_i64_u64 = 31, // requires metadata
-  scalar_sub_reversed_i64_u64 = 32, // requires metadata
+  scalar_sub_inverse_i64_u64 = 32, // requires metadata
   scalar_mul_i64 = 33, // requires metadata
   scalar_div_i64 = 34, // requires metadata
-  scalar_div_reversed_i64 = 35, // requires metadata
+  scalar_div_inverse_i64 = 35, // requires metadata
   
   scalar_mul_u64 = 40, // requires metadata
   scalar_div_u64 = 41, // requires metadata
-  scalar_div_reversed_u64 = 42, // requires metadata
+  scalar_div_inverse_u64 = 42, // requires metadata
   
   // Binary (1000 - 1999)
   
@@ -560,7 +560,7 @@ kernel void elementwise_u32_i64_u64(
             SET_U64(x)
           }
         }
-      } else if (operation <= scalar_div_reversed_i64) {
+      } else if (operation <= scalar_div_inverse_i64) {
         auto x = register1.get_i64();
         auto operation_metadata = get_metadata(metadata, metadata_index);
         long scalar = ((constant long*)operation_metadata)[0];
@@ -573,7 +573,7 @@ kernel void elementwise_u32_i64_u64(
             x -= scalar;
             break;
           }
-          case scalar_sub_reversed_i64_u64: {
+          case scalar_sub_inverse_i64_u64: {
             x = scalar - x;
             break;
           }
@@ -585,13 +585,13 @@ kernel void elementwise_u32_i64_u64(
             x /= scalar;
             break;
           }
-          default: /*scalar_div_reversed_i64*/ {
+          default: /*scalar_div_inverse_i64*/ {
             x = scalar / x;
             break;
           }
         }
         register1.set_i64(x);
-      } else /*(operation <= scalar_div_reversed_u64)*/ {
+      } else /*(operation <= scalar_div_inverse_u64)*/ {
         auto x = register1.get_u64();
         auto operation_metadata = get_metadata(metadata, metadata_index);
         ulong scalar = ((constant long*)operation_metadata)[0];
@@ -604,7 +604,7 @@ kernel void elementwise_u32_i64_u64(
             x /= scalar;
             break;
           }
-          default: /*scalar_div_reversed_u64*/ {
+          default: /*scalar_div_inverse_u64*/ {
             x = scalar / x;
             break;
           }

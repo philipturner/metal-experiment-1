@@ -468,17 +468,49 @@ public enum _Raw {
   @inlinable @inline(__always)
   public static func scalarAdd<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
-    _ y: T
+    scalar: T
   ) -> Tensor<T> {
-    dispatchUnary("ScalarAdd", x, y)
+    dispatchUnary("ScalarAdd", x, scalar)
   }
   
   @inlinable @inline(__always)
-  public static func scalarMul<T: FloatingPoint & TensorFlowScalar>(
+  public static func scalarSub<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
-    _ y: T
+    scalar: T
   ) -> Tensor<T> {
-    dispatchUnary("ScalarMul", x, y)
+    dispatchUnary("ScalarSub", x, scalar)
+  }
+  
+  @inlinable @inline(__always)
+  public static func scalarSubInverse<T: TensorFlowNumeric>(
+    _ x: Tensor<T>,
+    scalar: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarSubInverse", x, scalar)
+  }
+  
+  @inlinable @inline(__always)
+  public static func scalarMul<T: TensorFlowNumeric>(
+    _ x: Tensor<T>,
+    scalar: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarMul", x, scalar)
+  }
+  
+  @inlinable @inline(__always)
+  public static func scalarDiv<T: TensorFlowNumeric>(
+    _ x: Tensor<T>,
+    scalar: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarDiv", x, scalar)
+  }
+  
+  @inlinable @inline(__always)
+  public static func scalarDivInverse<T: TensorFlowNumeric>(
+    _ x: Tensor<T>,
+    scalar: T
+  ) -> Tensor<T> {
+    dispatchUnary("ScalarDivInverse", x, scalar)
   }
   
   // Binary

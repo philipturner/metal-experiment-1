@@ -96,29 +96,76 @@ func test4<
 }
 
 final class TensorBinaryOperationTests: XCTestCase {
-  // Add, Sub, Mul
-  func testScalarizedOps() throws {
+  // Add, Sub, Mul, Div
+  func testScalarizedOperations() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
-    // TODO: Test unary/binary adds, test no-op scalar adds.
-    
     _ = Tensor<Float>.zero
+    _ = Tensor<Int8>.zero
+    _ = Tensor<UInt8>.zero
+    _ = Tensor<Int64>.zero
+    _ = Tensor<UInt64>.zero
     
-    func testSigned<T: TensorFlowNumeric>(small: T, large: T, diff: T) {
-      let lhs = Tensor<T>(repeating: small, shape: [5])
-      let rhs = Tensor<T>(repeating: large, shape: [5])
-      XCTAssertEqual((lhs + rhs).scalars, [T](repeating: small + large, count: 5))
-      XCTAssertEqual((lhs + large).scalars, [T](repeating: small + large, count: 5))
-      XCTAssertEqual((small + rhs).scalars, [T](repeating: small + large, count: 5))
+    // Can't perform CPU-side division inside the function, so pass in `ratio`.
+    func testSigned<T: TensorFlowNumeric>(small: T, large: T, ratio: T?) {
+      let smallTensor = Tensor<T>(repeating: small, shape: [5])
+      let largeTensor = Tensor<T>(repeating: large, shape: [5])
+      let addTest1 = smallTensor + largeTensor
+      let addTest2 = smallTensor + large
+      let addTest3 = small + largeTensor
+      let addTestArray = [T](repeating: small + large, count: 5)
+      XCTAssertEqual(addTest1.scalars, addTestArray)
+      XCTAssertEqual(addTest2.scalars, addTestArray)
+      XCTAssertEqual(addTest3.scalars, addTestArray)
       
-//      XCTAssertEqual((lhs - rhs).scalars, [T](repeating: diff, count: 5))
-//      XCTAssertEqual((lhs - large).scalars, [T](repeating: diff, count: 5))
-//      XCTAssertEqual((small - rhs).scalars, [T](repeating: diff, count: 5))
+      let subTest1 = largeTensor - smallTensor
+      let subTest2 = largeTensor - small
+      if T.self is any SignedNumeric {
+        let subInvTest1 = smallTensor - largeTensor
+        let subInvTest2 = smallTensor - large
+        let subInvTestArray = [T](repeating: small - large, count: 5)
+        XCTAssertEqual(subInvTest1.scalars, subInvTestArray)
+        XCTAssertEqual(subInvTest2.scalars, subInvTestArray)
+      }
+      let subTestArray = [T](repeating: large - small, count: 5)
+      XCTAssertEqual(subTest1.scalars, subTestArray)
+      XCTAssertEqual(subTest2.scalars, subTestArray)
+      
+      let mulTest1 = smallTensor * largeTensor
+      let mulTest2 = smallTensor * large
+      let mulTest3 = small * largeTensor
+      let mulTestArray = [T](repeating: small * large, count: 5)
+      XCTAssertEqual(mulTest1.scalars, mulTestArray)
+      XCTAssertEqual(mulTest2.scalars, mulTestArray)
+      XCTAssertEqual(mulTest3.scalars, mulTestArray)
+      
+      if let ratio = ratio {
+        let divTest1 = smallTensor / largeTensor
+        let divTest2 = smallTensor / large
+        let divTest3 = small / largeTensor
+        let divTestArray = [T](repeating: ratio, count: 5)
+        XCTAssertEqual(divTest1.scalars, divTestArray)
+        XCTAssertEqual(divTest2.scalars, divTestArray)
+        XCTAssertEqual(divTest3.scalars, divTestArray)
+      } else {
+        // Avoid dividing by zero.
+      }
     }
-    testSigned(small: Float(5), large: 7, diff: -2)
-    testSigned(small: Int8(5), large: 7, diff: -2)
-    testSigned(small: UInt8(5), large: 7, diff: UInt8(5) &- 7)
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    testSigned(small: Float16(5), large: 7, ratio: 5 / 7)
+    #endif
+    testSigned(small: Float(5), large: 7, ratio: 5 / 7)
+    testSigned(small: Int8(5), large: 7, ratio: 5 / 7)
+    testSigned(small: UInt8(5), large: 7, ratio: 5 / 7)
+    testSigned(small: Int64(5), large: 7, ratio: 5 / 7)
+    testSigned(small: UInt64(5), large: 7, ratio: 5 / 7)
+    
+    // Test no-ops
+    testSigned(small: Int32(-5), large: 0, ratio: nil)
+    testSigned(small: Int32(0), large: -5, ratio: 0 / -5)
+    testSigned(small: Int32(-5), large: 1, ratio: -5 / 1)
+    testSigned(small: Int32(1), large: -5, ratio: 1 / -5)
   }
   
   func testComparison() throws {

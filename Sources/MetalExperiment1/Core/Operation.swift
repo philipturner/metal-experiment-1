@@ -65,17 +65,17 @@ enum UnaryOperationType: UInt16 {
   
   case scalar_add_f32 = 70 // requires metadata
   case scalar_sub_f32 = 71 // requires metadata
-  case scalar_sub_reversed_f32 = 72 // requires metadata
+  case scalar_sub_inverse_f32 = 72 // requires metadata
   case scalar_mul_f32 = 73 // requires metadata
   case scalar_div_f32 = 74 // requires metadata
-  case scalar_div_reversed_f32 = 75 // requires metadata
+  case scalar_div_inverse_f32 = 75 // requires metadata
   
   case scalar_add_i32 = 80 // requires metadata
   case scalar_sub_i32 = 81 // requires metadata
-  case scalar_sub_reversed_i32 = 82 // requires metadata
+  case scalar_sub_inverse_i32 = 82 // requires metadata
   case scalar_mul_i32 = 83 // requires metadata
   case scalar_div_i32 = 84 // requires metadata
-  case scalar_div_reversed_i32 = 85 // requires metadata
+  case scalar_div_inverse_i32 = 85 // requires metadata
 }
 
 enum UnaryOperationType2: UInt16 {
@@ -102,14 +102,14 @@ enum UnaryOperationType2: UInt16 {
   
   case scalar_add_i64_u64 = 30 // requires metadata
   case scalar_sub_i64_u64 = 31 // requires metadata
-  case scalar_sub_reversed_i64_u64 = 32 // requires metadata
+  case scalar_sub_inverse_i64_u64 = 32 // requires metadata
   case scalar_mul_i64 = 33 // requires metadata
   case scalar_div_i64 = 34 // requires metadata
-  case scalar_div_reversed_i64 = 35 // requires metadata
+  case scalar_div_inverse_i64 = 35 // requires metadata
   
   case scalar_mul_u64 = 40 // requires metadata
   case scalar_div_u64 = 41 // requires metadata
-  case scalar_div_reversed_u64 = 42 // requires metadata
+  case scalar_div_inverse_u64 = 42 // requires metadata
   
   init(_ smallOperation: UnaryOperationType, dataType: DataType) {
     guard dataType.requiresLargeRepresentation else {
@@ -135,14 +135,14 @@ enum UnaryOperationType2: UInt16 {
       self = .scalar_add_i64_u64
     case .scalar_sub_i32:
       self = .scalar_sub_i64_u64
-    case .scalar_sub_reversed_i32:
-      self = .scalar_sub_reversed_i64_u64
+    case .scalar_sub_inverse_i32:
+      self = .scalar_sub_inverse_i64_u64
     case .scalar_mul_i32:
       self = (dataType == .int64) ? .scalar_mul_i64 : .scalar_mul_u64
     case .scalar_div_i32:
       self = (dataType == .int64) ? .scalar_div_i64 : .scalar_div_u64
-    case .scalar_div_reversed_i32:
-      self = (dataType == .int64) ? .scalar_div_reversed_i64 : .scalar_div_reversed_u64
+    case .scalar_div_inverse_i32:
+      self = (dataType == .int64) ? .scalar_div_inverse_i64 : .scalar_div_inverse_u64
     default:
       fatalError("Unary operation '\(smallOperation)' has no large counterpart.")
     }

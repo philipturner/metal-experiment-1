@@ -159,17 +159,17 @@ enum ElementwiseOperationType: ushort {
   
   scalar_add_f32 = 70, // requires metadata
   scalar_sub_f32 = 71, // requires metadata
-  scalar_sub_reversed_f32 = 72, // requires metadata
+  scalar_sub_inverse_f32 = 72, // requires metadata
   scalar_mul_f32 = 73, // requires metadata
   scalar_div_f32 = 74, // requires metadata
-  scalar_div_reversed_f32 = 75, // requires metadata
+  scalar_div_inverse_f32 = 75, // requires metadata
   
   scalar_add_i32 = 80, // requires metadata
   scalar_sub_i32 = 81, // requires metadata
-  scalar_sub_reversed_i32 = 82, // requires metadata
+  scalar_sub_inverse_i32 = 82, // requires metadata
   scalar_mul_i32 = 83, // requires metadata
   scalar_div_i32 = 84, // requires metadata
-  scalar_div_reversed_i32 = 85, // requires metadata
+  scalar_div_inverse_i32 = 85, // requires metadata
   
   // Binary (1000 - 1999)
   
@@ -832,7 +832,7 @@ kernel void elementwise_f32_i32(
             GET_SET_UNARY_F32(precise::tanh)
           }
         }
-      } else if (operation <= scalar_div_reversed_f32) {
+      } else if (operation <= scalar_div_inverse_f32) {
         float4 x = register1.get_f32();
         auto operation_metadata = get_metadata(metadata, metadata_index);
         float scalar = ((constant float*)operation_metadata)[0];
@@ -845,7 +845,7 @@ kernel void elementwise_f32_i32(
             x -= scalar;
             break;
           }
-          case scalar_sub_reversed_f32: {
+          case scalar_sub_inverse_f32: {
             x = scalar - x;
             break;
           }
@@ -857,13 +857,13 @@ kernel void elementwise_f32_i32(
             x = precise::divide(x, scalar);
             break;
           }
-          default: /*scalar_div_reversed_f32*/ {
+          default: /*scalar_div_inverse_f32*/ {
             x = precise::divide(scalar, x);
             break;
           }
         }
         register1.set_f32(x);
-      } else /*(operation <= scalar_div_reversed_i32)*/ {
+      } else /*(operation <= scalar_div_inverse_i32)*/ {
         auto x = register1.get_i32();
         auto operation_metadata = get_metadata(metadata, metadata_index);
         int scalar = ((constant int*)operation_metadata)[0];
@@ -876,7 +876,7 @@ kernel void elementwise_f32_i32(
             x -= scalar;
             break;
           }
-          case scalar_sub_reversed_i32: {
+          case scalar_sub_inverse_i32: {
             x = scalar - x;
             break;
           }
@@ -888,7 +888,7 @@ kernel void elementwise_f32_i32(
             x /= scalar;
             break;
           }
-          default: /*scalar_div_reversed_i32*/ {
+          default: /*scalar_div_inverse_i32*/ {
             x = scalar / x;
             break;
           }
