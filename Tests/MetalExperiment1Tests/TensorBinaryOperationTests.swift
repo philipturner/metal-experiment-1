@@ -172,11 +172,11 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
-#if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-typealias SmallFloat = Float16
-#else
-typealias SmallFloat = Float
-#endif
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    typealias SmallFloat = Float16
+    #else
+    typealias SmallFloat = Float
+    #endif
     
     func almostEqual<T: TensorFlowFloatingPoint>(
       _ tolerance: T
@@ -234,19 +234,16 @@ typealias SmallFloat = Float
       .<=, lhs3: Int64(-6), rhs3: Int64(-6), expected3: true,
       .>=, lhs4: UInt64(6), rhs4: UInt64(6), expected4: true)
     
-    // TODO: Test edge cases of floats (Float16 + Float32)
-    
-    // TODO: Test >/</>=/<= edge cases of integers.
-//    func nestedTest<T: TensorFlowScalar & Equatable>(_ lhs: T, _ rhs: T) {
-//
-//      if T.self == Bool.self {
-//        return
-//      }
-//
-//      guard T.self is any FloatingPoint else {
-//        return
-//      }
-//    }
+    test4(
+      .==, lhs1: SmallFloat.nan, rhs1: SmallFloat.nan, expected1: false,
+      .==, lhs2: Float.nan, rhs2: Float.nan, expected2: false,
+      .!=, lhs3: SmallFloat.nan, rhs3: SmallFloat.nan, expected3: true,
+      .!=, lhs4: Float.nan, rhs4: Float.nan, expected4: true)
+    test4(
+      .<, lhs1: Int8.min, rhs1: Int8.max, expected1: true,
+      .>, lhs2: UInt16.max, rhs2: UInt16.min, expected2: true,
+      .<, lhs3: UInt32.min, rhs3: UInt32.max, expected3: true,
+      .>, lhs4: Int64.max, rhs4: Int64.min, expected4: true)
   }
   
   func testMinMax() throws {

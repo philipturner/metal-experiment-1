@@ -131,6 +131,11 @@ enum ElementwiseOperationType: ushort {
   is_inf_f32 = 31, // returns bool
   is_nan_f32 = 32, // returns bool
   
+  // Extra conditional branch here to incrementally improve GPU-side performance. This only has a
+  // measure impact (3.9 µs -> 3.2 µs) when fusing dozens of unary operations. It comes just before
+  // `neg_f32` (a commonly fused operation), probably improving real-world performance more than if
+  // it came afterward.
+  
   leaky_relu_f32 = 40, // requires metadata
   log_f32 = 41,
   log1p_f32 = 42,
@@ -601,6 +606,7 @@ kernel void elementwise_f32_i32(
     ElementwiseOperationType operation = operations[pc];
     if (operation < 1000) {
       // MARK: - Unary
+      if (operation < 40) {
       if (operation <= atanh_f32) {
         switch (operation) {
           case abs_f32: {
@@ -708,7 +714,7 @@ kernel void elementwise_f32_i32(
             GET_SET_UNARY_F32(precise::floor)
           }
         }
-      } else if (operation <= is_nan_f32) {
+      } else /*(operation <= is_nan_f32)*/ {
         switch (operation) {
           case is_finite_f32: {
             auto x = register1.get_f32();
@@ -726,7 +732,10 @@ kernel void elementwise_f32_i32(
             SET_I32(mask)
           }
         }
-      } else if (operation <= round_f32) {
+      } // if (operation < 40)
+      } else /*(operation >= 40)*/ {
+      // MARK: - Extra Conditional Branch
+      if (operation <= round_f32) {
         switch (operation) {
           case leaky_relu_f32: {
             auto x = register1.get_f32();
@@ -895,6 +904,7 @@ kernel void elementwise_f32_i32(
         }
         register1.set_i32(x);
       }
+      } // else /*(operation >= 40)*/
     } else if (operation < 2000) {
       // MARK: - Binary
       if (operation <= comparison_i32) {
