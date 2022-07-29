@@ -231,6 +231,27 @@ public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 // Binary
 
+@inlinable
+func _vjpElu<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  let y = elu(x)
+  return (y, { v in _Raw.eluGrad(gradients: v, outputs: y) })
+}
+
+@inlinable
+func _vjpLeakyRelu<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>,
+  alpha: Double
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  (
+    leakyRelu(x, alpha: alpha),
+    { v in
+      _Raw.leakyReluGrad(gradients: v, features: x, alpha: alpha)
+    }
+  )
+}
+
 extension Tensor where Scalar == Bool {
   @inlinable
   public func elementsLogicalAnd(_ other: Tensor) -> Tensor {
@@ -243,6 +264,8 @@ extension Tensor where Scalar == Bool {
   }
 }
 
+
+
 @inlinable
 public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
   _Raw.maximum(lhs, rhs)
@@ -252,6 +275,8 @@ public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Num
 public func min<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
   _Raw.minimum(lhs, rhs)
 }
+
+
 
 extension Tensor where Scalar: TensorFlowFloatingPoint {
   public static func pow(_ x: Self, _ y: Self) -> Self {
@@ -265,11 +290,40 @@ public func pow<T: TensorFlowFloatingPoint>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) 
 }
 
 @inlinable
+func _vjpRelu6<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  (relu6(x), { v in _Raw.relu6Grad(gradients: v, features: x) })
+}
+
+@inlinable
+func _vjpRelu<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  (relu(x), { v in _Raw.reluGrad(gradients: v, features: x) })
+}
+
+
+
+@inlinable
 internal func _vjpRsqrt<T: TensorFlowFloatingPoint>(
   _ x: Tensor<T>
 ) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
   let value = rsqrt(x)
   return (value, { v in _Raw.rsqrtGrad(value, dy: v) })
+}
+
+@inlinable
+func _vjpSelu<T: TensorFlowFloatingPoint>(
+  _ x: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  let result = selu(x)
+  return (
+    result,
+    { v in
+      _Raw.seluGrad(gradients: v, outputs: result)
+    }
+  )
 }
 
 @inlinable
@@ -279,6 +333,22 @@ internal func _vjpSigmoid<T: TensorFlowFloatingPoint>(
   let sigmoidValue = sigmoid(x)
   return (sigmoidValue, { v in _Raw.sigmoidGrad(sigmoidValue, dy: v) })
 }
+
+@inlinable
+internal func _vjpSoftplus<T: TensorFlowFloatingPoint>(
+  _ features: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  (softplus(features), { v in _Raw.softplusGrad(gradients: v, features: features) })
+}
+
+@inlinable
+internal func _vjpSoftsign<T: TensorFlowFloatingPoint>(
+  _ features: Tensor<T>
+) -> (value: Tensor<T>, pullback: (Tensor<T>) -> Tensor<T>) {
+  (softsign(features), { v in _Raw.softsignGrad(gradients: v, features: features) })
+}
+
+
 
 @inlinable
 public func squaredDifference<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {

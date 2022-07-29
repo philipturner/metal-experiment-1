@@ -365,8 +365,15 @@ break;                   \
 register1.set_i32(expr); \
 break;                   \
 
-#define SET_BINARY_GRADIENT_F32(expr) \
-SET_F32(expr * register2.get_f32())   \
+// NOTE: For gradient operations, gradient always goes in register 1. This reduces the amount of
+// register swapping when fusing two adjacent gradient ops. Carefully inspect the `_Raw` namespace
+// to ensure correct order of arguments.
+//
+// There was once a helper macro for setting gradients, but I removed it. This forces me to declare
+// which register the gradient comes from.
+//
+//#define SET_BINARY_GRADIENT_F32(expr) \
+//SET_F32(expr * register1.get_f32())   \
 
 #define GET_SET_UNARY_F32(expr)    \
 SET_F32(expr(register1.get_f32())) \
@@ -982,16 +989,18 @@ kernel void elementwise_f32_i32(
             GET_SET_BINARY_INFIX_I32(/)
           }
           case elu_grad_f32: {
-            auto x = register1.get_f32();
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
             auto out = select(1, exp(x), x < 0);
-            SET_BINARY_GRADIENT_F32(out)
+            SET_F32(dy * out)
           }
           case leaky_relu_grad_f32: {
-            auto x = register1.get_f32();
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
             auto operation_metadata = get_metadata(metadata, metadata_index);
             float alpha = ((constant float*)operation_metadata)[0];
             auto out = select(1, float4(alpha), x <= 0);
-            SET_BINARY_GRADIENT_F32(out)
+            SET_F32(dy * out)
           }
           case logical_and_bool: {
             auto x = register1.get_vector_i16_u16();
@@ -1046,41 +1055,44 @@ kernel void elementwise_f32_i32(
             SET_F32(out)
           }
           default: /*relu_grad_f32:*/ {
-            auto x = register1.get_f32();
-            auto dx = register2.get_f32();
-            auto out = select(0, dx, x > 0);
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
+            auto out = select(0, dy, x > 0);
             SET_F32(out)
           }
         }
       } else if (operation <= softsign_grad_f32) {
         switch (operation) {
           case rsqrt_grad_f32: {
-            auto y = register1.get_f32();
+            auto dy = register1.get_f32();
+            auto y = register2.get_f32();
             auto out = -0.5 * (y * y * y);
-            SET_BINARY_GRADIENT_F32(out)
+            SET_F32(dy * out)
           }
           case selu_grad_f32: {
-            auto y = register1.get_f32();
+            auto dy = register1.get_f32();
+            auto y = register2.get_f32();
             constexpr float ALPHA = 1.6732632423543772848170429916717;
             constexpr float SCALE = 1.0507009873554804934193349852946;
             auto out = select(SCALE, y + (SCALE * ALPHA), y < 0);
-            SET_BINARY_GRADIENT_F32(out)
+            SET_F32(dy * out)
           }
           case sigmoid_grad_f32: {
-            auto y = register1.get_f32();
+            auto dy = register1.get_f32();
+            auto y = register2.get_f32();
             auto out = y * (1 - y);
-            SET_BINARY_GRADIENT_F32(out)
+            SET_F32(dy * out)
           }
           case softplus_grad_f32: {
-            auto x = register1.get_f32();
-            auto dy = register2.get_f32();
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
             auto out = 1 + precise::exp(-x);
             out = precise::divide(dy, out);
             SET_F32(out)
           }
           default: /*softsign_grad_f32*/ {
-            auto x = register1.get_f32();
-            auto dy = register2.get_f32();
+            auto dy = register1.get_f32();
+            auto x = register2.get_f32();
             auto out = 1 + precise::abs(x);
             out = precise::divide(dy, out * out);
             SET_F32(out)

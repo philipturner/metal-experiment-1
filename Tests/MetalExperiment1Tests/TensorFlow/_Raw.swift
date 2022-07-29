@@ -690,7 +690,8 @@ public enum _Raw {
     _ y: Tensor<T>,
     dy: Tensor<T>
   ) -> Tensor<T> {
-    dispatchBinary("RsqrtGrad", y, dy)
+    // Reorder arguments to put gradient in register 1.
+    dispatchBinary("RsqrtGrad", dy, y)
   }
   
   @inlinable @inline(__always)
@@ -706,7 +707,8 @@ public enum _Raw {
     _ y: Tensor<T>,
     dy: Tensor<T>
   ) -> Tensor<T> {
-    dispatchBinary("SigmoidGrad", y, dy)
+    // Reorder arguments to put gradient in register 1.
+    dispatchBinary("SigmoidGrad", dy, y)
   }
   
   @inlinable @inline(__always)

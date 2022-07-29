@@ -273,6 +273,10 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
+    // func _vjpElu
+    
+    // func _vjpLeakyRelu
+    
     // func _vjpRelu6
     
     // func _vjpRelu
@@ -287,6 +291,15 @@ final class TensorBinaryOperationTests: XCTestCase {
     
     // func _vjpSoftsign
     
+    // ReluGrad
+    do {
+      let x = Tensor<Float>([5, -5, 0])
+      let gradTarget = Tensor<Float>([1, 0, 0])
+      let (_, pullback) = _vjpRelu(x)
+      let grad = pullback(Tensor(repeating: 1, shape: [3]))
+      XCTAssertEqual(grad.scalars, gradTarget.scalars)
+    }
+    
     // RsqrtGrad
     do {
       let x = Tensor<Float>([1, 0.25, Float(1.0) / 9.0, 0.0625, 0.04])
@@ -298,7 +311,7 @@ final class TensorBinaryOperationTests: XCTestCase {
       XCTAssertEqual(grad.scalars, gradTarget.scalars)
     }
     
-    // Sigmoid
+    // SigmoidGrad
     do {
       let x = Tensor<Float>([-1, 0, 1])
       let gradTarget = Tensor<Float>([0.1966119, 0.25, 0.1966119])
