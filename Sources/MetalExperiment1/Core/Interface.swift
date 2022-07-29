@@ -741,7 +741,7 @@ extension OperationRegistry {
     _ operation_i32: BinaryOperationType?,
     _ operation_bool: BinaryOperationType?,
     _ metadata: UInt64? = nil,
-    _ enableBroadcasting: Bool = false
+    _ allowBroadcasting: Bool = false
   ) {
     let ctx = Context.global
     commonBinaryPrecondition(args)
@@ -756,8 +756,7 @@ extension OperationRegistry {
     var referenceInput: AllocationHandle
     if input1.shape.elementsEqual(input2.shape) {
       referenceInput = input1
-    } else if enableBroadcasting {
-      // TODO: Convert to scalar add/mul if the data type has a unary equivalent.
+    } else if allowBroadcasting {
       if input1.dataType.stride == input1.byteCount {
         // Scalar broadcasting supported natively.
         referenceInput = input2
@@ -837,9 +836,83 @@ extension OperationRegistry {
     ctx.eagerOperations.append(.binary(.init(
       operation, input1, input2, output, dataGroup, metadata)))
   }
+  
+  static func dispatchBinaryComparison(
+    _ args: inout Arguments,
+    _ operation_f32: BinaryOperationType,
+    _ metadata: UInt64,
+    _ allowBool: Bool
+  ) {
+    let allowBroadcasting = operation_f32 != .approximate_equal_f32
+    let ctx = Context.global
+    commonBinaryPrecondition(args)
+    
+    // Fetch inputs.
+    let input1 = decodeInput(&args.inputs)
+    let input2 = decodeInput(&args.inputs)
+    ctx._internalRetain(input1)
+    ctx._internalRetain(input2)
+    
+    // Determine output shape.
+    var referenceInput: AllocationHandle
+    if input1.shape.elementsEqual(input2.shape) {
+      referenceInput = input1
+    } else if allowBroadcasting {
+      if input1.dataType.stride == input1.byteCount {
+        // Scalar broadcasting supported natively.
+        referenceInput = input2
+      } else if input2.dataType.stride == input2.byteCount {
+        // Scalar broadcasting supported natively.
+        referenceInput = input1
+      } else {
+        fatalError("Binary operations do not yet support broadcasting.")
+      }
+    } else {
+      fatalError("Operation '\(operation_f32)' does not support broadcasting.")
+    }
+    
+    // Fetch data type.
+    let dataType = referenceInput.dataType
+    func dataMismatch(_ operation: BinaryOperationType) -> String {
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
+    }
+    if dataType == .bool {
+      precondition(allowBool, dataMismatch(operation_f32))
+    }
+    if operation_f32 == .approximate_equal_f32 {
+      precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
+    }
+    let stridePowerOf2 = dataType.stride.trailingZeroBitCount
+    let byteCount = referenceInput.byteCount >> stridePowerOf2
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let output = ctx._internalAllocate(2, .bool, byteCount, referenceInput.shape)
+    encodeOutput(&args.outputs, output)
+    
+    // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    let operation_i32 = BinaryOperationType.comparison_i32
+    if dataType.isFloatingPoint {
+      operation = operation_f32.rawValue
+      dataGroup = .f32_i32
+    } else if dataType.representableByInt32 {
+      operation = operation_i32.rawValue
+      dataGroup = .f32_i32
+    } else {
+      operation = BinaryOperationType2(operation_i32, dataType: dataType).rawValue
+      dataGroup = .u32_i64_u64
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.binary(.init(
+      operation, input1, input2, output, dataGroup, metadata)))
+  }
 }
 
-// TODO: When implementing constant folding, transform add/mul into faster unary equivalent
+// TODO: When implementing constant folding, transform scalar add/sub/mul/div into faster unary
+// equivalent
 
 extension OperationRegistry {
   // Codes 0 - 4
@@ -851,37 +924,37 @@ extension OperationRegistry {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let tolerance: Double = decodeScalar(&args.attributes)
     let metadata = UInt64(Float(tolerance).bitPattern)
-    dispatchBinary(&args, .approximate_equal_f32, nil, nil, metadata, false)
+    dispatchBinaryComparison(&args, .approximate_equal_f32, metadata, false)
   }
   static let equal = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.equal, false)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, true)
   }
   static let less = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.less, false)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let greater = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.greater, false)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let notEqual = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.equal, true)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, true)
   }
   static let greaterEqual = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.less, true)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let lessEqual = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let metadata = createComparisonMetadata(.greater, true)
-    dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
+    dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   
   // Codes 10 - 15

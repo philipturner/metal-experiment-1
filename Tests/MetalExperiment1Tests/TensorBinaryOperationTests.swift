@@ -108,7 +108,7 @@ final class TensorBinaryOperationTests: XCTestCase {
     _ = Tensor<UInt64>.zero
     
     // Can't perform CPU-side division inside the function, so pass in `ratio`.
-    func testSigned<T: TensorFlowNumeric>(small: T, large: T, ratio: T?) {
+    func nestedTest<T: TensorFlowNumeric>(small: T, large: T, ratio: T?) {
       let smallTensor = Tensor<T>(repeating: small, shape: [5])
       let largeTensor = Tensor<T>(repeating: large, shape: [5])
       let addTest1 = smallTensor + largeTensor
@@ -153,24 +153,55 @@ final class TensorBinaryOperationTests: XCTestCase {
       }
     }
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-    testSigned(small: Float16(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: Float16(5), large: 7, ratio: 5 / 7)
     #endif
-    testSigned(small: Float(5), large: 7, ratio: 5 / 7)
-    testSigned(small: Int8(5), large: 7, ratio: 5 / 7)
-    testSigned(small: UInt8(5), large: 7, ratio: 5 / 7)
-    testSigned(small: Int64(5), large: 7, ratio: 5 / 7)
-    testSigned(small: UInt64(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: Float(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: Int8(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: UInt8(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: Int64(5), large: 7, ratio: 5 / 7)
+    nestedTest(small: UInt64(5), large: 7, ratio: 5 / 7)
     
     // Test no-ops
-    testSigned(small: Int32(-5), large: 0, ratio: nil)
-    testSigned(small: Int32(0), large: -5, ratio: 0 / -5)
-    testSigned(small: Int32(-5), large: 1, ratio: -5 / 1)
-    testSigned(small: Int32(1), large: -5, ratio: 1 / -5)
+    nestedTest(small: Int32(-5), large: 0, ratio: nil)
+    nestedTest(small: Int32(0), large: -5, ratio: 0 / -5)
+    nestedTest(small: Int32(-5), large: 1, ratio: -5 / 1)
+    nestedTest(small: Int32(1), large: -5, ratio: 1 / -5)
   }
   
   func testComparison() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
+    
+#if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+typealias SmallFloat = Float16
+#else
+typealias SmallFloat = Float
+#endif
+    
+    func almostEqual<T: TensorFlowFloatingPoint>(
+      _ tolerance: T
+    ) -> (Tensor<T>, Tensor<T>) -> Tensor<Bool> {
+      { $0.elementsAlmostEqual($1, tolerance: tolerance) }
+    }
+    
+    test4(
+      almostEqual(0.3), lhs1: SmallFloat(0.1), rhs1: 0.5, expected1: false,
+      almostEqual(0.7), lhs2: SmallFloat(0.1), rhs2: 0.5, expected2: true,
+      almostEqual(0.3), lhs3: Float(0.1), rhs3: 0.5, expected3: false,
+      almostEqual(0.7), lhs4: Float(0.1), rhs4: 0.5, expected4: true)
+    
+    // TODO: Test comparison of booleans
+    
+//    func nestedTest<T: TensorFlowScalar & Equatable>(_ lhs: T, _ rhs: T) {
+//
+//      if T.self == Bool.self {
+//        return
+//      }
+//
+//      guard T.self is any FloatingPoint else {
+//        return
+//      }
+//    }
   }
   
   func testMinMax() throws {
