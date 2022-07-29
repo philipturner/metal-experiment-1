@@ -99,6 +99,9 @@ struct DispatchParams {
 enum ElementwiseOperationType: ushort {
   // Unary (0 - 999)
   
+  // TODO: Extra conditional branch that creates two groups of 10's. Based on the performance
+  // distribution, do not extract this to the top-level if-else chain. Check the benchmarks to prove
+  // it improves performance.
   abs_f32 = 0,
   abs_i32 = 1, // integer operation
   acos_f32 = 2,
@@ -155,9 +158,18 @@ enum ElementwiseOperationType: ushort {
   tanh_f32 = 65,
   
   scalar_add_f32 = 70, // requires metadata
-  scalar_add_i32 = 71, // requires metadata
-  scalar_mul_f32 = 72, // requires metadata
-  scalar_mul_i32 = 73, // requires metadata
+  scalar_sub_f32 = 71, // requires metadata
+  scalar_sub_reversed_f32 = 72, // requires metadata
+  scalar_mul_f32 = 73, // requires metadata
+  scalar_div_f32 = 74, // requires metadata
+  scalar_div_reversed_f32 = 75, // requires metadata
+  
+  scalar_add_i32 = 80, // requires metadata
+  scalar_sub_i32 = 81, // requires metadata
+  scalar_sub_reversed_i32 = 82, // requires metadata
+  scalar_mul_i32 = 83, // requires metadata
+  scalar_div_i32 = 84, // requires metadata
+  scalar_div_reversed_i32 = 85, // requires metadata
   
   // Binary (1000 - 1999)
   
@@ -820,31 +832,68 @@ kernel void elementwise_f32_i32(
             GET_SET_UNARY_F32(precise::tanh)
           }
         }
-      } else /*(operation <= scalar_mul_i32)*/ {
+      } else if (operation <= scalar_div_reversed_f32) {
+        float4 x = register1.get_f32();
         auto operation_metadata = get_metadata(metadata, metadata_index);
-        uint rhs_mask = ((constant uint*)operation_metadata)[0];
+        float scalar = ((constant float*)operation_metadata)[0];
         switch (operation) {
           case scalar_add_f32: {
-            auto x = register1.get_f32();
-            x += as_type<float>(rhs_mask);
-            SET_F32(x)
+            x += scalar;
+            break;
           }
-          case scalar_add_i32: {
-            auto x = register1.get_i32();
-            x += as_type<int>(rhs_mask);
-            SET_I32(x)
+          case scalar_sub_f32: {
+            x -= scalar;
+            break;
+          }
+          case scalar_sub_reversed_f32: {
+            x = scalar - x;
+            break;
           }
           case scalar_mul_f32: {
-            auto x = register1.get_f32();
-            x *= as_type<float>(rhs_mask);
-            SET_F32(x)
+            x *= scalar;
+            break;
           }
-          default: /*scalar_mul_i32*/ {
-            auto x = register1.get_i32();
-            x *= as_type<int>(rhs_mask);
-            SET_I32(x)
+          case scalar_div_f32: {
+            x = precise::divide(x, scalar);
+            break;
+          }
+          default: /*scalar_div_reversed_f32*/ {
+            x = precise::divide(scalar, x);
+            break;
           }
         }
+        register1.set_f32(x);
+      } else /*(operation <= scalar_div_reversed_i32)*/ {
+        auto x = register1.get_i32();
+        auto operation_metadata = get_metadata(metadata, metadata_index);
+        int scalar = ((constant int*)operation_metadata)[0];
+        switch (operation) {
+          case scalar_add_i32: {
+            x += scalar;
+            break;
+          }
+          case scalar_sub_i32: {
+            x -= scalar;
+            break;
+          }
+          case scalar_sub_reversed_i32: {
+            x = scalar - x;
+            break;
+          }
+          case scalar_mul_i32: {
+            x *= scalar;
+            break;
+          }
+          case scalar_div_i32: {
+            x /= scalar;
+            break;
+          }
+          default: /*scalar_div_reversed_i32*/ {
+            x = scalar / x;
+            break;
+          }
+        }
+        register1.set_i32(x);
       }
     } else if (operation < 2000) {
       // MARK: - Binary

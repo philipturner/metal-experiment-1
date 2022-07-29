@@ -62,8 +62,15 @@ enum ElementwiseOperationType: ushort {
   cast_i64_u64_to_u32 = 24, // requires metadata
   
   scalar_add_i64_u64 = 30, // requires metadata
-  scalar_mul_i64 = 31, // requires metadata
-  scalar_mul_u64 = 32, // requires metadata
+  scalar_sub_i64_u64 = 31, // requires metadata
+  scalar_sub_reversed_i64_u64 = 32, // requires metadata
+  scalar_mul_i64 = 33, // requires metadata
+  scalar_div_i64 = 34, // requires metadata
+  scalar_div_reversed_i64 = 35, // requires metadata
+  
+  scalar_mul_u64 = 40, // requires metadata
+  scalar_div_u64 = 41, // requires metadata
+  scalar_div_reversed_u64 = 42, // requires metadata
   
   // Binary (1000 - 1999)
   
@@ -553,26 +560,56 @@ kernel void elementwise_u32_i64_u64(
             SET_U64(x)
           }
         }
-      } else /*(operation <= scalar_mul_u64)*/ {
+      } else if (operation <= scalar_div_reversed_i64) {
+        auto x = register1.get_i64();
         auto operation_metadata = get_metadata(metadata, metadata_index);
-        ulong rhs_mask = ((constant ulong*)operation_metadata)[0];
+        long scalar = ((constant long*)operation_metadata)[0];
         switch (operation) {
           case scalar_add_i64_u64: {
-            auto x = register1.get_i64();
-            x += as_type<long>(rhs_mask);
-            SET_I64(x)
+            x += scalar;
+            break;
+          }
+          case scalar_sub_i64_u64: {
+            x -= scalar;
+            break;
+          }
+          case scalar_sub_reversed_i64_u64: {
+            x = scalar - x;
+            break;
           }
           case scalar_mul_i64: {
-            auto x = register1.get_i64();
-            x *= as_type<long>(rhs_mask);
-            SET_I64(x)
+            x *= scalar;
+            break;
           }
-          default: /*scalar_mul_u64*/ {
-            auto x = register1.get_u64();
-            x *= as_type<ulong>(rhs_mask);
-            SET_U64(x)
+          case scalar_div_i64: {
+            x /= scalar;
+            break;
+          }
+          default: /*scalar_div_reversed_i64*/ {
+            x = scalar / x;
+            break;
           }
         }
+        register1.set_i64(x);
+      } else /*(operation <= scalar_div_reversed_u64)*/ {
+        auto x = register1.get_u64();
+        auto operation_metadata = get_metadata(metadata, metadata_index);
+        ulong scalar = ((constant long*)operation_metadata)[0];
+        switch (operation) {
+          case scalar_mul_u64: {
+            x *= scalar;
+            break;
+          }
+          case scalar_div_u64: {
+            x /= scalar;
+            break;
+          }
+          default: /*scalar_div_reversed_u64*/ {
+            x = scalar / x;
+            break;
+          }
+        }
+        register1.set_u64(x);
       }
     } else if (operation < 2000) {
       // MARK: - Binary

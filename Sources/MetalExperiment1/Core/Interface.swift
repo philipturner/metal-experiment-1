@@ -405,11 +405,11 @@ extension OperationRegistry {
         fatalError("This should never happen.")
       }
       
-      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
-        operation = .max
-      } else {
+//      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
+//        operation = .max
+//      } else {
         operation = operation_f32.rawValue
-      }
+//      }
       metadata = UInt64(rhs.bitPattern)
       dataGroup = .f32_i32
     } else if dataType.representableByInt32 {
@@ -429,11 +429,11 @@ extension OperationRegistry {
         fatalError("This should never happen.")
       }
       
-      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
-        operation = .max
-      } else {
+//      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
+//        operation = .max
+//      } else {
         operation = operation_i32.rawValue
-      }
+//      }
       metadata = UInt64(truncatingIfNeeded: rhs)
       dataGroup = .f32_i32
     } else {
@@ -444,11 +444,11 @@ extension OperationRegistry {
         metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt64)
       }
       
-      if (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1) {
-        operation = .max
-      } else {
+//      if (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1) {
+//        operation = .max
+//      } else {
         operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
-      }
+//      }
       dataGroup = .u32_i64_u64
     }
     advanceAtom(&args.attributes)
@@ -674,7 +674,7 @@ extension OperationRegistry {
     dispatchUnary(&args, .tanh_f32, nil, nil)
   }
   
-  // Codes 70 - 73
+  // Codes 70 - 85
   static let scalarAdd = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchUnaryScalar(&args, .scalar_add_f32, .scalar_add_i32)
@@ -734,7 +734,7 @@ extension OperationRegistry {
       if input1.dataType.stride == input1.byteCount {
         // Scalar broadcasting supported natively.
         referenceInput = input2
-      } else if input2.dataType.stride == input1.byteCount {
+      } else if input2.dataType.stride == input2.byteCount {
         // Scalar broadcasting supported natively.
         referenceInput = input1
       } else {

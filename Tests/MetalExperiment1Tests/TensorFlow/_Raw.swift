@@ -484,7 +484,7 @@ public enum _Raw {
   // Binary
   
   @inlinable @inline(__always)
-  public static func addV2<T: FloatingPoint & TensorFlowScalar>(
+  public static func addV2<T: TensorFlowNumeric>(
     _ x: Tensor<T>,
     _ y: Tensor<T>
   ) -> Tensor<T> {

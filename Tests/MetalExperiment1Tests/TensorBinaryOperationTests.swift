@@ -101,7 +101,32 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
-    // Test unary and binary versions of these. Also, test mutating versions of these ops.
+    _ = Tensor<Float>.zero
+    
+    // TODO: Replace with a test in MetalExperiment1Tests that checks functionality of disfavored
+    // overload without crashing.
+    
+    // Tests the `@_disfavoredOverload`. In this test suite, scalar subtraction crashes for unsigned
+    // numerics.
+    func testSigned<T: TensorFlowNumeric>(small: T, large: T, diff: T) {
+      let lhs = Tensor<T>(repeating: small, shape: [5])
+      let rhs = Tensor<T>(repeating: large, shape: [5])
+      XCTAssertEqual((lhs + rhs).scalars, [T](repeating: small + large, count: 5))
+      XCTAssertEqual((lhs + large).scalars, [T](repeating: small + large, count: 5))
+      XCTAssertEqual((small + rhs).scalars, [T](repeating: small + large, count: 5))
+      
+//      XCTAssertEqual((lhs - rhs).scalars, [T](repeating: diff, count: 5))
+//      XCTAssertEqual((lhs - large).scalars, [T](repeating: diff, count: 5))
+//      XCTAssertEqual((small - rhs).scalars, [T](repeating: diff, count: 5))
+    }
+    testSigned(small: Float(5), large: 7, diff: -2)
+    testSigned(small: Int8(5), large: 7, diff: -2)
+    testSigned(small: UInt8(5), large: 7, diff: UInt8(5) &- 7)
+  }
+  
+  func testComparison() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
   }
   
   func testMinMax() throws {
