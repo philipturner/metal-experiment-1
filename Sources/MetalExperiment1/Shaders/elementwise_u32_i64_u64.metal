@@ -628,10 +628,13 @@ kernel void elementwise_u32_i64_u64(
             switch (codes[0]) {
               case 0:
                 out = x == y;
+                break;
               case 1:
                 out = x < y;
+                break;
               default: /*2*/ {
                 out = x > y;
+                break;
               }
             }
             if (codes[1] == 1) {
@@ -649,10 +652,13 @@ kernel void elementwise_u32_i64_u64(
             switch (codes[0]) {
               case 0:
                 out = x == y;
+                break;
               case 1:
                 out = x < y;
+                break;
               default: /*2*/ {
                 out = x > y;
+                break;
               }
             }
             if (codes[1] == 1) {
