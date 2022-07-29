@@ -318,8 +318,21 @@ final class TensorBinaryOperationTests: XCTestCase {
       T(Foundation.pow(Float(x), Float(y)))
     }
     
-    func tensor_pow<T: TensorFlowFloatingPoint>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
-      pow(x, y)
+    func swift_sqr_diff_f32<T: BinaryFloatingPoint>(_ x: T, _ y: T) -> T {
+      (x - y) * (x - y)
+    }
+    
+    func swift_sqr_diff_i32<T: FixedWidthInteger>(_ x: T, _ y: T) -> T {
+      let absdiff = (x >= y) ? (x - y) : (y - x)
+      return absdiff * absdiff
+    }
+    
+    func swift_xdivy<T: BinaryFloatingPoint>(_ x: T, _ y: T) -> T {
+      if x == 0 {
+        return 0
+      } else {
+        return x / y
+      }
     }
     
     // Build times are getting excessively long because of exponential complexity of resolving stray
@@ -348,13 +361,6 @@ final class TensorBinaryOperationTests: XCTestCase {
       tensor_mod, lhs3: UInt32(5), rhs3: 6, expected3: swift_integer_mod(5, 6),
       tensor_mod, lhs4: UInt64(6), rhs4: 5, expected4: swift_integer_mod(6, 5))
     
-//    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-//    test(tensor_pow, lhs: 5, rhs: -6)
-//    testFloat16(tensor_pow, swift_pow, input: -6, accuracy: -5)
-//    #endif
-//    testFloat(tensor_pow, swift_pow, input: 5, accuracy: -6)
-//    testFloat(tensor_pow, swift_pow, input: -6, accuracy: -5)
-    
     func testPow<T: TensorFlowFloatingPoint>(_ type: T.Type, accuracy: T) {
       let lhs1 = Tensor<T>(repeating: 5, shape: [5])
       let rhs1 = Tensor<T>(repeating: -6, shape: [5])
@@ -381,5 +387,27 @@ final class TensorBinaryOperationTests: XCTestCase {
     #endif
     testPow(SmallFloat.self, accuracy: smallFloatAccuracy)
     testPow(Float.self, accuracy: 1e-5)
+    
+    test4(
+      squaredDifference, lhs1: Float(5), rhs1: -6, expected1: swift_sqr_diff_f32(5, -6),
+      squaredDifference, lhs2: Float(-6), rhs2: -5, expected2: swift_sqr_diff_f32(-6, -5),
+      squaredDifference, lhs3: SmallFloat(5), rhs3: -6, expected3: swift_sqr_diff_f32(5, -6),
+      squaredDifference, lhs4: SmallFloat(-6), rhs4: -5, expected4: swift_sqr_diff_f32(-6, -5))
+    test4(
+      squaredDifference, lhs1: Int8(5), rhs1: -6, expected1: swift_sqr_diff_i32(5, -6),
+      squaredDifference, lhs2: Int16(-6), rhs2: -5, expected2: swift_sqr_diff_i32(-6, -5),
+      squaredDifference, lhs3: Int32(5), rhs3: -6, expected3: swift_sqr_diff_i32(5, -6),
+      squaredDifference, lhs4: Int64(-6), rhs4: -5, expected4: swift_sqr_diff_i32(-6, -5))
+    test4(
+      squaredDifference, lhs1: UInt8(5), rhs1: 6, expected1: swift_sqr_diff_i32(5, 6),
+      squaredDifference, lhs2: UInt16(6), rhs2: 5, expected2: swift_sqr_diff_i32(6, 5),
+      squaredDifference, lhs3: UInt32(5), rhs3: 6, expected3: swift_sqr_diff_i32(5, 6),
+      squaredDifference, lhs4: UInt64(6), rhs4: 5, expected4: swift_sqr_diff_i32(6, 5))
+    
+    test4(
+      _Raw.xdivy, lhs1: Float(1), rhs1: 1, expected1: swift_xdivy(1, 1),
+      _Raw.xdivy, lhs2: Float(0), rhs2: 0, expected2: swift_xdivy(0, 0),
+      _Raw.xdivy, lhs3: SmallFloat(0), rhs3: -6, expected3: swift_xdivy(0, -6),
+      _Raw.xdivy, lhs4: SmallFloat(0), rhs4: 0, expected4: swift_xdivy(0, 0))
   }
 }

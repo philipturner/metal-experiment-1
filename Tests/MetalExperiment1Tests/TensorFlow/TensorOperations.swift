@@ -268,8 +268,3 @@ public func pow<T: TensorFlowFloatingPoint>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) 
 public func squaredDifference<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
   _Raw.squaredDifference(x, y)
 }
-
-@inlinable
-public func xdivy<T: TensorFlowFloatingPoint>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
-  _Raw.xdivy(x, y)
-}
