@@ -161,7 +161,7 @@ enum BinaryOperationType: UInt16 {
   case squared_difference_i32 = 51
   case sub_f32 = 52
   case sub_i32 = 53
-  case xdivy_f32 = 55
+  case xdivy_f32 = 54
 }
 
 enum BinaryOperationType2: UInt16 {

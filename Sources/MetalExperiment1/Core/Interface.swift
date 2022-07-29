@@ -108,8 +108,30 @@ extension OperationRegistry {
     "GreaterEqual": greaterEqual,
     "LessEqual": lessEqual,
     
+    "Div": div,
+    "EluGrad": eluGrad,
+    "LeakyReluGrad": leakyReluGrad,
+    "LogicalAnd": logicalAnd,
+    "LogicalOr": logicalOr,
+    
     "Maximum": maximum,
     "Minimum": minimum,
+    "Mod": mod,
+    
+    "Mul": mul,
+    "Pow": pow,
+    "Relu6Grad": relu6Grad,
+    "ReluGrad": reluGrad,
+    
+    "RsqrtGrad": rsqrtGrad,
+    "SeluGrad": seluGrad,
+    "SigmoidGrad": sigmoidGrad,
+    "SoftplusGrad": softplusGrad,
+    "SoftsignGrad": softsignGrad,
+    
+    "SquaredDifference": squaredDifference,
+    "Sub": sub,
+    "Xdivy": xdivy,
   ]
 }
 
@@ -719,8 +741,10 @@ extension OperationRegistry {
         fatalError("Binary operations do not yet support broadcasting.")
       }
     } else {
-      let operation = (operation_f32 ?? operation_i32 ?? operation_bool)!
-      fatalError("Operation '\(operation)' does not support broadcasting.")
+      fatalError("""
+        Operation '\((operation_f32 ?? operation_i32 ?? operation_bool)!)' does not support \
+        broadcasting.
+        """)
     }
     
     // Generate output.
@@ -791,8 +815,6 @@ extension OperationRegistry {
 // TODO: When implementing constant folding, transform add/mul into faster unary equivalent
 
 extension OperationRegistry {
-  // Pass binary comparison operations like others, just make a utility that generates metadata.
-  
   // Codes 0 - 4
   static let addV2 = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
@@ -835,15 +857,95 @@ extension OperationRegistry {
     dispatchBinary(&args, .comparison_f32, .comparison_i32, nil, metadata, true)
   }
   
+  // Codes 10 - 15
+  static let div = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .div_f32, .div_i32, nil, nil, true)
+  }
+  static let eluGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .elu_grad_f32, nil, nil, nil, false)
+  }
+  static let leakyReluGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    let alpha: Double = decodeScalar(&args.attributes)
+    let metadata = UInt64(Float(alpha).bitPattern)
+    dispatchBinary(&args, .relu_grad_f32, nil, nil, metadata, false)
+  }
+  static let logicalAnd = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, nil, nil, .logical_and_bool, nil, false)
+  }
+  static let logicalOr = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, nil, nil, .logical_or_bool, nil, false)
+  }
   
-  
+  // Codes 20 - 25
   static let maximum = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchBinary(&args, .maximum_f32, .maximum_i32, nil, nil, true)
   }
-  
   static let minimum = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchBinary(&args, .minimum_f32, .minimum_i32, nil, nil, true)
+  }
+  static let mod = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .mod_f32, .mod_i32, nil, nil, true)
+  }
+  
+  // Codes 30 - 34
+  static let mul = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .mul_f32, .mul_i32, nil, nil, true)
+  }
+  static let pow = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .pow_f32, nil, nil, nil, false)
+  }
+  static let relu6Grad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .relu6_grad_f32, nil, nil, nil, false)
+  }
+  static let reluGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .relu_grad_f32, nil, nil, nil, false)
+  }
+  
+  // Codes 40 - 44
+  static let rsqrtGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .rsqrt_grad_f32, nil, nil, nil, false)
+  }
+  static let seluGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .selu_grad_f32, nil, nil, nil, false)
+  }
+  static let sigmoidGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .sigmoid_grad_f32, nil, nil, nil, false)
+  }
+  static let softplusGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .softplus_grad_f32, nil, nil, nil, false)
+  }
+  static let softsignGrad = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .softsign_grad_f32, nil, nil, nil, false)
+  }
+  
+  // Codes 50 - 54
+  static let squaredDifference = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .squared_difference_f32, .squared_difference_i32, nil, nil, true)
+  }
+  static let sub = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .sub_f32, .sub_i32, nil, nil, true)
+  }
+  static let xdivy = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchBinary(&args, .xdivy_f32, nil, nil, nil, false)
   }
 }

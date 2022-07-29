@@ -8,7 +8,7 @@
 extension Tensor where Scalar: Numeric {
   @inlinable
   public func incremented() -> Tensor {
-    return _Raw.scalarAdd(self, rhs: 1)
+    return _Raw.scalarAdd(self, 1)
   }
 }
 

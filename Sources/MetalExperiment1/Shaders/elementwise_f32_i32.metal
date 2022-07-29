@@ -197,7 +197,7 @@ enum ElementwiseOperationType: ushort {
   squared_difference_i32 = 1051,
   sub_f32 = 1052,
   sub_i32 = 1053,
-  xdivy_f32 = 1055,
+  xdivy_f32 = 1054,
   
   // Ternary (2000 - 2999)
   
