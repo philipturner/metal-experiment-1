@@ -213,6 +213,29 @@ typealias SmallFloat = Float
       .!=, lhs3: UInt32(8), rhs3: UInt32(6), expected3: true,
       .!=, lhs4: Int64(8), rhs4: Int64(6), expected4: true)
     
+    test4(
+      .<, lhs1: Int8(-6), rhs1: Int8(-8), expected1: false,
+      .>, lhs2: Int8(-6), rhs2: Int8(-8), expected2: true,
+      .<=, lhs3: Int8(-6), rhs3: Int8(-8), expected3: false,
+      .>=, lhs4: Int8(-6), rhs4: Int8(-8), expected4: true)
+    test4(
+      .<, lhs1: UInt32(8), rhs1: UInt32(6), expected1: false,
+      .>, lhs2: UInt32(8), rhs2: UInt32(6), expected2: true,
+      .<=, lhs3: UInt32(8), rhs3: UInt32(6), expected3: false,
+      .>=, lhs4: UInt32(8), rhs4: UInt32(6), expected4: true)
+    test4(
+      .<, lhs1: Int64(-6), rhs1: Int64(-8), expected1: false,
+      .>, lhs2: Int64(-6), rhs2: Int64(-8), expected2: true,
+      .<=, lhs3: Int64(-6), rhs3: Int64(-8), expected3: false,
+      .>=, lhs4: Int64(-6), rhs4: Int64(-8), expected4: true)
+    test4(
+      .<=, lhs1: Int8(-6), rhs1: Int8(-6), expected1: true,
+      .>=, lhs2: UInt16(6), rhs2: UInt16(6), expected2: true,
+      .<=, lhs3: Int64(-6), rhs3: Int64(-6), expected3: true,
+      .>=, lhs4: UInt64(6), rhs4: UInt64(6), expected4: true)
+    
+    // TODO: Test edge cases of floats (Float16 + Float32)
+    
     // TODO: Test >/</>=/<= edge cases of integers.
 //    func nestedTest<T: TensorFlowScalar & Equatable>(_ lhs: T, _ rhs: T) {
 //
