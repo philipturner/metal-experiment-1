@@ -101,13 +101,10 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
+    // TODO: Test unary/binary adds, test no-op scalar adds.
+    
     _ = Tensor<Float>.zero
     
-    // TODO: Replace with a test in MetalExperiment1Tests that checks functionality of disfavored
-    // overload without crashing.
-    
-    // Tests the `@_disfavoredOverload`. In this test suite, scalar subtraction crashes for unsigned
-    // numerics.
     func testSigned<T: TensorFlowNumeric>(small: T, large: T, diff: T) {
       let lhs = Tensor<T>(repeating: small, shape: [5])
       let rhs = Tensor<T>(repeating: large, shape: [5])

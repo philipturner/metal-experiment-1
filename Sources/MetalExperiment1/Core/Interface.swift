@@ -392,50 +392,48 @@ extension OperationRegistry {
     var operation: UInt16
     var dataGroup: DataGroup
     var metadata: UInt64
+    var scalarIsZero: Bool
+    var scalarIsOne: Bool
     if dataType.isFloatingPoint {
-      var rhs: Float
+      var scalar: Float
       switch dataType {
       #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
       case .float16:
-        rhs = Float(nonmutatingReadScalar(args.attributes) as Float16)
+        scalar = Float(nonmutatingReadScalar(args.attributes) as Float16)
       #endif
       case .float32:
-        rhs = Float(nonmutatingReadScalar(args.attributes) as Float)
+        scalar = Float(nonmutatingReadScalar(args.attributes) as Float)
       default:
         fatalError("This should never happen.")
       }
       
-//      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
-//        operation = .max
-//      } else {
-        operation = operation_f32.rawValue
-//      }
-      metadata = UInt64(rhs.bitPattern)
+      operation = operation_f32.rawValue
+      metadata = UInt64(scalar.bitPattern)
       dataGroup = .f32_i32
+      scalarIsZero = scalar == 0
+      scalarIsOne = scalar == 1
     } else if dataType.representableByInt32 {
-      var rhs: Int32
+      var scalar: Int32
       switch dataType {
       case .int8:
-        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int8)
+        scalar = Int32(nonmutatingReadScalar(args.attributes) as Int8)
       case .int16:
-        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int16)
+        scalar = Int32(nonmutatingReadScalar(args.attributes) as Int16)
       case .int32:
-        rhs = Int32(nonmutatingReadScalar(args.attributes) as Int32)
+        scalar = Int32(nonmutatingReadScalar(args.attributes) as Int32)
       case .uint8:
-        rhs = Int32(nonmutatingReadScalar(args.attributes) as UInt8)
+        scalar = Int32(nonmutatingReadScalar(args.attributes) as UInt8)
       case .uint16:
-        rhs = Int32(nonmutatingReadScalar(args.attributes) as UInt16)
+        scalar = Int32(nonmutatingReadScalar(args.attributes) as UInt16)
       default:
         fatalError("This should never happen.")
       }
       
-//      if (operation_f32 == .scalar_add_f32) ? (rhs == 0) : (rhs == 1) {
-//        operation = .max
-//      } else {
-        operation = operation_i32.rawValue
-//      }
-      metadata = UInt64(truncatingIfNeeded: rhs)
+      operation = operation_i32.rawValue
+      metadata = UInt64(truncatingIfNeeded: scalar)
       dataGroup = .f32_i32
+      scalarIsZero = scalar == 0
+      scalarIsOne = scalar == 1
     } else {
       switch dataType {
       case .uint32:
@@ -444,14 +442,23 @@ extension OperationRegistry {
         metadata = UInt64(nonmutatingReadScalar(args.attributes) as UInt64)
       }
       
-//      if (operation_f32 == .scalar_add_f32) ? (metadata == 0) : (metadata == 1) {
-//        operation = .max
-//      } else {
-        operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
-//      }
+      operation = UnaryOperationType2(operation_i32, dataType: dataType).rawValue
       dataGroup = .u32_i64_u64
+      scalarIsZero = metadata == 0
+      scalarIsOne = metadata == 1
     }
     advanceAtom(&args.attributes)
+    
+    // Detect no-ops.
+    if scalarIsZero {
+      if operation_f32 == .scalar_add_f32 || operation_f32 == .scalar_add_f32 {
+        operation = .max
+      }
+    } else if scalarIsOne {
+      if operation_f32 == .scalar_mul_f32 || operation_f32 == .scalar_div_f32 {
+        operation = .max
+      }
+    }
     
     // Append operation.
     ctx.eagerOperations.append(.unary(.init(
