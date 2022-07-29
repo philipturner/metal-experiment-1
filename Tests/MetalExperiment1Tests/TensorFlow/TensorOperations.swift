@@ -231,6 +231,18 @@ public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
 
 // Binary
 
+extension Tensor where Scalar == Bool {
+  @inlinable
+  public func elementsLogicalAnd(_ other: Tensor) -> Tensor {
+    return _Raw.logicalAnd(self, other)
+  }
+
+  @inlinable
+  public func elementsLogicalOr(_ other: Tensor) -> Tensor {
+    return _Raw.logicalOr(self, other)
+  }
+}
+
 @inlinable
 public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
   _Raw.maximum(lhs, rhs)
@@ -239,4 +251,25 @@ public func max<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Num
 @inlinable
 public func min<T>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> where T: Numeric & Comparable {
   _Raw.minimum(lhs, rhs)
+}
+
+extension Tensor where Scalar: TensorFlowFloatingPoint {
+  public static func pow(_ x: Self, _ y: Self) -> Self {
+    _Raw.pow(x, y)
+  }
+}
+
+@inlinable
+public func pow<T: TensorFlowFloatingPoint>(_ lhs: Tensor<T>, _ rhs: Tensor<T>) -> Tensor<T> {
+  Tensor.pow(lhs, rhs)
+}
+
+@inlinable
+public func squaredDifference<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+  _Raw.squaredDifference(x, y)
+}
+
+@inlinable
+public func xdivy<T: TensorFlowFloatingPoint>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+  _Raw.xdivy(x, y)
 }

@@ -246,6 +246,10 @@ final class TensorBinaryOperationTests: XCTestCase {
       .>, lhs4: Int64.max, rhs4: Int64.min, expected4: true)
   }
   
+  func testGradientOperations() throws {
+    
+  }
+  
   func testMinMax() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
@@ -293,5 +297,89 @@ final class TensorBinaryOperationTests: XCTestCase {
       min, lhs2: UInt16(5), rhs2: 6, expected2: 5,
       min, lhs3: UInt32(6), rhs3: 5, expected3: 5,
       min, lhs4: UInt64(5), rhs4: 6, expected4: 5)
+  }
+  
+  // Mod, Pow, SquaredDifference, Xdivy
+  func testOther() throws {
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    typealias SmallFloat = Float16
+    #else
+    typealias SmallFloat = Float
+    #endif
+    
+    func swift_mod<T: FloatingPoint>(_ x: T, _ y: T) -> T {
+      x.truncatingRemainder(dividingBy: y)
+    }
+    
+    func swift_pow<T: BinaryFloatingPoint>(_ x: T, _ y: T) -> T {
+      T(Foundation.pow(Float(x), Float(y)))
+    }
+    
+    func tensor_pow<T: TensorFlowFloatingPoint>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+      pow(x, y)
+    }
+    
+    // Build times are getting excessively long because of exponential complexity of resolving stray
+    // operators. Instead, wrap the operator `%` in another function.
+    func tensor_mod<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
+      x % y
+    }
+    
+    func swift_integer_mod<T: BinaryInteger>(_ x: T, _ y: T) -> T {
+      x % y
+    }
+    
+    test4(
+      tensor_mod, lhs1: Float(5), rhs1: -6, expected1: swift_mod(5, -6),
+      tensor_mod, lhs2: Float(-6), rhs2: -5, expected2: swift_mod(-6, -5),
+      tensor_mod, lhs3: SmallFloat(5), rhs3: -6, expected3: swift_mod(5, -6),
+      tensor_mod, lhs4: SmallFloat(-6), rhs4: -5, expected4: swift_mod(-6, -5))
+    test4(
+      tensor_mod, lhs1: Int8(5), rhs1: -6, expected1: swift_integer_mod(5, -6),
+      tensor_mod, lhs2: Int16(-6), rhs2: -5, expected2: swift_integer_mod(-6, -5),
+      tensor_mod, lhs3: Int32(5), rhs3: -6, expected3: swift_integer_mod(5, -6),
+      tensor_mod, lhs4: Int64(-6), rhs4: -5, expected4: swift_integer_mod(-6, -5))
+    test4(
+      tensor_mod, lhs1: UInt8(5), rhs1: 6, expected1: swift_integer_mod(5, 6),
+      tensor_mod, lhs2: UInt16(6), rhs2: 5, expected2: swift_integer_mod(6, 5),
+      tensor_mod, lhs3: UInt32(5), rhs3: 6, expected3: swift_integer_mod(5, 6),
+      tensor_mod, lhs4: UInt64(6), rhs4: 5, expected4: swift_integer_mod(6, 5))
+    
+//    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+//    test(tensor_pow, lhs: 5, rhs: -6)
+//    testFloat16(tensor_pow, swift_pow, input: -6, accuracy: -5)
+//    #endif
+//    testFloat(tensor_pow, swift_pow, input: 5, accuracy: -6)
+//    testFloat(tensor_pow, swift_pow, input: -6, accuracy: -5)
+    
+    func testPow<T: TensorFlowFloatingPoint>(_ type: T.Type, accuracy: T) {
+      let lhs1 = Tensor<T>(repeating: 5, shape: [5])
+      let rhs1 = Tensor<T>(repeating: -6, shape: [5])
+      let lhs2 = Tensor<T>(repeating: -6, shape: [5])
+      let rhs2 = Tensor<T>(repeating: -5, shape: [5])
+      let tensor1 = pow(lhs1, rhs1)
+      let tensor2 = pow(lhs2, rhs2)
+      let scalars1 = tensor1.scalars
+      let scalars2 = tensor2.scalars
+      
+      let expected1 = swift_pow(T(5), T(-6))
+      let expected2 = swift_pow(T(-6), T(-5))
+      for (scalars, expected) in [(scalars1, expected1), (scalars2, expected2)] {
+        for scalar in scalars {
+          XCTAssertEqual(scalar, expected, accuracy: accuracy)
+        }
+      }
+    }
+    
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    let smallFloatAccuracy = Float16(0)
+    #else
+    let smallFloatAccuracy = Float(1e-5)
+    #endif
+    testPow(SmallFloat.self, accuracy: smallFloatAccuracy)
+    testPow(Float.self, accuracy: 1e-5)
   }
 }
