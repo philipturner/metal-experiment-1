@@ -215,7 +215,7 @@ extension Context {
           // In the middle of an operation fusion.
           if fusionDataGroup! == binary.dataGroup {
             // Before fusing, factor in whether enough heads are available.
-            if fusionHeadAllocation3 == nil {
+            if fusionHeadAllocation4 == nil {
               restartingFusion = false
             }
           }
@@ -291,19 +291,27 @@ extension Context {
             let newHead = input2.reference!.takeUnretainedValue()
             if fusionHeadAllocation2 == nil {
               fusionHeadAllocation2 = newHead
-            } else {
+            } else if fusionHeadAllocation3 == nil {
               // RHS: reg3 -> reg2
               fusionHeadAllocation3 = newHead
               fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            } else {
+              // RHS: reg4 -> reg2
+              fusionHeadAllocation4 = newHead
+              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
             }
           } else if input2 == fusionTail {
             let newHead = input1.reference!.takeUnretainedValue()
             if fusionHeadAllocation2 == nil {
               fusionHeadAllocation2 = newHead
-            } else {
+            } else if fusionHeadAllocation3 == nil {
               // LHS: reg3 -> reg2
               fusionHeadAllocation3 = newHead
               fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            } else {
+              // LHS: reg3 -> reg2
+              fusionHeadAllocation4 = newHead
+              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
             }
             // LHS: reg2 -> reg1
             // RHS: reg1 -> reg2
@@ -427,7 +435,7 @@ extension Instruction.Elementwise {
       case .swap_registers_2_4:
         return "swap(&reg2, &reg4)"
       case .swap_registers_3_4:
-        return "swap(&reg4, &reg4)"
+        return "swap(&reg3, &reg4)"
       }
     }
     
@@ -438,6 +446,9 @@ extension Instruction.Elementwise {
     }
     if input3 != nil {
       output.append(dumpRead(register: 3))
+    }
+    if input4 != nil {
+      output.append(dumpRead(register: 4))
     }
     
     for i in 0..<operations.count {

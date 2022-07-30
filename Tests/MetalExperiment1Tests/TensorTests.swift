@@ -158,15 +158,13 @@ final class TensorTests: XCTestCase {
 //      var reg1 = input1[i]
 //      var reg2 = input2[i]
 //      var reg3 = input3[i]
+//      var reg4 = input4[i]
 //      reg1 = sqrt_f32(reg1)
 //      reg1 = minimum_f32(reg1, reg2)
 //      swap(&reg2, &reg3)
 //      reg1 = maximum_f32(reg1, reg2)
 //      reg1 = neg_f32(reg1)
-//      output[i] = reg1
-//
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
+//      swap(&reg2, &reg4)
 //      reg1 = maximum_f32(reg1, reg2)
 //      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
@@ -180,14 +178,13 @@ final class TensorTests: XCTestCase {
         let tensor6 = min(tensor5, .init(repeating: 4.9, shape: [2])) // 4.9
         let tensor7 = max(tensor6, .init(repeating: 5.1, shape: [2])) // 5.1
         let tensor8 = -tensor7 // -5.1
-        // Fusion break
         let tensor9 = max(tensor8, .init(repeating: -3.0, shape: [2])) // -3.0
         return tensor9
       }
       XCTAssertEqual(getOutput().scalars, [-3.0, -3.0])
     }
     
-    // Binary operation fusion (broken)
+    // Binary operation fusion (non-adjacent)
     do {
       if showMarkers {
         print("MARKER 4")
@@ -195,9 +192,12 @@ final class TensorTests: XCTestCase {
 //      var reg1 = input1[i]
 //      var reg2 = input2[i]
 //      var reg3 = input3[i]
+//      var reg4 = input4[i]
 //      reg1 = sqrt_f32(reg1)
 //      reg1 = minimum_f32(reg1, reg2)
 //      swap(&reg2, &reg3)
+//      reg1 = maximum_f32(reg1, reg2)
+//      swap(&reg2, &reg4)
 //      reg1 = maximum_f32(reg1, reg2)
 //      reg1 = neg_f32(reg1)
 //      output[i] = reg1
@@ -213,7 +213,7 @@ final class TensorTests: XCTestCase {
 //      reg1 = maximum_f32(reg1, reg2)
 //      reg1 = square_f32(reg1)
 //      output[i] = reg1
-
+      
       // After implementing non-adjacent operation fusion, the 2nd and 3rd fusions will combine:
 //      var reg1 = input1[i]
 //      var reg2 = input2[i]
@@ -229,18 +229,24 @@ final class TensorTests: XCTestCase {
         let tensor2 = sqrt(tensor1) // 5.0
         let tensor3 = min(tensor2, .init(repeating: 4.9, shape: [2])) // 4.9
         let tensor4 = max(tensor3, .init(repeating: 5.1, shape: [2])) // 5.1
-        let tensor5 = -tensor4 // 5.1
+        let tensor5 = max(tensor4, .init(repeating: 5.1, shape: [2])) // 5.1
+        let tensor6 = -tensor5 // 5.1
         // Fusion break
-        let tensor6 = max(tensor5, .init(repeating: -3.0, shape: [2])) // -3.0
-        let tensor7 = -tensor6 // 3.0
+        let tensor7 = max(tensor6, .init(repeating: -3.0, shape: [2])) // -3.0
+        let tensor8 = -tensor7 // 3.0
         // Fusion break
         _ = -Tensor<Float>(repeating: -4, shape: [2])
         // Fusion break
-        let tensor8 = max(tensor7, .init(repeating: 4, shape: [2])) // 4.0
-        let tensor9 = square(tensor8) // 16.0
-        return tensor9
+        let tensor9 = max(tensor8, .init(repeating: 4, shape: [2])) // 4.0
+        let tensor10 = square(tensor9) // 16.0
+        return tensor10
       }
       XCTAssertEqual(getOutput().scalars, [16.0, 16.0])
+    }
+    
+    // Ternary operation fusion
+    do {
+      
     }
   }
 }

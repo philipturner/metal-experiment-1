@@ -118,7 +118,7 @@ internal func assertEqual<T: TensorFlowFloatingPoint>(
   assertEqual(x.scalars, y.scalars, accuracy: accuracy, message, file: file, line: line)
 }
 
-final class TensorBinaryOperationTests: XCTestCase {
+final class TensorNonUnaryOperationTests: XCTestCase {
   // Add, Sub, Mul, Div
   func testScalarizedOperations() throws {
     tensorOperationHeader()
@@ -463,7 +463,7 @@ final class TensorBinaryOperationTests: XCTestCase {
   }
   
   // Mod, Pow, SquaredDifference, Xdivy
-  func testOther() throws {
+  func testOtherBinary() throws {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
@@ -572,5 +572,12 @@ final class TensorBinaryOperationTests: XCTestCase {
       _Raw.xdivy, lhs2: Float(0), rhs2: 0, expected2: swift_xdivy(0, 0),
       _Raw.xdivy, lhs3: SmallFloat(0), rhs3: -6, expected3: swift_xdivy(0, -6),
       _Raw.xdivy, lhs4: SmallFloat(0), rhs4: 0, expected4: swift_xdivy(0, 0))
+  }
+  
+  func testTernary() throws {
+//    tensorOperationHeader()
+//    defer { tensorOperationFooter() }
+//    
+//    
   }
 }
