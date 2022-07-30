@@ -153,9 +153,6 @@ extension Context {
     //   time, the AI gives it more freedom to take longer to compile.
     // - Can exceed the 128 operation limit, going to 1000 in some instances. That could decrease
     //   sequential latency to the theoretical minimum.
-    // - Allows for 4 or 5 inputs to an elementwise shader, depending on the GPU architecture and
-    //   its register size. Could determine the register size at runtime by profiling register
-    //   spills, although the shader must be compiled multiple times to do this.
     // - Generalizes to different workloads, requiring no prior knowledge of the frontend.
     // - An opportunity to show off S4TF.
     //

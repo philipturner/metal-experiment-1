@@ -105,7 +105,11 @@ enum ElementwiseOperationType: ushort {
   
   swap_registers_1_2 = 3000,
   swap_registers_1_3 = 3001,
-  swap_registers_2_3 = 3002,
+  swap_registers_1_4 = 3002,
+  
+  swap_registers_2_3 = 3010,
+  swap_registers_2_4 = 3011,
+  swap_registers_3_4 = 3012,
 };
 
 // MARK: - Virtual Assembly Registers
@@ -332,6 +336,7 @@ kernel void elementwise_u32_i64_u64(
   Register register1;
   Register register2;
   Register register3;
+  Register register4;
   for (int i = 0; i < params.num_inputs; ++i) {
     ReadParams read_params = params.read_params[i];
     CompressedRegister compressed;
@@ -346,7 +351,12 @@ kernel void elementwise_u32_i64_u64(
         input = input2;
         break;
       }
-      default: /*2*/ {
+      case 2: {
+        input = input3;
+        break;
+      }
+      default: /*3*/ {
+        // TODO: Change to `input4`.
         input = input3;
         break;
       }
@@ -453,8 +463,11 @@ kernel void elementwise_u32_i64_u64(
         register2 = expanded;
         break;
       }
-      default: /*2*/ {
+      case 2: {
         register3 = expanded;
+      }
+      default: /*3*/ {
+        register4 = expanded;
         break;
       }
     }
@@ -754,27 +767,50 @@ kernel void elementwise_u32_i64_u64(
       }
     } else /*(operation >= 3000)*/ {
       // MARK: - Other
-      switch (operation) {
-        case swap_registers_1_2: {
-          auto lhs = register1.get_u64();
-          auto rhs = register2.get_u64();
-          register2.set_u64(lhs);
-          register1.set_u64(rhs);
-          break;
+      if (operation <= swap_registers_1_4) {
+        auto lhs = register1.get_u64();
+        ulong2 rhs;
+        switch (operation) {
+          case swap_registers_1_2: {
+            rhs = register2.get_u64();
+            register2.set_u64(lhs);
+            break;
+          }
+          case swap_registers_1_3: {
+            rhs = register3.get_u64();
+            register3.set_u64(lhs);
+            break;
+          }
+          default: /*swap_registers_1_4*/ {
+            rhs = register4.get_u64();
+            register4.set_u64(lhs);
+            break;
+          }
         }
-        case swap_registers_1_3: {
-          auto lhs = register1.get_u64();
-          auto rhs = register3.get_u64();
-          register3.set_u64(lhs);
-          register1.set_u64(rhs);
-          break;
-        }
-        default: /*swap_registers_2_3*/ {
-          auto lhs = register2.get_u64();
-          auto rhs = register3.get_u64();
-          register3.set_u64(lhs);
-          register2.set_u64(rhs);
-          break;
+        register1.set_u64(rhs);
+      } else {
+        switch (operation) {
+          case swap_registers_2_3: {
+            auto lhs = register2.get_u64();
+            auto rhs = register3.get_u64();
+            register3.set_u64(lhs);
+            register2.set_u64(rhs);
+            break;
+          }
+          case swap_registers_2_4: {
+            auto lhs = register2.get_u64();
+            auto rhs = register4.get_u64();
+            register4.set_u64(lhs);
+            register2.set_u64(rhs);
+            break;
+          }
+          default: /*swap_registers_3_4*/ {
+            auto lhs = register3.get_u64();
+            auto rhs = register4.get_u64();
+            register4.set_u64(lhs);
+            register3.set_u64(rhs);
+            break;
+          }
         }
       }
     }

@@ -409,8 +409,14 @@ extension Instruction.Elementwise {
         return "swap(&reg1, &reg2)"
       case .swap_registers_1_3:
         return "swap(&reg1, &reg3)"
+      case .swap_registers_1_4:
+        return "swap(&reg1, &reg4)"
       case .swap_registers_2_3:
         return "swap(&reg2, &reg3)"
+      case .swap_registers_2_4:
+        return "swap(&reg2, &reg4)"
+      case .swap_registers_3_4:
+        return "swap(&reg4, &reg4)"
       }
     }
     
