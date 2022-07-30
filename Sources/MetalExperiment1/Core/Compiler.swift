@@ -15,11 +15,6 @@ extension Context {
   // backpressure. This would enable complex fusions like non-adjacent unary operations, which
   // require either peeking ahead or running a second pass on the IR. When running two passes, it
   // won't mark allocations as `initialized` until after the non-adjacent fusions.
-  //
-  // TODO: Add a property to certain operations, which tells the encoder to perform them on the CPU.
-  // This is how I will achieve "constant folding". Alternatively, the encoder can make that
-  // decision by querying the allocations' size and whether they're in the special CPU-side storage
-  // mode.
   func compileEagerOperations() -> [Instruction?] {
     if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
@@ -33,8 +28,7 @@ extension Context {
     defer {
       eagerOperations.removeAll(keepingCapacity: true)
     }
-    var instructions: [Instruction?] = []
-    instructions.reserveCapacity(eagerOperations.count)
+    var graph = Graph(eagerOperationCount: eagerOperations.count)
     
     // TODO: Function that searches the transient instruction list for a match, returning one if it
     // exists. Arguments are the current instruction's inputs.
@@ -128,7 +122,7 @@ extension Context {
         input4: fusionHeadAllocation4,
         output: fusionTailAllocation,
         size: fusionSize)
-      instructions.append(.elementwise(elementwise))
+      graph.append(elementwise, tailReferenceCount: fusionTailReferenceCount)
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
         let numFusedOperations = numFusedUnaryOperations + numFusedNonUnaryOperations
         if numFusedOperations >= 2 {
@@ -544,7 +538,7 @@ extension Context {
         outputAllocation.initialized = true
         let explicitCopy = Instruction.ExplicitCopy(
           input: inputAllocation, output: outputAllocation, byteCount: byteCount)
-        instructions.append(.explicitCopy(explicitCopy))
+        graph.append(explicitCopy)
       }
     }
     
@@ -563,9 +557,8 @@ extension Context {
     //
     // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
     // the history of ops. Find a compatible one with a refcount=1 tail, then pull it out of the
-    // list. This search can happen before releasing the operation's inputs, because it would just
-    // decrease from 1 -> 0 (both the compatible tail and the compatible input are the same
-    // allocation).
+    // list. This search can happens after releasing the operation's inputs, so the head's refcount
+    // (0) does not match the tail's cached refcount (1).
     //
     // If the user deallocates a tensor while compiling, it could only monotonically decrement the
     // refcount. It could make a non-fusable tail fusable, but not the other way around. There is a
@@ -600,11 +593,11 @@ extension Context {
     // TODO: This can actually happen if the last fusion is a zombie. Leave the precondition here
     // until I create a test for it, then transform into something that peels back the list's end.
     // The final product should either (a) end with a valid instruction or (b) have zero length.
-    precondition(!(instructions.count > 0 && instructions.last! == nil), """
+    precondition(!graph.endsWithPlaceholder, """
       Last instruction should never be a placeholder. That breaks the command stream's iteration \
       mechanism.
       """)
-    return instructions
+    return graph.instructions
   }
 }
 
@@ -700,5 +693,62 @@ extension Instruction.Elementwise {
     }
     output.append(dumpWrite())
     return output.joined(separator: "\n")
+  }
+}
+
+struct Graph {
+  private(set) var instructions: [Instruction?]
+  private var cache: [CacheElement]?
+  
+  @inline(__always)
+  init(eagerOperationCount: Int) {
+    self.instructions = []
+    self.instructions.reserveCapacity(eagerOperationCount)
+  }
+  
+  struct CacheElement {
+    var handle: AllocationHandle
+    var instructionIndex: Int
+  }
+  
+  struct SearchKey {
+    var handle: AllocationHandle
+    var referenceCount: Int
+  }
+  
+  @inline(__always)
+  mutating func remove(
+    matching key1: SearchKey,
+    _ key2: SearchKey? = nil,
+    _ key3: SearchKey? = nil
+  ) -> Instruction.Elementwise? {
+    return removeSlowPath(matching: key1, key2, key3)
+  }
+  
+  @inline(never)
+  private mutating func removeSlowPath(
+    matching key1: SearchKey,
+    _ key2: SearchKey?,
+    _ key3: SearchKey?
+  ) -> Instruction.Elementwise? {
+    nil
+  }
+  
+  // func markZombie
+}
+
+extension Graph {
+  @inline(__always)
+  mutating func append(_ elementwise: Instruction.Elementwise, tailReferenceCount: Int) {
+    instructions.append(.elementwise(elementwise))
+  }
+  
+  @inline(__always)
+  mutating func append(_ explicitCopy: Instruction.ExplicitCopy) {
+    instructions.append(.explicitCopy(explicitCopy))
+  }
+  
+  var endsWithPlaceholder: Bool {
+    instructions.count > 0 && instructions.last! == nil
   }
 }
