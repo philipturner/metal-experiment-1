@@ -699,7 +699,7 @@ public enum _Raw {
     gradients: Tensor<T>,
     outputs: Tensor<T>
   ) -> Tensor<T> {
-    dispatchBinary("ReluGrad", gradients, outputs)
+    dispatchBinary("SeluGrad", gradients, outputs)
   }
   
   @inlinable @inline(__always)

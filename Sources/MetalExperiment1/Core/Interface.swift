@@ -970,7 +970,7 @@ extension OperationRegistry {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     let alpha: Double = decodeScalar(&args.attributes)
     let metadata = UInt64(Float(alpha).bitPattern)
-    dispatchBinary(&args, .relu_grad_f32, nil, nil, metadata, false)
+    dispatchBinary(&args, .leaky_relu_grad_f32, nil, nil, metadata, false)
   }
   static let logicalAnd = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)

@@ -172,7 +172,7 @@ final class TensorBinaryOperationTests: XCTestCase {
         XCTAssertEqual(divTest2.scalars, divTestArray)
         XCTAssertEqual(divTest3.scalars, divTestArray)
       } else {
-        // Avoid dividing by zero.
+        // Avoid division by zero.
       }
     }
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
@@ -279,37 +279,66 @@ final class TensorBinaryOperationTests: XCTestCase {
       return dx
     }
     
-    // func _vjpElu
+    func swift_leakyReluGrad(x: Float, dy: Float) -> Float {
+      let alpha: Float = 0.2
+      if x > 0 {
+        return dy
+      } else {
+        return alpha * dy
+      }
+    }
     
-    // func _vjpLeakyRelu
+    func swift_seluGrad(x: Float, dy: Float) -> Float {
+      let alpha: Float = 1.6732632423543772848170429916717
+      let scale: Float = 1.0507009873554804934193349852946
+      var y: Float
+      if x < 0 {
+        y = scale * alpha * expm1(x)
+      } else {
+        y = scale * x
+      }
+      var dx: Float
+      if y < 0 {
+        dx = dy * (y + scale * alpha)
+      } else {
+        dx = scale * dy
+      }
+      return dx
+    }
     
-    // func _vjpRelu6
+    func swift_softsignGrad(x: Float, dy: Float) -> Float {
+      let temp = 1 + abs(x)
+      let dx = dy / (temp * temp)
+      return dx
+    }
     
-    // func _vjpRelu
+    func swift_softplusGrad(x: Float, dy: Float) -> Float {
+      let dx = dy / (1 + exp(-x))
+      return dx
+    }
     
-    // func _vjpRsqrt
-    
-    // func _vjpSelu
-    
-    // func _vjpSigmoid
-    
-    // func _vjpSoftplus
-    
-    // func _vjpSoftsign
+    func makeRandom(count: Int) -> [Float] {
+      (0..<count).map { _ in
+        Float.random(in: 0..<1)
+      }
+    }
     
     // EluGrad
     do {
       let x = Tensor<Float>([-1.0, -0.5, 0.5, 3.0, 4.0, 7.0])
-      let dy = [
-        Float.random(in: 0..<1),
-        Float.random(in: 0..<1),
-        Float.random(in: 0..<1),
-        Float.random(in: 0..<1),
-        Float.random(in: 0..<1),
-        Float.random(in: 0..<1),
-      ]
+      let dy = makeRandom(count: 6)
       let gradTarget = zip(x.scalars, dy).map { swift_eluGrad(x: $0.0, dy: $0.1) }
       let (_, pullback) = _vjpElu(x)
+      let grad = pullback(Tensor(dy))
+      XCTAssertEqual(grad.scalars, gradTarget)
+    }
+    
+    // LeakyReluGrad
+    do {
+      let x = Tensor<Float>([-0.5, -0.25, 0.5, 3.0])
+      let dy: [Float] = [1.5, 1.0, 2.5, 2.0]
+      let gradTarget = zip(x.scalars, dy).map { swift_leakyReluGrad(x: $0.0, dy: $0.1) }
+      let (_, pullback) = _vjpLeakyRelu(x, alpha: 0.2)
       let grad = pullback(Tensor(dy))
       XCTAssertEqual(grad.scalars, gradTarget)
     }
@@ -344,6 +373,16 @@ final class TensorBinaryOperationTests: XCTestCase {
       XCTAssertEqual(grad.scalars, gradTarget.scalars)
     }
     
+    // SeluGrad
+    do {
+      let x = Tensor<Float>([-1.0, -0.5, 0.5, 3.0, 4.0, 7.0])
+      let dy = makeRandom(count: 6)
+      let gradTarget = zip(x.scalars, dy).map { swift_seluGrad(x: $0.0, dy: $0.1) }
+      let (_, pullback) = _vjpSelu(x)
+      let grad = pullback(Tensor(dy))
+      XCTAssertEqual(grad.scalars, gradTarget)
+    }
+    
     // SigmoidGrad
     do {
       let x = Tensor<Float>([-1, 0, 1])
@@ -351,6 +390,26 @@ final class TensorBinaryOperationTests: XCTestCase {
       let (_, pullback) = _vjpSigmoid(x)
       let grad = pullback(Tensor(repeating: 1, shape: [3]))
       assertEqual(grad, gradTarget, accuracy: 0.0001)
+    }
+    
+    // SoftplusGrad
+    do {
+      let x = Tensor<Float>([-1.0, -0.5, 0.5, 3.0, 4.0, 7.0])
+      let dy = makeRandom(count: 6)
+      let gradTarget = zip(x.scalars, dy).map { swift_softplusGrad(x: $0.0, dy: $0.1) }
+      let (_, pullback) = _vjpSoftplus(x)
+      let grad = pullback(Tensor(dy))
+      XCTAssertEqual(grad.scalars, gradTarget)
+    }
+    
+    // SoftsignGrad
+    do {
+      let x = Tensor<Float>([-1.0, -0.5, 0.5, 3.0, 4.0, 7.0])
+      let dy = makeRandom(count: 6)
+      let gradTarget = zip(x.scalars, dy).map { swift_softsignGrad(x: $0.0, dy: $0.1) }
+      let (_, pullback) = _vjpSoftsign(x)
+      let grad = pullback(Tensor(dy))
+      XCTAssertEqual(grad.scalars, gradTarget)
     }
   }
   
