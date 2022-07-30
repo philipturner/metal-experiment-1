@@ -85,9 +85,9 @@ final class TensorTests: XCTestCase {
     #endif
     
     #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
-    typealias SmallFloat = Float
-    #else
     typealias SmallFloat = Float16
+    #else
+    typealias SmallFloat = Float
     #endif
     
     do {
@@ -224,7 +224,7 @@ final class TensorTests: XCTestCase {
 //      reg1 = maximum_f32(reg1, reg2)
 //      reg1 = square_f32(reg1)
 //      output[i] = reg1
-      func getOutput() -> Tensor<SmallFloat> {
+      func getOutput() -> Tensor<Float> {
         let tensor1 = Tensor<Float>(repeating: 25, shape: [2])
         let tensor2 = sqrt(tensor1) // 5.0
         let tensor3 = min(tensor2, .init(repeating: 4.9, shape: [2])) // 4.9
@@ -246,7 +246,19 @@ final class TensorTests: XCTestCase {
     
     // Ternary operation fusion
     do {
-      
+      func getOutput() -> Tensor<SmallFloat> {
+        let tensor1 = Tensor<SmallFloat>([25, 25])
+        let tensor2 = sqrt(tensor1) // 5.0
+        let tensor3 = tensor2 + Tensor<SmallFloat>([7, 7]) // 12.0
+        let tensor4 = tensor3.clipped(min: Tensor([6]), max: Tensor([9])) // 9.0
+        // Fusion break
+        let mask = Tensor([false, true])
+        let tensor5 = tensor4.replacing(with: Tensor([10, 11]), where: mask) // [9.0, 11.0]
+        let tensor6 = pow(tensor5, Tensor([3.0, 3.0])) // [729.0, 1331.0]
+        let tensor7 = -tensor6 // [-729.0, -1331.0]
+        return tensor7
+      }
+      XCTAssertEqual(getOutput().scalars, [-729.0, -1331.0])
     }
   }
 }

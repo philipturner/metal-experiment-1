@@ -47,7 +47,7 @@ extension Context {
 
 extension OperationRegistry {
   static let registry: [StringWrapper: Function] = [
-    // Unary
+    // Elementwise Unary
     
     "Abs": abs,
     "Acos": acos,
@@ -101,7 +101,7 @@ extension OperationRegistry {
     "ScalarDiv": scalarDiv,
     "ScalarDivInverse": scalarDivInverse,
     
-    // Binary
+    // Elementwise Binary
     
     "AddV2": addV2,
     "ApproximateEqual": approximateEqual,
@@ -136,6 +136,11 @@ extension OperationRegistry {
     "SquaredDifference": squaredDifference,
     "Sub": sub,
     "Xdivy": xdivy,
+    
+    // Elementwise Ternary
+    
+    "ClipByValue": clipByValue,
+    "Select": select,
   ]
 }
 
@@ -1088,7 +1093,7 @@ extension OperationRegistry {
     } else if allowBroadcasting {
       // Logic for scalar broadcasting would be very complex. Since it is currently unused, don't
       // spend time implementing it.
-      fatalError("No ternary operations support broadcasting.")
+      fatalError("No generic ternary operations support broadcasting.")
     } else {
       fatalError("""
         Operation '\((operation_f32 ?? operation_i32 ?? operation_bool)!)' does not support \
@@ -1162,10 +1167,10 @@ extension OperationRegistry {
       operation, input1, input2, input3, output, dataGroup, metadata)))
   }
   
-  static func dispatchTernarySelect(
+  static func dispatchTernaryClipByValue(
     _ args: inout Arguments
   ) {
-    // Scalar broadcasting not supported.
+    // Scalar broadcasting allowed for 2nd and 3rd arguments, no other form of broadcasting allowed.
     let ctx = Context.global
     commonTernaryPrecondition(args)
     
@@ -1177,17 +1182,92 @@ extension OperationRegistry {
     ctx._internalRetain(input2)
     ctx._internalRetain(input3)
     
+    var shouldFail = false
+    if !input1.shape.elementsEqual(input2.shape) {
+      if input2.dataType.stride != input2.byteCount {
+        shouldFail = true
+      }
+    }
+    if !input1.shape.elementsEqual(input3.shape) {
+      if input3.dataType.stride != input3.byteCount {
+        shouldFail = true
+      }
+    }
+    if shouldFail {
+      fatalError("""
+        Operation '\(TernaryOperationType.clip_by_value_f32)' support scalar broadcasting, but not \
+        other forms of broadcasting.
+        """)
+    }
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let output = ctx._internalAllocate(2, input1)
+    encodeOutput(&args.outputs, output)
+    
+    // Fetch data type.
+    let dataType = input1.dataType
+    func dataMismatch(_ operation: TernaryOperationType) -> String {
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
+    }
+    precondition(
+      dataType == input2.dataType, "Data type '\(dataType)' does not match '\(input2.dataType)'.")
+    precondition(
+      dataType == input3.dataType, "Data type '\(dataType)' does not match '\(input3.dataType)'.")
+    
+    // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    if dataType.isFloatingPoint {
+      operation = TernaryOperationType.clip_by_value_f32.rawValue
+      dataGroup = .f32_i32
+    } else if dataType.representableByInt32 {
+      operation = TernaryOperationType.clip_by_value_i32.rawValue
+      dataGroup = .f32_i32
+    } else {
+      operation = TernaryOperationType2(.clip_by_value_i32, dataType: dataType).rawValue
+      dataGroup = .u32_i64_u64
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.ternary(.init(
+      operation, input1, input2, input3, output, dataGroup, nil)))
+  }
+  
+  static func dispatchTernarySelect(
+    _ args: inout Arguments
+  ) {
+    // Scalar broadcasting not supported.
+    let ctx = Context.global
+    commonTernaryPrecondition(args)
+    
+    // Fetch inputs.
+    let input1 = decodeInput(&args.inputs)
+    let boolType = DataType.bool
+    precondition(
+      boolType == input1.dataType, "Data type '\(boolType)' does not match '\(input1.dataType)'.")
+    
+    let input2 = decodeInput(&args.inputs)
+    let input3 = decodeInput(&args.inputs)
+    ctx._internalRetain(input1)
+    ctx._internalRetain(input2)
+    ctx._internalRetain(input3)
+    
     // Determine output shape.
     var referenceInput: AllocationHandle
     if input1.shape.elementsEqual(input2.shape),
        input1.shape.elementsEqual(input3.shape) {
-      let boolType = DataType.bool
-      precondition(
-        boolType == input1.dataType, "Data type '\(boolType)' does not match '\(input1.dataType)'.")
-      
       // Do not replicate the first input; it's always boolean. Instead, replicate `input2`.
       referenceInput = input2
     } else {
+      // TODO: According to the TensorFlow documentation, this operation supports some form of
+      // broadcasting. If `condition` is rank 1, the other inputs may have higher rank, but their
+      // first dimension must match the size of `condition`.
+      //
+      // Investigate this in the TensorFlow-backed S4TF, determine whether `condition` can be 0-D
+      // and broadcasted. Also, look back through the entire `_Raw` namespace to find peculiar ways
+      // that broadcasting happens. Broadcasting from 1D will occur via the MPSGraph broadcast op.
+      // This is incredibly expensive on the CPU, but it's a rare use case.
       fatalError(
         "Operation '\(TernaryOperationType.select_f32_i32)' does not support broadcasting.")
     }
@@ -1226,7 +1306,7 @@ extension OperationRegistry {
   // Codes 0 - 2
   static let clipByValue = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
-    dispatchTernary(&args, .clip_by_value_f32, .clip_by_value_i32, nil)
+    dispatchTernaryClipByValue(&args)
   }
   static let select = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)

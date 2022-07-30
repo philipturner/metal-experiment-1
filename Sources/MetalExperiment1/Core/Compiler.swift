@@ -320,6 +320,7 @@ extension Context {
               fusionHeadAllocation4 = newHead
               fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
             }
+            
             // LHS: reg2 -> reg1
             // RHS: reg1 -> reg2
             fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
@@ -454,10 +455,12 @@ extension Context {
             tailRegister = 2
             newHead1 = input1.reference!.takeUnretainedValue()
             newHead2 = input3.reference!.takeUnretainedValue()
-          } else /*input3 == fusionTail*/ {
+          } else if input3 == fusionTail {
             tailRegister = 3
             newHead1 = input1.reference!.takeUnretainedValue()
             newHead2 = input2.reference!.takeUnretainedValue()
+          } else {
+            fatalError("This should never happen.")
           }
           
           if fusionHeadAllocation2 == nil {
@@ -469,9 +472,11 @@ extension Context {
             precondition(fusionHeadAllocation4 == nil, "Input 3 is missing.")
             fusionHeadAllocation3 = newHead1
             fusionHeadAllocation4 = newHead2
+            
             // newHead1: reg3 -> reg2
             // undefined: reg2 -> reg3
             fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            
             // newHead2: reg4 -> reg3
             // undefined: reg3 -> reg4
             fusionOperations.append(3000 + RegisterSwapType.swap_registers_3_4.rawValue)
@@ -484,9 +489,43 @@ extension Context {
             // input2: reg1 -> reg2
             fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
           } else /*tailRegister == 3*/ {
+            // input1: reg2 -> reg1
+            // input3: reg1 -> reg2
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
             
+            // input2: reg3 -> reg2
+            // input3: reg2 -> reg3
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
           }
         }
+        
+        // Append operation.
+        fusionOperations.append(2000 + ternary.operation)
+        if let metadata = ternary.metadata {
+          fusionMetadata.append(metadata)
+        }
+        numFusedNonUnaryOperations += 1
+        
+        // Release inputs.
+        if referenceCount1 == 0 {
+          let reference = input1.reference!
+          input1.reference = nil
+          reference.release()
+        }
+        if referenceCount2 == 0 {
+          let reference = input2.reference!
+          input2.reference = nil
+          reference.release()
+        }
+        if referenceCount3 == 0 {
+          let reference = input3.reference!
+          input3.reference = nil
+          reference.release()
+        }
+        
+        // Update fusion tail.
+        fusionTailReferenceCount = _internalRelease(output)
+        fusionTail = output
         
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
@@ -509,10 +548,19 @@ extension Context {
       }
     }
     
+    // Finish compilation and return the compiled operations.
+    if fusionDataGroup != nil {
+      appendOperationFusion()
+    }
+    
     // TODO: Implement non-adjacent operation fusion.
     // - Use the Swift `swap(_:_:)` function to potentally avoid ARC overhead when extracting an
     //   instruction from the list.
+    // - Erase comments at the top of this function, erase bullet points on the decision to use AI
+    //   in the command stream.
     
+    // Referring to all the source code above:
+    //
     // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
     // the history of ops. Find a compatible one with a refcount=1 tail, then pull it out of the
     // list. This search can happen before releasing the operation's inputs, because it would just
@@ -548,13 +596,6 @@ extension Context {
     // - (2) Null elements make up at least 1/4 of the list.
     //
     // Thus, the compiler should keep track of how many null elements exist at a given moment.
-    
-    // TODO: If
-    
-    // Finish compilation and return the compiled operations.
-    if fusionDataGroup != nil {
-      appendOperationFusion()
-    }
     
     // TODO: This can actually happen if the last fusion is a zombie. Leave the precondition here
     // until I create a test for it, then transform into something that peels back the list's end.

@@ -86,6 +86,22 @@ func dispatchBinary<T0, T1, T2, U0>(
 }
 
 @inlinable @inline(__always)
+func dispatchTernary<T0, T1, T2, T3>(
+  _ name: StaticString,
+  _ input1: Tensor<T0>,
+  _ input2: Tensor<T1>,
+  _ input3: Tensor<T2>
+) -> Tensor<T3> {
+  return decodeOutputs { outputs in
+    encodeInputs(input1, input2, input3) { inputs in
+      let name = encodeName(name)
+      let attributes = encodeAttributes()
+      Context.executeOperation(name, attributes, inputs, outputs)
+    }
+  }
+}
+
+@inlinable @inline(__always)
 func encodeName(_ name: StaticString) -> UnsafeRawBufferPointer {
   let start = name.utf8Start
   let count = name.utf8CodeUnitCount
@@ -136,6 +152,21 @@ func encodeInputs<T0, T1>(
 }
 
 @inlinable @inline(__always)
+func encodeInputs<T0, T1, T2>(
+  _ input1: Tensor<T0>,
+  _ input2: Tensor<T1>,
+  _ input3: Tensor<T2>,
+  _ body: (UnsafeBufferPointer<CTensorHandle>) -> Void
+) {
+  withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 3) { bufferPointer in
+    bufferPointer[0] = input1._rawTensorHandle
+    bufferPointer[1] = input2._rawTensorHandle
+    bufferPointer[2] = input3._rawTensorHandle
+    body(UnsafeBufferPointer(bufferPointer))
+  }
+}
+
+@inlinable @inline(__always)
 func decodeOutput<T>(
   _ ptr: UnsafeMutableBufferPointer<CTensorHandle>, _ index: Int
 ) -> Tensor<T> {
@@ -170,6 +201,7 @@ func decodeOutputs<T0, T1>(
 
 // MARK: - _Raw
 
+// Makes encoding complex types like strings easier. Not currently used in practice.
 @usableFromInline
 protocol _RawEncodable {
   @inlinable
@@ -177,7 +209,7 @@ protocol _RawEncodable {
 }
 
 public enum _Raw {
-  // Unary
+  // Elementwise Unary
   
   @inlinable @inline(__always)
   public static func abs<T: TensorFlowNumeric>(
@@ -513,7 +545,7 @@ public enum _Raw {
     dispatchUnary("ScalarDivInverse", x, scalar)
   }
   
-  // Binary
+  // Elementwise Binary
   
   @inlinable @inline(__always)
   public static func addV2<T: TensorFlowNumeric>(
@@ -751,5 +783,25 @@ public enum _Raw {
     _ y: Tensor<T>
   ) -> Tensor<T> {
     dispatchBinary("Xdivy", x, y)
+  }
+  
+  // Elementwise Ternary
+  
+  @inlinable @inline(__always)
+  public static func clipByValue<T: TensorFlowNumeric>(
+    t: Tensor<T>,
+    clipValueMin: Tensor<T>,
+    clipValueMax: Tensor<T>
+  ) -> Tensor<T> {
+    dispatchTernary("ClipByValue", t, clipValueMin, clipValueMax)
+  }
+  
+  @inlinable @inline(__always)
+  public static func select<T: TensorFlowScalar>(
+    condition: Tensor<Bool>,
+    t: Tensor<T>,
+    e: Tensor<T>
+  ) -> Tensor<T> {
+    dispatchTernary("Select", condition, t, e)
   }
 }

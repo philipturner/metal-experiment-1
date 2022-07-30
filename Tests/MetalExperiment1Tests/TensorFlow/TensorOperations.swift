@@ -12,7 +12,7 @@ extension Tensor where Scalar: Numeric {
   }
 }
 
-// Unary
+// Unary Elementwise
 
 @inlinable
 public func abs<T: SignedNumeric>(_ x: Tensor<T>) -> Tensor<T> {
@@ -229,7 +229,7 @@ public func tanh<T: TensorFlowFloatingPoint>(_ x: Tensor<T>) -> Tensor<T> {
   _Raw.tanh(x)
 }
 
-// Binary
+// Binary Elementwise
 
 @inlinable
 func _vjpElu<T: TensorFlowFloatingPoint>(
@@ -353,4 +353,42 @@ internal func _vjpSoftsign<T: TensorFlowFloatingPoint>(
 @inlinable
 public func squaredDifference<T: TensorFlowNumeric>(_ x: Tensor<T>, _ y: Tensor<T>) -> Tensor<T> {
   _Raw.squaredDifference(x, y)
+}
+
+// Ternary Elementwise
+
+extension Tensor where Scalar: TensorFlowNumeric {
+  /// Returns `max(min(self, max), min)`.
+  @inlinable
+  public func clipped(min: Tensor, max: Tensor) -> Tensor {
+    _Raw.clipByValue(t: self, clipValueMin: min, clipValueMax: max)
+  }
+
+  /// Returns `max(min(self, max), min)`.
+  @inlinable
+  public func clipped(min: Tensor, max: Scalar) -> Tensor {
+    clipped(min: min, max: Tensor([max]))
+  }
+
+  /// Returns `max(min(self, max), min)`.
+  @inlinable
+  public func clipped(min: Scalar, max: Tensor) -> Tensor {
+    clipped(min: Tensor([min]), max: max)
+  }
+
+  /// Returns `max(min(self, max), min)`.
+  @inlinable
+  public func clipped(min: Scalar, max: Scalar) -> Tensor {
+    clipped(
+      min: Tensor([min]),
+      max: Tensor([max]))
+  }
+}
+
+extension Tensor {
+  @inlinable
+  public func replacing(with other: Tensor, where mask: Tensor<Bool>) -> Tensor {
+    precondition(self.shape == other.shape, "`self` and `other` must have the same shape.")
+    return _Raw.select(condition: mask, t: other, e: self)
+  }
 }

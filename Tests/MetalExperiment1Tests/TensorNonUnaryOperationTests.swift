@@ -575,9 +575,61 @@ final class TensorNonUnaryOperationTests: XCTestCase {
   }
   
   func testTernary() throws {
-//    tensorOperationHeader()
-//    defer { tensorOperationFooter() }
-//    
-//    
+    tensorOperationHeader()
+    defer { tensorOperationFooter() }
+    
+    #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
+    typealias SmallFloat = Float16
+    #else
+    typealias SmallFloat = Float
+    #endif
+    
+    do {
+      let tensor1 = Tensor<Float>([9, 9, 9]).clipped(min: Tensor([7, 7, 7]), max: Tensor([8, 8, 8]))
+      
+      // Test broadcasting of arguments to `clipByValue`.
+      let tensor2 = Tensor<SmallFloat>([-9, -9]).clipped(min: Tensor([-8]), max: Tensor([-7]))
+      let tensor3 = Tensor<Int8>([-9, -9]).clipped(min: Tensor([-8]), max: Tensor([-7]))
+      let tensor4 = Tensor<UInt32>([9, 9]).clipped(min: Tensor([7]), max: Tensor([8]))
+      let tensor5 = Tensor<Int64>([-9, -9]).clipped(min: Tensor([-8]), max: Tensor([-7]))
+      XCTAssertEqual(tensor1.scalars, [8, 8, 8])
+      XCTAssertEqual(tensor2.scalars, [-8, -8])
+      XCTAssertEqual(tensor3.scalars, [-8, -8])
+      XCTAssertEqual(tensor4.scalars, [8, 8])
+      XCTAssertEqual(tensor5.scalars, [-8, -8])
+    }
+    
+    // TODO: Test 1D broadcasting of `select` once implemented.
+    do {
+      func testSelect<T: TensorFlowScalar & Equatable>(_ type: T.Type, lhs: T, rhs: T) {
+        let lhsTensor1 = Tensor([lhs, lhs, lhs])
+        let rhsTensor1 = Tensor([rhs, rhs, rhs])
+        let trueMask1  = Tensor([true, true, true])
+        let mixedMask1 = Tensor([true, false, true])
+        let falseMask1 = Tensor([false, false, false])
+        let result1 = lhsTensor1.replacing(with: rhsTensor1, where: trueMask1)
+        let result2 = lhsTensor1.replacing(with: rhsTensor1, where: mixedMask1)
+        let result3 = lhsTensor1.replacing(with: rhsTensor1, where: falseMask1)
+        
+        let lhsTensor2 = Tensor([lhs])
+        let rhsTensor2 = Tensor([rhs])
+        let trueMask2  = Tensor([true])
+        let falseMask2 = Tensor([false])
+        let result4 = lhsTensor2.replacing(with: rhsTensor2, where: trueMask2)
+        let result5 = lhsTensor2.replacing(with: rhsTensor2, where: falseMask2)
+        
+        XCTAssertEqual(result1.scalars, [rhs, rhs, rhs])
+        XCTAssertEqual(result2.scalars, [rhs, lhs, rhs])
+        XCTAssertEqual(result3.scalars, [lhs, lhs, lhs])
+        XCTAssertEqual(result4.scalars, [rhs])
+        XCTAssertEqual(result5.scalars, [lhs])
+      }
+      
+      testSelect(Float.self, lhs: 6, rhs: 8)
+      testSelect(Bool.self, lhs: false, rhs: true)
+      testSelect(Int16.self, lhs: -6, rhs: -8)
+      testSelect(UInt32.self, lhs: 6, rhs: 8)
+      testSelect(UInt64.self, lhs: 6, rhs: 8)
+    }
   }
 }
