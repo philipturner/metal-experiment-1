@@ -1160,10 +1160,10 @@ kernel void elementwise_f32_i32(
           SET_I32(out);
         }
         default: /*select_f32_i32*/ {
-          auto x = register1.get_i32();
-          auto y = register2.get_i32();
-          auto z = register3.get_vector_i16_u16();
-          auto out = select(x, y, bool4(z));
+          auto condition = register1.get_vector_i16_u16();
+          auto true_value = register2.get_i32();
+          auto else_value = register3.get_i32();
+          auto out = select(else_value, true_value, bool4(condition));
           SET_I32(out);
         }
       }

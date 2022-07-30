@@ -99,6 +99,10 @@ extension Context {
       // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
       // to anything that fuses with it.
       if fusionTailReferenceCount == 0 {
+        // TODO: If one of the heads matched another instruction's tail with cached refcount = 2,
+        // decrement that reference count. It might now be available for fusion. This update will
+        // not catch all cases where an instruction becomes fusable. For example, the fusion match
+        // may encode before the zombie operation chain. To fuse, the zombie chain must go first.
         return
       }
       
@@ -506,6 +510,8 @@ extension Context {
     }
     
     // TODO: Implement non-adjacent operation fusion.
+    // - Use the Swift `swap(_:_:)` function to potentally avoid ARC overhead when extracting an
+    //   instruction from the list.
     
     // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
     // the history of ops. Find a compatible one with a refcount=1 tail, then pull it out of the
@@ -543,10 +549,16 @@ extension Context {
     //
     // Thus, the compiler should keep track of how many null elements exist at a given moment.
     
+    // TODO: If
+    
     // Finish compilation and return the compiled operations.
     if fusionDataGroup != nil {
       appendOperationFusion()
     }
+    
+    // TODO: This can actually happen if the last fusion is a zombie. Leave the precondition here
+    // until I create a test for it, then transform into something that peels back the list's end.
+    // The final product should either (a) end with a valid instruction or (b) have zero length.
     precondition(!(instructions.count > 0 && instructions.last! == nil), """
       Last instruction should never be a placeholder. That breaks the command stream's iteration \
       mechanism.

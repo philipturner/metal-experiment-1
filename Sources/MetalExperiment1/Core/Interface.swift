@@ -250,7 +250,7 @@ struct OperationRegistry {
   }
 }
 
-// MARK: - Unary Operations
+// MARK: - Elementwise Unary Operations
 
 extension OperationRegistry {
   @inline(__always)
@@ -712,7 +712,7 @@ extension OperationRegistry {
   }
 }
 
-// MARK: - Binary Operations
+// MARK: - Elementwise Binary Operations
 
 extension OperationRegistry {
   @inline(__always)
@@ -1047,5 +1047,189 @@ extension OperationRegistry {
   static let xdivy = Function {
     var args = Arguments($0, $1, $2, $3, $4 ,$5)
     dispatchBinary(&args, .xdivy_f32, nil, nil, nil, false)
+  }
+}
+
+// MARK: - Elementwise Ternary Operations
+
+extension OperationRegistry {
+  @inline(__always)
+  static func commonTernaryPrecondition(_ args: Arguments) {
+    precondition(
+      args.inputs.count == 3, "Passed \(args.inputs.count) inputs into a ternary operation.")
+    precondition(
+      args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a ternary operation.")
+  }
+  
+  static func dispatchTernary(
+    _ args: inout Arguments,
+    _ operation_f32: TernaryOperationType?,
+    _ operation_i32: TernaryOperationType?,
+    _ operation_bool: TernaryOperationType?,
+    _ metadata: UInt64? = nil,
+    _ allowBroadcasting: Bool = false
+  ) {
+    let ctx = Context.global
+    commonTernaryPrecondition(args)
+    
+    // Fetch inputs.
+    let input1 = decodeInput(&args.inputs)
+    let input2 = decodeInput(&args.inputs)
+    let input3 = decodeInput(&args.inputs)
+    ctx._internalRetain(input1)
+    ctx._internalRetain(input2)
+    ctx._internalRetain(input3)
+    
+    // Determine output shape.
+    var referenceInput: AllocationHandle
+    if input1.shape.elementsEqual(input2.shape),
+       input1.shape.elementsEqual(input3.shape) {
+      referenceInput = input1
+    } else if allowBroadcasting {
+      // Logic for scalar broadcasting would be very complex. Since it is currently unused, don't
+      // spend time implementing it.
+      fatalError("No ternary operations support broadcasting.")
+    } else {
+      fatalError("""
+        Operation '\((operation_f32 ?? operation_i32 ?? operation_bool)!)' does not support \
+        broadcasting.
+        """)
+    }
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let output = ctx._internalAllocate(2, referenceInput)
+    encodeOutput(&args.outputs, output)
+    
+    // Fetch data type.
+    let dataType = input1.dataType
+    func dataMismatch(_ operation: TernaryOperationType) -> String {
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
+    }
+    precondition(
+      dataType == input2.dataType, "Data type '\(dataType)' does not match '\(input2.dataType)'.")
+    precondition(
+      dataType == input3.dataType, "Data type '\(dataType)' does not match '\(input3.dataType)'.")
+    
+    // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    if let operation_bool = operation_bool {
+      precondition(dataType == .bool, dataMismatch(operation_bool))
+      guard operation_f32 == nil,
+            operation_i32 == nil else {
+        fatalError("This should never happen.")
+      }
+      operation = operation_bool.rawValue
+      dataGroup = .f32_i32
+    } else {
+      precondition(dataType != .bool, dataMismatch(operation_f32 ?? operation_i32!))
+      if let operation_f32 = operation_f32 {
+        if let operation_i32 = operation_i32 {
+          if dataType.isFloatingPoint {
+            operation = operation_f32.rawValue
+            dataGroup = .f32_i32
+          } else if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+            dataGroup = .f32_i32
+          } else {
+            operation = TernaryOperationType2(operation_i32, dataType: dataType).rawValue
+            dataGroup = .u32_i64_u64
+          }
+        } else {
+          precondition(dataType.isFloatingPoint, dataMismatch(operation_f32))
+          operation = operation_f32.rawValue
+          dataGroup = .f32_i32
+        }
+      } else {
+        if let operation_i32 = operation_i32 {
+          precondition(!dataType.isFloatingPoint, dataMismatch(operation_i32))
+          if dataType.representableByInt32 {
+            operation = operation_i32.rawValue
+            dataGroup = .f32_i32
+          } else {
+            operation = TernaryOperationType2(operation_i32, dataType: dataType).rawValue
+            dataGroup = .u32_i64_u64
+          }
+        } else {
+           fatalError("This should never happen.")
+        }
+      }
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.ternary(.init(
+      operation, input1, input2, input3, output, dataGroup, metadata)))
+  }
+  
+  static func dispatchTernarySelect(
+    _ args: inout Arguments
+  ) {
+    // Scalar broadcasting not supported.
+    let ctx = Context.global
+    commonTernaryPrecondition(args)
+    
+    // Fetch inputs.
+    let input1 = decodeInput(&args.inputs)
+    let input2 = decodeInput(&args.inputs)
+    let input3 = decodeInput(&args.inputs)
+    ctx._internalRetain(input1)
+    ctx._internalRetain(input2)
+    ctx._internalRetain(input3)
+    
+    // Determine output shape.
+    var referenceInput: AllocationHandle
+    if input1.shape.elementsEqual(input2.shape),
+       input1.shape.elementsEqual(input3.shape) {
+      let boolType = DataType.bool
+      precondition(
+        boolType == input1.dataType, "Data type '\(boolType)' does not match '\(input1.dataType)'.")
+      
+      // Do not replicate the first input; it's always boolean. Instead, replicate `input2`.
+      referenceInput = input2
+    } else {
+      fatalError(
+        "Operation '\(TernaryOperationType.select_f32_i32)' does not support broadcasting.")
+    }
+    
+    // Generate output.
+    // Setting initial refcount to 2 creates an imbalanced retain.
+    let output = ctx._internalAllocate(2, referenceInput)
+    encodeOutput(&args.outputs, output)
+    
+    // Fetch data type.
+    let dataType = input2.dataType
+    func dataMismatch(_ operation: TernaryOperationType) -> String {
+      "Operation '\(operation)' does not accept data type '\(dataType)'."
+    }
+    precondition(
+      dataType == input3.dataType, "Data type '\(dataType)' does not match '\(input3.dataType)'.")
+    
+    // Select operation.
+    var operation: UInt16
+    var dataGroup: DataGroup
+    if dataType.requiresLargeRepresentation {
+      operation = TernaryOperationType2.select_i64_u64.rawValue
+      dataGroup = .u32_i64_u64
+    } else {
+      operation = TernaryOperationType.select_f32_i32.rawValue
+      dataGroup = .f32_i32
+    }
+    
+    // Append operation.
+    ctx.eagerOperations.append(.ternary(.init(
+      operation, input1, input2, input3, output, dataGroup, nil)))
+  }
+}
+
+extension OperationRegistry {
+  // Codes 0 - 2
+  static let clipByValue = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchTernary(&args, .clip_by_value_f32, .clip_by_value_i32, nil)
+  }
+  static let select = Function {
+    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    dispatchTernarySelect(&args)
   }
 }
