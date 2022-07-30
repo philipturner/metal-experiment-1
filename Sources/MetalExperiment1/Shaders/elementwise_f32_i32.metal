@@ -990,8 +990,8 @@ kernel void elementwise_f32_i32(
           }
           case elu_grad_f32: {
             auto dy = register1.get_f32();
-            auto x = register2.get_f32();
-            auto out = select(1, exp(x), x < 0);
+            auto y = register2.get_f32();
+            auto out = select(1, y + 1, y < 0);
             SET_F32(dy * out)
           }
           case leaky_relu_grad_f32: {

@@ -273,6 +273,12 @@ final class TensorBinaryOperationTests: XCTestCase {
     tensorOperationHeader()
     defer { tensorOperationFooter() }
     
+    func swift_eluGrad(x: Float, dy: Float) -> Float {
+      let y = (x < 0) ? expm1(x) : x
+      let dx = (y < 0) ? dy * (y + 1) : dy
+      return dx
+    }
+    
     // func _vjpElu
     
     // func _vjpLeakyRelu
@@ -291,13 +297,30 @@ final class TensorBinaryOperationTests: XCTestCase {
     
     // func _vjpSoftsign
     
+    // EluGrad
+    do {
+      let x = Tensor<Float>([-1.0, -0.5, 0.5, 3.0, 4.0, 7.0])
+      let dy = [
+        Float.random(in: 0..<1),
+        Float.random(in: 0..<1),
+        Float.random(in: 0..<1),
+        Float.random(in: 0..<1),
+        Float.random(in: 0..<1),
+        Float.random(in: 0..<1),
+      ]
+      let gradTarget = zip(x.scalars, dy).map { swift_eluGrad(x: $0.0, dy: $0.1) }
+      let (_, pullback) = _vjpElu(x)
+      let grad = pullback(Tensor(dy))
+      XCTAssertEqual(grad.scalars, gradTarget)
+    }
+    
     // Relu6Grad
     do {
       let x = Tensor<Float>([-0.5, 0.5, 4, 7, 8])
-      let outGrad = Tensor<Float>([1.5, 2.5, 2, 5, 3])
+      let dy = Tensor<Float>([1.5, 2.5, 2, 5, 3])
       let gradTarget = Tensor<Float>([0, 2.5, 2, 0, 0])
       let (_, pullback) = _vjpRelu6(x)
-      let grad = pullback(outGrad)
+      let grad = pullback(dy)
       XCTAssertEqual(grad.scalars, gradTarget.scalars)
     }
     
