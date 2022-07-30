@@ -36,6 +36,9 @@ extension Context {
     var instructions: [Instruction] = []
     instructions.reserveCapacity(eagerOperations.count)
     
+    // TODO: Function that searches the transient instruction list for a match, returning one if it
+    // exists. Arguments are the current instruction's inputs.
+    
     var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
     var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
     var fusionDataGroup: DataGroup?
@@ -473,7 +476,9 @@ extension Context {
           if tailRegister == 1 {
             // Nothing to do.
           } else if tailRegister == 2 {
-            
+            // input1: reg2 -> reg1
+            // input2: reg1 -> reg2
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
           } else /*tailRegister == 3*/ {
             
           }
@@ -504,6 +509,45 @@ extension Context {
     if fusionDataGroup != nil {
       appendOperationFusion()
     }
+    
+    // TODO: Implement non-adjacent operation fusion.
+    
+    // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
+    // the history of ops. Find a compatible one with a refcount=1 tail, then pull it out of the
+    // list. This search can happen before releasing the operation's inputs, because it would just
+    // decrease from 1 -> 0 (both the compatible tail and the compatible input are the same
+    // allocation).
+    //
+    // If the user deallocates a tensor while compiling, it could only monotonically decrement the
+    // refcount. It could make a non-fusable tail fusable, but not the other way around. There is a
+    // very low chance this happens during compilation. So, the tail's last-checked refcount may be
+    // cached.
+    //
+    // Additionally, create a cache containing indices of all elements with 1-refcount tails. That
+    // makes the search faster, although worst-case complexity may still be O(n^2).
+    //
+    // This idea is much simpler than alteratives. You don't have to rework the register swaps
+    // because it's like you time-traveled to before the matching instruction ended. Append new
+    // register allocations to what the matching fusion already allocated. However, I must ensure
+    // fusions can be packed and unpacked efficiently. Replace the removed instruction with a
+    // placeholder (`nil`), otherwise the array will rearrange its elements upon each removal
+    // (O(n^2)). The instruction must be re-inserted at the end of the list to preserve temporal
+    // order of execution; one of its heads might come from another instruction during this
+    // compilation.
+    //
+    // Do not compress the list before sending it off to the command stream. It is faster to scan
+    // over placeholders and not encode them. This is why `compileEagerOperations` returns an array
+    // of optional values.
+    //
+    // In the worst case, two fusable unary operation streams are interlaced. It switches contexts
+    // after each operation. Assuming `maxCommandsPerBatch == 128`, it ends with 127 null values and
+    // 2 non-null values. To reduce the overhead of lookup, periodically compress the list when:
+    // - (1) At least 8 elements are null
+    // - AND
+    // - (2) Null elements make up at least 1/4 of the list.
+    //
+    // Thus, the compiler should keep track of how many null elements exist at a given moment.
+    
     return instructions
   }
 }
