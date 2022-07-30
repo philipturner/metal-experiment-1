@@ -235,8 +235,8 @@ private extension Context {
       
       // Force the memory allocations to stay alive until the command buffer finishes.
       class Retainer {
-        var instructions: [Instruction]
-        init(retaining instructions: [Instruction]) {
+        var instructions: [Instruction?]
+        init(retaining instructions: [Instruction?]) {
           self.instructions = instructions
         }
       }
@@ -291,10 +291,14 @@ private extension Context {
     var i = 0
     var rangeStart = 0
     repeat {
-      let operation = instructions[i]
+      guard let instruction = instructions[i] else {
+        // Encountered placeholder from non-adjacent operation fusion.
+        i += 1
+        continue
+      }
       var encounteredError = false
       do {
-        try encodeCompiledOperation(operation, into: &encodingContext)
+        try encodeInstruction(instruction, into: &encodingContext)
       } catch AllocationError.exceededSystemRAM {
         Context.global.permitExceedingSystemRAM = true
         

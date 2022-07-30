@@ -170,7 +170,7 @@ struct EncodingContext {
 // MARK: - Encoding
 
 extension Context {
-  func encodeCompiledOperation(
+  func encodeInstruction(
     _ instruction: Instruction,
     into ectx: inout EncodingContext
   ) throws {

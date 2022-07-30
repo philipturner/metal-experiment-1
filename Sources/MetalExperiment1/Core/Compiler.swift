@@ -20,7 +20,7 @@ extension Context {
   // This is how I will achieve "constant folding". Alternatively, the encoder can make that
   // decision by querying the allocations' size and whether they're in the special CPU-side storage
   // mode.
-  func compileEagerOperations() -> [Instruction] {
+  func compileEagerOperations() -> [Instruction?] {
     if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
     }
@@ -33,7 +33,7 @@ extension Context {
     defer {
       eagerOperations.removeAll(keepingCapacity: true)
     }
-    var instructions: [Instruction] = []
+    var instructions: [Instruction?] = []
     instructions.reserveCapacity(eagerOperations.count)
     
     // TODO: Function that searches the transient instruction list for a match, returning one if it
@@ -505,11 +505,6 @@ extension Context {
       }
     }
     
-    // Finish compilation and return the compiled operations.
-    if fusionDataGroup != nil {
-      appendOperationFusion()
-    }
-    
     // TODO: Implement non-adjacent operation fusion.
     
     // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
@@ -548,6 +543,14 @@ extension Context {
     //
     // Thus, the compiler should keep track of how many null elements exist at a given moment.
     
+    // Finish compilation and return the compiled operations.
+    if fusionDataGroup != nil {
+      appendOperationFusion()
+    }
+    precondition(!(instructions.count > 0 && instructions.last! == nil), """
+      Last instruction should never be a placeholder. That breaks the command stream's iteration \
+      mechanism.
+      """)
     return instructions
   }
 }
