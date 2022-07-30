@@ -369,6 +369,7 @@ enum Instruction {
     var input1: Allocation
     var input2: Allocation?
     var input3: Allocation?
+    var input4: Allocation?
     var output: Allocation
     var size: Int
   }

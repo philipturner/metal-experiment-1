@@ -191,14 +191,16 @@ private extension Context {
     let encoder = ectx.makeComputeCommandEncoder()
     switch instruction.dataGroup {
     case .f32_i32:
-      // Avoid overhead of Metal API call if possible.
-      if ectx.pipelineStateID != 1 {
+      if ectx.pipelineStateID == 1 {
+        // Avoid overhead of Metal API call.
+      } else {
         encoder.setComputePipelineState(ShaderCache.elementwise_f32_i32)
         ectx.pipelineStateID = 1
       }
     case .u32_i64_u64:
-      // Avoid overhead of Metal API call if possible.
-      if ectx.pipelineStateID != 2 {
+      if ectx.pipelineStateID == 2 {
+        // Avoid overhead of Metal API call.
+      } else {
         encoder.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
         ectx.pipelineStateID = 2
       }
@@ -207,6 +209,7 @@ private extension Context {
     var shouldBarrier1: Bool
     var shouldBarrier2: Bool = false
     var shouldBarrier3: Bool = false
+    var shouldBarrier4: Bool = false
     do {
       let input1 = instruction.input1
       try input1.materialize()
@@ -223,9 +226,14 @@ private extension Context {
       encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
       shouldBarrier3 = ectx.memoryBarrier(allocation: input3)
     }
-    if shouldBarrier1 || shouldBarrier2 || shouldBarrier3 {
+    if let input4 = instruction.input4 {
+      try input4.materialize()
+      encoder.setBuffer(input4.mtlBuffer!, offset: 0, index: 6)
+      shouldBarrier4 = ectx.memoryBarrier(allocation: input4)
+    }
+    if shouldBarrier1 || shouldBarrier2 || shouldBarrier3 || shouldBarrier4 {
       var resources: [MTLBuffer] = []
-      resources.reserveCapacity(3)
+      resources.reserveCapacity(4)
       if shouldBarrier1 {
         resources.append(instruction.input1.mtlBuffer!)
       }
@@ -235,13 +243,16 @@ private extension Context {
       if shouldBarrier3 {
         resources.append(instruction.input3!.mtlBuffer!)
       }
+      if shouldBarrier4 {
+        resources.append(instruction.input4!.mtlBuffer!)
+      }
       encoder.memoryBarrier(resources: resources)
     }
     
     do {
       let output = instruction.output
       try output.materialize()
-      encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 6)
+      encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 7)
       ectx.useAllocation(output)
     }
     
@@ -356,6 +367,7 @@ private extension Context {
       var read_param_1: ReadParams
       var read_param_2: ReadParams
       var read_param_3: ReadParams
+      var read_param_4: ReadParams
       var num_inputs: UInt16
       var num_operations: UInt16
       var write_memory_cast: MemoryCast.RawValue
@@ -365,6 +377,7 @@ private extension Context {
         inputHandle1: AllocationHandle,
         inputHandle2: AllocationHandle?,
         inputHandle3: AllocationHandle?,
+        inputHandle4: AllocationHandle?,
         outputHandle: AllocationHandle,
         usingLargeRepresentation: Bool
       ) {
@@ -378,23 +391,29 @@ private extension Context {
           readDataTypes[1] = inputHandle2.dataType.rawValue
           readByteCounts[1] = Int32(clamping: inputHandle2.byteCount)
           numInputs = 2
-          if let inputHandle3 = inputHandle3 {
-            readDataTypes[2] = inputHandle3.dataType.rawValue
-            readByteCounts[2] = Int32(clamping: inputHandle3.byteCount)
-            numInputs = 3
-          }
-        } else {
+        }
+        if let inputHandle3 = inputHandle3 {
           // Catch compiler bugs.
-          precondition(inputHandle3 == nil, "This should never happen.")
+          precondition(numInputs == 2, "Input 2 is missing.")
+          readDataTypes[2] = inputHandle3.dataType.rawValue
+          readByteCounts[2] = Int32(clamping: inputHandle3.byteCount)
+          numInputs = 3
+        }
+        if let inputHandle4 = inputHandle4 {
+          // Catch compiler bugs.
+          precondition(numInputs == 3, "Input \(numInputs + 1) is missing.")
+          readDataTypes[3] = inputHandle4.dataType.rawValue
+          readByteCounts[3] = Int32(clamping: inputHandle4.byteCount)
+          numInputs = 4
         }
         let writeDataType = outputHandle.dataType.rawValue
         
         var readLayouts = SIMD4<UInt16>(repeating: 0)
         var readMemoryCasts = SIMD4<MemoryCast.RawValue>(repeating: 0)
         var writeMemoryCast: UInt16 = 0
-        for i in 0..<4 {
+        for i in 0..<5 {
           var dataType: UInt16
-          if i == 3 {
+          if i == 4 {
             dataType = writeDataType
           } else {
             dataType = readDataTypes[i]
@@ -414,7 +433,7 @@ private extension Context {
             memoryCastRawValue = memoryCast.rawValue
             layoutMask = memoryCast.readSize
           }
-          if i == 3 {
+          if i == 4 {
             writeMemoryCast = memoryCastRawValue
             break
           } else {
@@ -428,10 +447,11 @@ private extension Context {
           readLayouts[i] = layoutMask
         }
         
-        // 2nd and 3rd read params can be invalid, as long as they aren't read from.
+        // 2nd, 3rd, 4th read params can be invalid, as long as they aren't read from.
         self.read_param_1 = .init(layout: readLayouts[0], memory_cast: readMemoryCasts[0])
         self.read_param_2 = .init(layout: readLayouts[1], memory_cast: readMemoryCasts[1])
         self.read_param_3 = .init(layout: readLayouts[2], memory_cast: readMemoryCasts[2])
+        self.read_param_4 = .init(layout: readLayouts[3], memory_cast: readMemoryCasts[3])
         self.num_inputs = numInputs
         self.num_operations = UInt16(truncatingIfNeeded: numOperations)
         self.write_memory_cast = writeMemoryCast
@@ -444,6 +464,7 @@ private extension Context {
       inputHandle1: instruction.input1.handle,
       inputHandle2: instruction.input2?.handle,
       inputHandle3: instruction.input3?.handle,
+      inputHandle4: instruction.input4?.handle,
       outputHandle: instruction.output.handle,
       usingLargeRepresentation: instruction.dataGroup == .u32_i64_u64)
     encoder.setBytes(&params, length: MemoryLayout.stride(ofValue: params), index: 0)

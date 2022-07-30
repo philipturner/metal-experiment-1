@@ -42,6 +42,7 @@ extension Context {
     var fusionHeadAllocation1: Allocation?
     var fusionHeadAllocation2: Allocation?
     var fusionHeadAllocation3: Allocation?
+    var fusionHeadAllocation4: Allocation?
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
     var fusionSize: Int = -9999
@@ -59,23 +60,32 @@ extension Context {
         fusionHeadAllocation1 = nil
         fusionHeadAllocation2 = nil
         fusionHeadAllocation3 = nil
+        fusionHeadAllocation4 = nil
         fusionTailReferenceCount = -9999
         fusionTail = nil
         fusionSize = -9999
         numFusedUnaryOperations = 0
         numFusedNonUnaryOperations = 0
       }
-      guard let fusionHeadAllocation1 = fusionHeadAllocation1,
-            fusionTailReferenceCount >= 0,
-            let fusionTail = fusionTail,
-            fusionSize >= 0,
-            let fusionDataGroup = fusionDataGroup else {
-        fatalError("Something went wrong while fusing operations.")
-      }
-      if fusionHeadAllocation2 == nil {
-        guard fusionHeadAllocation3 == nil else {
-          fatalError("Something went wrong while fusing operations.")
+      func noMissingHeads() -> Bool {
+        if fusionHeadAllocation2 == nil {
+          if fusionHeadAllocation3 != nil {
+            return false
+          }
+        } else if fusionHeadAllocation3 == nil {
+          if fusionHeadAllocation4 != nil {
+            return false
+          }
         }
+        return true
+      }
+      guard let fusionHeadAllocation1 = fusionHeadAllocation1,
+            let fusionTail = fusionTail,
+            let fusionDataGroup = fusionDataGroup,
+            fusionTailReferenceCount >= 0,
+            fusionSize >= 0,
+            noMissingHeads() else {
+        fatalError("Something went wrong while fusing operations.")
       }
       
       // The frontend will never read this operation's results, so abort it. This may make
@@ -108,6 +118,7 @@ extension Context {
         input1: fusionHeadAllocation1,
         input2: fusionHeadAllocation2,
         input3: fusionHeadAllocation3,
+        input4: fusionHeadAllocation4,
         output: fusionTailAllocation,
         size: fusionSize)
       instructions.append(.elementwise(elementwise))

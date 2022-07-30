@@ -39,7 +39,7 @@ struct ReadParams {
 };
 
 struct DispatchParams {
-  ReadParams read_params[3];
+  ReadParams read_params[4];
   ushort num_inputs;
   ushort num_operations;
   MemoryCast write_memory_cast;
@@ -503,7 +503,8 @@ kernel void elementwise_f32_i32(
   device void *input1 [[buffer(3)]],
   device void *input2 [[buffer(4)]],
   device void *input3 [[buffer(5)]],
-  device void *output [[buffer(6)]],
+  device void *input4 [[buffer(6)]],
+  device void *output [[buffer(7)]],
   uint tid [[thread_position_in_grid]]
 ) {
   Register register1;
@@ -529,8 +530,7 @@ kernel void elementwise_f32_i32(
         break;
       }
       default: /*3*/ {
-        // TODO: Change to `input4`.
-        input = input3;
+        input = input4;
         break;
       }
     }
