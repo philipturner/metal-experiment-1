@@ -343,6 +343,39 @@ enum EagerOperation {
   }
   case binary(Binary)
   
+  struct Ternary {
+    // `metadata` stored before `operation` to make the memory layout more compact.
+    var metadata: UInt64? = nil
+    var dataGroup: DataGroup
+    
+    // `operation` is the raw value of either a `BinaryOperationType` or `BinaryOperationType2`.
+    var operation: UInt16
+    var input1: AllocationHandle
+    var input2: AllocationHandle
+    var input3: AllocationHandle
+    var output: AllocationHandle
+    
+    @inline(__always)
+    init(
+      _ operation: UInt16,
+      _ input1: AllocationHandle,
+      _ input2: AllocationHandle,
+      _ input3: AllocationHandle,
+      _ output: AllocationHandle,
+      _ dataGroup: DataGroup,
+      _ metadata: UInt64?
+    ) {
+      self.operation = operation
+      self.input1 = input1
+      self.input2 = input2
+      self.input3 = input3
+      self.output = output
+      self.dataGroup = dataGroup
+      self.metadata = metadata
+    }
+  }
+  case ternary(Ternary)
+  
   struct ExplicitCopy {
     var input: AllocationHandle
     var output: AllocationHandle

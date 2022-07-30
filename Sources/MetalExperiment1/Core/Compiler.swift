@@ -344,6 +344,141 @@ extension Context {
         fusionTailReferenceCount = _internalRelease(output)
         fusionTail = output
         
+      case .ternary(let ternary):
+        let (input1, input2, input3) = (ternary.input1, ternary.input2, ternary.input3)
+        let output = ternary.output
+        var restartingFusion = true
+        if input1 == fusionTail || input2 == fusionTail || input3 == fusionTail {
+          // In the middle of an operation fusion.
+          if fusionDataGroup! == ternary.dataGroup {
+            // Before fusing, factor in whether enough heads are available.
+            if fusionHeadAllocation3 == nil {
+              precondition(fusionHeadAllocation4 == nil, "Input 3 is missing.")
+              restartingFusion = false
+            }
+          }
+          
+          // The tail was the output of previous operation. Something initialized by the frontend
+          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
+          // only perform it in debug mode.
+          assert(!fusionTail!.reference!.takeUnretainedValue().initialized)
+        }
+        
+        // Decrement each input's reference count.
+        let referenceCount1 = input1.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        let referenceCount2 = input2.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        let referenceCount3 = input3.referenceCount.wrappingDecrementThenLoad(ordering: .relaxed)
+        if Allocation.debugInfoEnabled {
+          _internalReleaseSlowPath(input1, referenceCount1)
+          _internalReleaseSlowPath(input2, referenceCount2)
+          _internalReleaseSlowPath(input3, referenceCount3)
+        }
+        if !restartingFusion {
+          if input1 == fusionTail {
+            restartingFusion = referenceCount1 > 0
+          } else if input2 == fusionTail {
+            restartingFusion = referenceCount2 > 0
+          } else if input3 == fusionTail {
+            restartingFusion = referenceCount3 > 0
+          } else {
+            fatalError("This should never happen.")
+          }
+        }
+        
+        var firstShapeMatch: AllocationHandle?
+        var numMatches = 0
+        var numOnes = 0
+        for i in 0..<3 {
+          var input: AllocationHandle
+          if i == 0 {
+            input = input1
+          } else if i == 1 {
+            input = input2
+          } else /*i == 2*/ {
+            input = input3
+          }
+          if input.shape.elementsEqual(output.shape) {
+            if firstShapeMatch == nil {
+              firstShapeMatch = input
+            }
+            numMatches += 1
+          } else if input.dataType.stride == input.byteCount {
+            numOnes += 1
+          }
+        }
+        guard let firstShapeMatch = firstShapeMatch,
+              (numMatches + numOnes == 3) else {
+          preconditionFailure("""
+            Use explicit broadcast if one ternary input needs broadcasting and is not a single \
+            scalar.
+            """)
+        }
+        // Restart operation fusion.
+        if restartingFusion {
+          if fusionDataGroup != nil {
+            appendOperationFusion()
+          }
+          fusionHeadAllocation1 = input1.reference!.takeUnretainedValue()
+          fusionSize = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
+          fusionDataGroup = ternary.dataGroup
+        }
+        
+        // Ensure operands are in correct registers.
+        if fusionTail == nil {
+          // No tail exists yet; beginning of operation fusion.
+          fusionHeadAllocation2 = input2.reference!.takeUnretainedValue()
+          fusionHeadAllocation3 = input3.reference!.takeUnretainedValue()
+        } else {
+          // Take special care to avoid bugs when input1 == input2, or either input has already been
+          // read. Previous tail is always register 1, fetch other input from device RAM.
+          guard let fusionTail = fusionTail else {
+            preconditionFailure("Fusion tail was absent when compiling binary operation.")
+          }
+          
+          // The register that the current tail will transfer to.
+          var tailRegister: Int
+          var newHead1: Allocation
+          var newHead2: Allocation
+          if input1 == fusionTail {
+            tailRegister = 1
+            newHead1 = input2.reference!.takeUnretainedValue()
+            newHead2 = input3.reference!.takeUnretainedValue()
+          } else if input2 == fusionTail  {
+            tailRegister = 2
+            newHead1 = input1.reference!.takeUnretainedValue()
+            newHead2 = input3.reference!.takeUnretainedValue()
+          } else /*input3 == fusionTail*/ {
+            tailRegister = 3
+            newHead1 = input1.reference!.takeUnretainedValue()
+            newHead2 = input2.reference!.takeUnretainedValue()
+          }
+          
+          if fusionHeadAllocation2 == nil {
+            precondition(fusionHeadAllocation3 == nil, "Input 2 is missing.")
+            fusionHeadAllocation2 = newHead1
+            fusionHeadAllocation3 = newHead2
+          } else {
+            precondition(fusionHeadAllocation3 == nil, "This should never happen.")
+            precondition(fusionHeadAllocation4 == nil, "Input 3 is missing.")
+            fusionHeadAllocation3 = newHead1
+            fusionHeadAllocation4 = newHead2
+            // newHead1: reg3 -> reg2
+            // undefined: reg2 -> reg3
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            // newHead2: reg4 -> reg3
+            // undefined: reg3 -> reg4
+            fusionOperations.append(3000 + RegisterSwapType.swap_registers_3_4.rawValue)
+          }
+          
+          if tailRegister == 1 {
+            // Nothing to do.
+          } else if tailRegister == 2 {
+            
+          } else /*tailRegister == 3*/ {
+            
+          }
+        }
+        
       case .explicitCopy(let explicitCopy):
         if fusionDataGroup != nil {
           appendOperationFusion()
