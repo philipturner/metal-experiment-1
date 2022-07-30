@@ -1,5 +1,5 @@
 //
-//  Operation.swift
+//  EagerOperation.swift
 //  
 //
 //  Created by Philip Turner on 7/9/22.
@@ -379,39 +379,6 @@ enum EagerOperation {
   struct ExplicitCopy {
     var input: AllocationHandle
     var output: AllocationHandle
-  }
-  case explicitCopy(ExplicitCopy)
-}
-
-// Instead of manually extracting references to the individual buffers, this keeps references to the
-// compiled operations until finishing. It indirectly stores references to the buffers, making it
-// easier to implement and more performant.
-enum Instruction {
-  struct Elementwise {
-    // `metadata` has much less vector capacity of `operations`. It doesn't need as much storage
-    // because it's serialized efficiently. Metadata is only recorded after each operation that
-    // needs it.
-    var operations: SmallVector<SIMD8<UInt16>>
-    
-    // Warning: `SIMD2` does not mean 2 operations worth of metadata. It means the total capacity
-    // for metadata is 16, which happens to be (2 operations) * (8 bytes/operation). The rationing
-    // of metadata per operation is subject to change.
-    var metadata: SmallVector<SIMD2<UInt64>>
-    var dataGroup: DataGroup
-    
-    var input1: Allocation
-    var input2: Allocation?
-    var input3: Allocation?
-    var input4: Allocation?
-    var output: Allocation
-    var size: Int
-  }
-  case elementwise(Elementwise)
-  
-  struct ExplicitCopy {
-    var input: Allocation
-    var output: Allocation
-    var byteCount: Int
   }
   case explicitCopy(ExplicitCopy)
 }
