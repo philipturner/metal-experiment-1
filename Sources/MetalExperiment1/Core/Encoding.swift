@@ -368,62 +368,73 @@ private extension Context {
         outputHandle: AllocationHandle,
         usingLargeRepresentation: Bool
       ) {
-        var dataTypeRawValues = SIMD4<UInt16>(repeating: .max)
-        var byteCounts = SIMD4<Int32>(repeating: 0)
-        dataTypeRawValues[0] = inputHandle1.dataType.rawValue
-        byteCounts[0] = Int32(clamping: inputHandle1.byteCount)
-        
-        // Output's byte count will never be used.
-        dataTypeRawValues[3] = outputHandle.dataType.rawValue
-        // byteCounts[3] = Int32(clamping: outputHandle.byteCount)
+        var readDataTypes = SIMD4<UInt16>(repeating: .max)
+        var readByteCounts = SIMD4<Int32>(repeating: 0)
+        readDataTypes[0] = inputHandle1.dataType.rawValue
+        readByteCounts[0] = Int32(clamping: inputHandle1.byteCount)
         
         var numInputs: UInt16 = 1
         if let inputHandle2 = inputHandle2 {
-          dataTypeRawValues[1] = inputHandle2.dataType.rawValue
-          byteCounts[1] = Int32(clamping: inputHandle2.byteCount)
+          readDataTypes[1] = inputHandle2.dataType.rawValue
+          readByteCounts[1] = Int32(clamping: inputHandle2.byteCount)
           numInputs = 2
           if let inputHandle3 = inputHandle3 {
-            dataTypeRawValues[2] = inputHandle3.dataType.rawValue
-            byteCounts[2] = Int32(clamping: inputHandle3.byteCount)
+            readDataTypes[2] = inputHandle3.dataType.rawValue
+            readByteCounts[2] = Int32(clamping: inputHandle3.byteCount)
             numInputs = 3
           }
         } else {
+          // Catch compiler bugs.
           precondition(inputHandle3 == nil, "This should never happen.")
         }
+        let writeDataType = outputHandle.dataType.rawValue
         
-        var layouts = SIMD4<UInt16>(repeating: 0)
-        var memoryCastRawValues = SIMD4<MemoryCast.RawValue>(repeating: 0)
+        var readLayouts = SIMD4<UInt16>(repeating: 0)
+        var readMemoryCasts = SIMD4<MemoryCast.RawValue>(repeating: 0)
+        var writeMemoryCast: UInt16 = 0
         for i in 0..<4 {
-          let dataTypeRawValue = dataTypeRawValues[i]
-          guard dataTypeRawValue != .max else {
+          var dataType: UInt16
+          if i == 3 {
+            dataType = writeDataType
+          } else {
+            dataType = readDataTypes[i]
+          }
+          guard dataType != .max else {
             continue
           }
           
+          var memoryCastRawValue: UInt16
           var layoutMask: UInt16
           if usingLargeRepresentation {
-            let memoryCast = MemoryCast2(dataTypeRawValue: dataTypeRawValue)
-            memoryCastRawValues[i] = memoryCast.rawValue
+            let memoryCast = MemoryCast2(dataTypeRawValue: dataType)
+            memoryCastRawValue = memoryCast.rawValue
             layoutMask = memoryCast.readSize
           } else {
-            let memoryCast = MemoryCast(dataTypeRawValue: dataTypeRawValue)
-            memoryCastRawValues[i] = memoryCast.rawValue
+            let memoryCast = MemoryCast(dataTypeRawValue: dataType)
+            memoryCastRawValue = memoryCast.rawValue
             layoutMask = memoryCast.readSize
           }
+          if i == 3 {
+            writeMemoryCast = memoryCastRawValue
+            break
+          } else {
+            readMemoryCasts[i] = memoryCastRawValue
+          }
           
-          let dataType = DataType(rawValue: dataTypeRawValue).unsafelyUnwrapped
-          if dataType.stride == byteCounts[i] {
+          let stride = DataType(rawValue: dataType).unsafelyUnwrapped.stride
+          if stride == readByteCounts[i] {
             layoutMask |= 128
           }
-          layouts[i] = layoutMask
+          readLayouts[i] = layoutMask
         }
         
         // 2nd and 3rd read params can be invalid, as long as they aren't read from.
-        self.read_param_1 = .init(layout: layouts[0], memory_cast: memoryCastRawValues[0])
-        self.read_param_2 = .init(layout: layouts[1], memory_cast: memoryCastRawValues[1])
-        self.read_param_3 = .init(layout: layouts[2], memory_cast: memoryCastRawValues[2])
+        self.read_param_1 = .init(layout: readLayouts[0], memory_cast: readMemoryCasts[0])
+        self.read_param_2 = .init(layout: readLayouts[1], memory_cast: readMemoryCasts[1])
+        self.read_param_3 = .init(layout: readLayouts[2], memory_cast: readMemoryCasts[2])
         self.num_inputs = numInputs
         self.num_operations = UInt16(truncatingIfNeeded: numOperations)
-        self.write_memory_cast = memoryCastRawValues[3]
+        self.write_memory_cast = writeMemoryCast
       }
     }
     
