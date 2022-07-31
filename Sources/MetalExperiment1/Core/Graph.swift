@@ -61,9 +61,9 @@ extension Graph {
     _ key2: SearchKey?,
     _ key3: SearchKey?
   ) -> Bool {
-    if key1.referenceCount == 0,
-       key2?.referenceCount == 0,
-       key3?.referenceCount == 0 {
+    if key1.referenceCount > 0,
+       (key2?.referenceCount ?? 1) > 0,
+       (key3?.referenceCount ?? 1) > 0 {
       return false
     }
     if Self.cache.isEmpty {

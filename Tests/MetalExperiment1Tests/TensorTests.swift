@@ -273,6 +273,26 @@ final class TensorTests: XCTestCase {
     }
     
     // Ternary operation fusion (non-adjacent)
+    do {
+      if showMarkers {
+        print("MARKER 6")
+      }
+      func getOutput() -> Tensor<Int32> {
+        let tensor1 = sqrt(Tensor<Float>([25, 25])) // 5.0
+        // Fusion break
+        let tensor2 = sqrt(Tensor<Float>([36, 36])) // 6.0
+        // Fusion break
+        let tensor3 = Tensor<Float>([8, 8]) + Tensor<Float>([9, 9]) // 17.0
+        let tensor4 = Tensor<Int32>(tensor3) // 17
+        // Fusion break + context switch
+        let tensor5 = Tensor<Float>([-4, 10]).clipped(min: tensor1, max: tensor2) // [5.0, 6.0]
+        let tensor6 = Tensor<Int32>(tensor5) // [5, 6]
+        let tensor7 = tensor4 + tensor6 // [22, 23]
+        return tensor7
+      }
+      XCTAssertEqual(getOutput().scalars, [22, 23])
+    }
+    
     // MARKER 6
   }
 }

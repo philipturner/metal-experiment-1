@@ -149,25 +149,18 @@ extension Context {
     // Benefits of AI approach:
     // - Stops the frontend from freezing someone's computer if they are using an Apple or Intel
     //   integrated GPU. They can do other things on their computer while the model is training.
-    // - Can scale up or down the intensity of the graph compiler. When operations are taking a long
-    //   time, the AI gives it more freedom to take longer to compile.
     // - Can exceed the 128 operation limit, going to 1000 in some instances. That could decrease
     //   sequential latency to the theoretical minimum.
     // - Generalizes to different workloads, requiring no prior knowledge of the frontend.
     // - An opportunity to show off S4TF.
     //
     // Drawbacks of AI approach:
-    // - Takes a lot of time to develop.
-    // - Might be over-optimizing for a specific feature.
-    // - There might be an easier way to solve this problem, but it doesn't generalize to other
+    // - Takes a lot of time to develop, might be over-optimizing for a specific feature.
+    // - There might be an easier way to solve this problem, although it doesn't generalize to other
     //   domains and you have to hard-code certain parameters.
     // - If it depends on disk storage inside the package bundle to aggregate data over multiple
     //   startups, that data would clear when you purge build products.
     // - Time spent on this is time spent not developing the OpenCL backend.
-    //
-    // Current stance: Wait until real-world data indicates that there's no better solution, then
-    // pursue the AI approach. This will definitely come *after* integrating the Metal backend into
-    // Swift for TensorFlow.
     flushStream(precomputedBackPressure: backPressure)
   }
 }
@@ -204,6 +197,11 @@ private extension Context {
     defer {
       if Context.profilingEncoding {
         let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let numInstructions = instructions.reduce(into: 0) {
+          if $1 != nil {
+            $0 += 1
+          }
+        }
         
         // Try to vectorize the division by 1000.
         let compileDuration = Int(encodeStartTime - compileStartTime) / 1000
@@ -212,7 +210,7 @@ private extension Context {
           Compile time: \(compileDuration) \(Profiler.timeUnit), \
           Encode time: \(encodeDuration) \(Profiler.timeUnit), \
           Batches in flight: \(previousBackPressure), \
-          #Commands: \(numEagerOperations) -> \(instructions.count)
+          #Commands: \(numEagerOperations) -> \(numInstructions)
           """)
       }
     }

@@ -6,15 +6,6 @@
 //
 
 extension Context {
-  // TODO's #1 and #2 have the same purpose. #1 might be the heuristic required for #2.
-  //
-  // TODO: Make specialized execution paths for having either 1 or 2 eager operations queued up.
-  // These paths will have lower CPU-side latency.
-  //
-  // TODO: Make an option that encourages longer compile time when there's modest encoding
-  // backpressure. This would enable complex fusions like non-adjacent unary operations, which
-  // require either peeking ahead or running a second pass on the IR. When running two passes, it
-  // won't mark allocations as `initialized` until after the non-adjacent fusions.
   func compileEagerOperations() -> [Instruction?] {
     if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
@@ -85,6 +76,7 @@ extension Context {
       if let elementwise = graph.remove(
         matching: key1, key2, key3, dataGroup: dataGroup, availableHeads: availableHeads)
       {
+        print("CONTEXT SWITCH")
         fusion = elementwise
         fusionTailReferenceCount = 0
         fusionTail = fusion.output.handle
@@ -129,18 +121,24 @@ extension Context {
         return
       }
       
+      // If the current `fusion` came from a context switch, the compiler guarantees at least one
+      // operation was appended. The new tail never equals the previous tail.
+      precondition(fusion.output?.handle != fusionTail)
+      
       // Due to custom reference counting semantics, the fusion tail object might be deallocated if
       // its reference count is zero. Emphasis on "might", because the frontend could have released
       // it and would be waiting on the mutex to deallocate it. In that case, the allocation could
       // still exist when returning in the above statement. There is nothing wrong the allocation
       // existing there. If it didn't return early and the object was deallocated, then there would
       // be a problem.
-      precondition(fusion.output?.handle != fusionTail)
       fusion.output = fusionTail.reference!.takeUnretainedValue()
+      
+      // The tail was the output of previous operation. Something initialized by the frontend can't
+      // be an operation's output; only an input can.
+      precondition(!fusion.output!.initialized, "Fusion tail should not be initialized yet.")
       
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
       // in a later compiler pass; that's the job of `referenceCount`.
-      precondition(!fusion.output!.initialized, "This should never happen.")
       fusion.output!.initialized = true
       
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
@@ -171,22 +169,14 @@ extension Context {
       switch eagerOperation {
       case .unary(let unary):
         let (input, output) = (unary.input, unary.output)
-        var restartingFusion: Bool
+        var restartingFusion = true
         if input == fusionTail {
           // In the middle of an operation fusion.
           if fusion.dataGroup == unary.dataGroup {
             restartingFusion = false
-          } else {
-            restartingFusion = true
           }
-          
-          // The tail was the output of previous operation. Something initialized by the frontend
-          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
-          // only perform it in debug mode.
-          assert(!input.reference!.takeUnretainedValue().initialized)
         } else {
           // At the start of an operation fusion. A previous fusion may already be in progress.
-          restartingFusion = true
         }
         
         // Decrement input's reference count.
@@ -249,11 +239,8 @@ extension Context {
               restartingFusion = false
             }
           }
-          
-          // The tail was the output of previous operation. Something initialized by the frontend
-          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
-          // only perform it in debug mode.
-          assert(!fusionTail!.reference!.takeUnretainedValue().initialized)
+        } else {
+          // At the start of an operation fusion. A previous fusion may already be in progress.
         }
         
         // Decrement each input's reference count.
@@ -396,12 +383,9 @@ extension Context {
               precondition(fusion.input4 == nil, "Input 3 is missing.")
               restartingFusion = false
             }
+          } else {
+            // At the start of an operation fusion. A previous fusion may already be in progress.
           }
-          
-          // The tail was the output of previous operation. Something initialized by the frontend
-          // can't be an operation's output; only an input. Since the check may incur ARC overhead,
-          // only perform it in debug mode.
-          assert(!fusionTail!.reference!.takeUnretainedValue().initialized)
         }
         
         // Decrement each input's reference count.
@@ -506,8 +490,8 @@ extension Context {
           
           if fusion.input2 == nil {
             precondition(fusion.input3 == nil, "Input 2 is missing.")
-            fusion.input3 = newHead1
-            fusion.input4 = newHead2
+            fusion.input2 = newHead1
+            fusion.input3 = newHead2
           } else {
             precondition(fusion.input3 == nil, "This should never happen.")
             precondition(fusion.input4 == nil, "Input 3 is missing.")
@@ -593,10 +577,6 @@ extension Context {
     if fusion.input1 != nil {
       appendOperationFusion()
     }
-    
-    // TODO: Implement non-adjacent operation fusion.
-    // - Erase comments at the top of this function, erase bullet points on the decision to use AI
-    //   in the command stream.
     
     // Referring to all the source code above:
     //

@@ -389,7 +389,7 @@ class Allocation {
     #endif
     
     // The command buffer must be released from the context before its referenced memory can
-    // deallocate. Avoiding this check in release mode because it's very costly.
+    // deallocate. Only perform this check in debug mode because it's very costly.
     assert({
       if lastModifiedCommandBufferID != -1 {
         precondition(materialized)
