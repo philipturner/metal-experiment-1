@@ -76,10 +76,16 @@ extension Context {
       if let elementwise = graph.remove(
         matching: key1, key2, key3, dataGroup: dataGroup, availableHeads: availableHeads)
       {
-        print("CONTEXT SWITCH")
         fusion = elementwise
         fusionTailReferenceCount = 0
         fusionTail = fusion.output.handle
+        
+        if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
+          print("""
+              Context switch (\(fusion.numFusedUnaryOperations) unary, \
+            \(fusion.numFusedNonUnaryOperations) non-unary)
+            """)
+        }
         return true
       } else {
         return false

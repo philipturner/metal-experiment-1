@@ -95,12 +95,6 @@ final class TensorTests: XCTestCase {
       if showMarkers {
         print("MARKER 1")
       }
-//      var reg1 = input1[i]
-//      reg1 = square_f32(reg1)
-//      reg1 = cast_f32_to_i32(reg1)
-//      reg1 = cast_i32_to_f16(reg1)
-//      reg1 = sqrt_f32(reg1)
-//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
@@ -110,6 +104,15 @@ final class TensorTests: XCTestCase {
         return tensor5
       }
       XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      reg1 = square_f32(reg1)
+      reg1 = cast_f32_to_i32(reg1)
+      reg1 = cast_i32_to_f16(reg1)
+      reg1 = sqrt_f32(reg1)
+      output[i] = reg1
+      #endif
     }
     
     // Fusion is interrupted by replacing `Int8` with `UInt64`.
@@ -117,18 +120,6 @@ final class TensorTests: XCTestCase {
       if showMarkers {
         print("MARKER 2")
       }
-//      var reg1 = input1[i]
-//      reg1 = square_f32(reg1)
-//      output[i] = reg1
-      
-//      var reg1 = input1[i]
-//      reg1 = cast_f32_to_i64(reg1)
-//      reg1 = cast_i64_to_f16(reg1)
-//      output[i] = reg1
-      
-//      var reg1 = input1[i]
-//      reg1 = sqrt_f32(reg1)
-//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
@@ -140,6 +131,21 @@ final class TensorTests: XCTestCase {
         return tensor5
       }
       XCTAssertEqual(getOutput().scalars, [5.0, 5.0])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      reg1 = square_f32(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      reg1 = cast_f32_to_i64(reg1)
+      reg1 = cast_i64_to_f16(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      reg1 = sqrt_f32(reg1)
+      output[i] = reg1
+      #endif
     }
     
     // Binary operation fusion
@@ -147,27 +153,6 @@ final class TensorTests: XCTestCase {
       if showMarkers {
         print("MARKER 3")
       }
-//      var reg1 = input1[i]
-//      reg1 = square_f32(reg1)
-//      output[i] = reg1
-//
-//      var reg1 = input1[i]
-//      reg1 = cast_f32_to_i64(reg1)
-//      reg1 = cast_i64_to_f16(reg1)
-//      output[i] = reg1
-//
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
-//      var reg3 = input3[i]
-//      var reg4 = input4[i]
-//      reg1 = sqrt_f32(reg1)
-//      reg1 = minimum_f32(reg1, reg2)
-//      swap(&reg2, &reg3)
-//      reg1 = maximum_f32(reg1, reg2)
-//      reg1 = neg_f32(reg1)
-//      swap(&reg2, &reg4)
-//      reg1 = maximum_f32(reg1, reg2)
-//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<Float>(repeating: 5.005, shape: [2])
         let tensor2 = square(tensor1) // 25.050
@@ -183,6 +168,30 @@ final class TensorTests: XCTestCase {
         return tensor9
       }
       XCTAssertEqual(getOutput().scalars, [-3.0, -3.0])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      reg1 = square_f32(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      reg1 = cast_f32_to_i64(reg1)
+      reg1 = cast_i64_to_f16(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      var reg4 = input4[i]
+      reg1 = sqrt_f32(reg1)
+      reg1 = minimum_f32(reg1, reg2)
+      swap(&reg2, &reg3)
+      reg1 = maximum_f32(reg1, reg2)
+      reg1 = neg_f32(reg1)
+      swap(&reg2, &reg4)
+      reg1 = maximum_f32(reg1, reg2)
+      output[i] = reg1
+      #endif
     }
     
     // Binary operation fusion (non-adjacent)
@@ -190,28 +199,6 @@ final class TensorTests: XCTestCase {
       if showMarkers {
         print("MARKER 4")
       }
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
-//      var reg3 = input3[i]
-//      var reg4 = input4[i]
-//      reg1 = sqrt_f32(reg1)
-//      reg1 = minimum_f32(reg1, reg2)
-//      swap(&reg2, &reg3)
-//      reg1 = maximum_f32(reg1, reg2)
-//      swap(&reg2, &reg4)
-//      reg1 = maximum_f32(reg1, reg2)
-//      reg1 = neg_f32(reg1)
-//      output[i] = reg1
-//
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
-//      var reg3 = input3[i]
-//      reg1 = maximum_f32(reg1, reg2)
-//      reg1 = neg_f32(reg1)
-//      swap(&reg2, &reg3)
-//      reg1 = maximum_f32(reg1, reg2)
-//      reg1 = square_f32(reg1)
-//      output[i] = reg1
       func getOutput() -> Tensor<Float> {
         let tensor1 = Tensor<Float>(repeating: 25, shape: [2])
         let tensor2 = sqrt(tensor1) // 5.0
@@ -230,6 +217,31 @@ final class TensorTests: XCTestCase {
         return tensor10
       }
       XCTAssertEqual(getOutput().scalars, [16.0, 16.0])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      var reg4 = input4[i]
+      reg1 = sqrt_f32(reg1)
+      reg1 = minimum_f32(reg1, reg2)
+      swap(&reg2, &reg3)
+      reg1 = maximum_f32(reg1, reg2)
+      swap(&reg2, &reg4)
+      reg1 = maximum_f32(reg1, reg2)
+      reg1 = neg_f32(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      reg1 = maximum_f32(reg1, reg2)
+      reg1 = neg_f32(reg1)
+      swap(&reg2, &reg3)
+      reg1 = maximum_f32(reg1, reg2)
+      reg1 = square_f32(reg1)
+      output[i] = reg1
+      #endif
     }
     
     // Ternary operation fusion
@@ -237,26 +249,6 @@ final class TensorTests: XCTestCase {
       if showMarkers {
         print("MARKER 5")
       }
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
-//      var reg3 = input3[i]
-//      var reg4 = input4[i]
-//      reg1 = sqrt_f32(reg1)
-//      reg1 = add_f32(reg1, reg2)
-//      swap(&reg2, &reg3)
-//      swap(&reg3, &reg4)
-//      reg1 = clip_by_value_f32(reg1, reg2, reg3)
-//      output[i] = reg1
-//
-//      var reg1 = input1[i]
-//      var reg2 = input2[i]
-//      var reg3 = input3[i]
-//      var reg4 = input4[i]
-//      reg1 = select_f32_i32(reg1, reg2, reg3)
-//      swap(&reg2, &reg4)
-//      reg1 = pow_f32(reg1, reg2)
-//      reg1 = neg_f32(reg1)
-//      output[i] = reg1
       func getOutput() -> Tensor<SmallFloat> {
         let tensor1 = Tensor<SmallFloat>([25, 25])
         let tensor2 = sqrt(tensor1) // 5.0
@@ -270,6 +262,29 @@ final class TensorTests: XCTestCase {
         return tensor7
       }
       XCTAssertEqual(getOutput().scalars, [-729.0, -1331.0])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      var reg4 = input4[i]
+      reg1 = sqrt_f32(reg1)
+      reg1 = add_f32(reg1, reg2)
+      swap(&reg2, &reg3)
+      swap(&reg3, &reg4)
+      reg1 = clip_by_value_f32(reg1, reg2, reg3)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      var reg4 = input4[i]
+      reg1 = select_f32_i32(reg1, reg2, reg3)
+      swap(&reg2, &reg4)
+      reg1 = pow_f32(reg1, reg2)
+      reg1 = neg_f32(reg1)
+      output[i] = reg1
+      #endif
     }
     
     // Ternary operation fusion (non-adjacent)
@@ -291,8 +306,31 @@ final class TensorTests: XCTestCase {
         return tensor7
       }
       XCTAssertEqual(getOutput().scalars, [22, 23])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      reg1 = sqrt_f32(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      reg1 = add_f32(reg1, reg2)
+      reg1 = cast_f32_to_i32(reg1)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      var reg3 = input3[i]
+      var reg4 = input4[i]
+      reg1 = sqrt_f32(reg1)
+      swap(&reg1, &reg2)
+      reg1 = clip_by_value_f32(reg1, reg2, reg3)
+      reg1 = cast_f32_to_i32(reg1)
+      swap(&reg2, &reg4)
+      swap(&reg1, &reg2)
+      reg1 = add_i32(reg1, reg2)
+      output[i] = reg1
+      #endif
     }
-    
-    // MARKER 6
   }
 }
