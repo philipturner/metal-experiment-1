@@ -24,18 +24,7 @@ func testHeader(_ message: String? = nil) {
   Context.barrier()
 }
 
-protocol DummyPluggableDevice: AnyObject {
-  
-}
-
-func doSomething<T: DummyPluggableDevice>(type: T.Type, _ x: any DummyPluggableDevice) {
-  _ = Unmanaged.passUnretained(x as! T).toOpaque()
-}
-
-func doSomething2(_ x: any DummyPluggableDevice) {
-  let type2 = type(of: x)
-  doSomething(type: type2, x)
-}
+fileprivate protocol DummyPluggableDevice: AnyObject {}
 
 final class MetalExperiment1Tests: XCTestCase {
   func testSynchronizationLatency() throws {
@@ -121,6 +110,66 @@ final class MetalExperiment1Tests: XCTestCase {
     }
     profileContextManager(iterations: 5)
     profileContextManager(iterations: 1000)
+  }
+  
+  func testDynamicTyping() throws {
+    testHeader("Dynamic type pointer extraction")
+    
+    func extractAddress(of device: any DummyPluggableDevice) -> OpaquePointer {
+      func nestedVirtualFunction<T: DummyPluggableDevice>(_ type: T.Type) -> OpaquePointer {
+        .init(Unmanaged.passUnretained(device as! T).toOpaque())
+      }
+      let metatype: DummyPluggableDevice.Type = type(of: device)
+      return nestedVirtualFunction(metatype)
+    }
+    
+    class MyDummyPluggableDevice1: DummyPluggableDevice {
+      init() {}
+    }
+    class MyDummyPluggableDevice2: DummyPluggableDevice {
+      init() {}
+    }
+    class MyDummyPluggableDevice3: DummyPluggableDevice {
+      init() {}
+    }
+    class MyDummyPluggableDevice4: DummyPluggableDevice {
+      init() {}
+    }
+    class MyDummyPluggableDevice5: DummyPluggableDevice {
+      init() {}
+    }
+    
+    let device1: any DummyPluggableDevice = MyDummyPluggableDevice1()
+    let device2: any DummyPluggableDevice = MyDummyPluggableDevice2()
+    XCTAssertNotIdentical(device1, device2)
+    
+    let address1 = extractAddress(of: device1)
+    let address2 = extractAddress(of: device2)
+    XCTAssertNotEqual(address1, address2)
+    
+    // Test speed when multiple valid types exist.
+    let devices: [any DummyPluggableDevice] = [
+      MyDummyPluggableDevice1(),
+      MyDummyPluggableDevice2(),
+      MyDummyPluggableDevice3(),
+      MyDummyPluggableDevice4(),
+      MyDummyPluggableDevice5(),
+    ]
+    var pointers: [OpaquePointer?] = Array(repeating: nil, count: 5)
+    
+    func profileExtract(iterations: Int) {
+      Profiler.checkpoint()
+      for i in 0..<iterations {
+        let device = devices[i % 5]
+        let address = extractAddress(of: device)
+        pointers[i % 5] = address
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("Pointer extraction throughput: \(throughput) \(Profiler.timeUnit)")
+    }
+    profileExtract(iterations: 5)
+    profileExtract(iterations: 1000)
   }
   
   func testStreamedBatchThroughput() throws {

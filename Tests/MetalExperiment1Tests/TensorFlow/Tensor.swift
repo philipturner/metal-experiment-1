@@ -45,10 +45,9 @@ public class PluggableDeviceTensorHandle {
       return true
     }())
     
-    // TODO: Implement this stuff in a force-inlined protocol extension.
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
     if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-      Context.deallocate(_cTensorHandle)
+      Context.deleteTensor(_cTensorHandle)
     }
   }
   
@@ -130,7 +129,7 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @inline(never)
   func makeHostCopy() -> [Scalar] {
     var output: [Scalar]?
-    Context.read(_cTensorHandle) { tensorBuffer in
+    Context.readTensor(_cTensorHandle) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)

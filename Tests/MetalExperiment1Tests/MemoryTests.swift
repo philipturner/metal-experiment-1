@@ -11,7 +11,7 @@ fileprivate func allocate(capacity: Int) -> OpaquePointer {
 fileprivate func releaseBuffer(_ handle: CTensorHandle) {
   let atomic = AllocationHandle(handle).referenceCount
   if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-    Context.deallocate(handle)
+    Context.deleteTensor(handle)
   }
 }
 
@@ -48,7 +48,7 @@ final class MemoryTests: XCTestCase {
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      Context.read(handle) { bufferPointer in
+      Context.readTensor(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)

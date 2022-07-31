@@ -26,7 +26,7 @@ extension Context {
   }
   
   @inline(never)
-  public static func read(
+  public static func readTensor(
     _ cHandle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
@@ -38,7 +38,7 @@ extension Context {
   }
   
   @inline(never)
-  public static func deallocate(
+  public static func deleteTensor(
     _ cHandle: OpaquePointer
   ) {
     Context.global.sync {
