@@ -19,7 +19,8 @@ extension Context {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = Context.global.sync {
-      Context.global._internalAllocate(1, dataType, byteCount, shape)
+      Context.global.globalTensorCount += 1
+      return Context.global._internalAllocate(1, dataType, byteCount, shape)
     }
     return (handle._cHandle, shape.count)
   }
@@ -53,6 +54,7 @@ extension Context {
     _ cHandle: OpaquePointer
   ) {
     Context.global.sync {
+      Context.global.globalTensorCount -= 1
       let handle = AllocationHandle(cHandle)
       precondition(
         handle.referenceCount.load(ordering: .relaxed) == 0,

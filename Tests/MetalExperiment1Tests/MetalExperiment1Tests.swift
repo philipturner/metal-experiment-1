@@ -63,6 +63,51 @@ final class MetalExperiment1Tests: XCTestCase {
       let throughput = Double(totalTime) / Double(iterations)
       print("Dispatch semaphore creation throughput: \(throughput) \(Profiler.timeUnit)")
     }
+    
+    do {
+      Profiler.checkpoint()
+      _ = _ExecutionContext.global.currentDeviceName
+      Profiler.log("_ThreadLocalState startup latency")
+    }
+    
+    func profileThreadLocalState(iterations: Int) {
+      Profiler.checkpoint()
+      for _ in 0..<iterations {
+        _ = _ExecutionContext.global.currentDeviceName
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("_ThreadLocalState throughput: \(throughput) \(Profiler.timeUnit)")
+    }
+    profileThreadLocalState(iterations: 5)
+    profileThreadLocalState(iterations: 1000)
+    
+    Context.barrier()
+    defer {
+      Context.barrier()
+    }
+    
+    do {
+      Profiler.checkpoint()
+      _ = FrontendContext.local.globalTensorCount
+      Profiler.log("ContextManager startup latency")
+    }
+    
+    func profileContextManager(iterations: Int) {
+      let startCount = FrontendContext.local.globalTensorCount
+      
+      Profiler.checkpoint()
+      for _ in 0..<iterations {
+        FrontendContext.local.globalTensorCount += 1
+      }
+      let totalTime = Profiler.checkpoint()
+      let throughput = Double(totalTime) / Double(iterations)
+      print("ContextManager throughput: \(throughput) \(Profiler.timeUnit)")
+      precondition(FrontendContext.local.globalTensorCount == startCount + iterations)
+      FrontendContext.local.globalTensorCount -= iterations
+    }
+    profileContextManager(iterations: 5)
+    profileContextManager(iterations: 1000)
   }
   
   func testStreamedBatchThroughput() throws {

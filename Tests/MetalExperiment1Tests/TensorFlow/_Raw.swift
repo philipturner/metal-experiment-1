@@ -18,7 +18,7 @@ func dispatchUnary<T0, T1>(
     encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      Context.executeOperation(name, attributes, inputs, outputs)
+      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -33,7 +33,7 @@ func dispatchUnary<T0, T1, U0>(
     encodeInputs(input1) { inputs in
       encodeAttributes(attribute1) { attributes in
         let name = encodeName(name)
-        Context.executeOperation(name, attributes, inputs, outputs)
+        _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
       }
     }
   }
@@ -48,7 +48,7 @@ func dispatchUnaryRelational<T0>(
     encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      Context.executeOperation(name, attributes, inputs, outputs)
+      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -63,7 +63,7 @@ func dispatchBinary<T0, T1, T2>(
     encodeInputs(input1, input2) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      Context.executeOperation(name, attributes, inputs, outputs)
+      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -79,7 +79,7 @@ func dispatchBinary<T0, T1, T2, U0>(
     encodeInputs(input1, input2) { inputs in
       encodeAttributes(attribute1) { attributes in
         let name = encodeName(name)
-        Context.executeOperation(name, attributes, inputs, outputs)
+        _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
       }
     }
   }
@@ -96,7 +96,7 @@ func dispatchTernary<T0, T1, T2, T3>(
     encodeInputs(input1, input2, input3) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      Context.executeOperation(name, attributes, inputs, outputs)
+      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
     }
   }
 }
