@@ -87,16 +87,16 @@ extension Context {
       
       // The frontend will never read this operation's results, so abort it. This may make
       // benchmarks difficult, because not every dispatched operation actually executes.
-      //
-      // When fusing non-adjacent operation chains, the reference count is no longer a 100% reliable
-      // way to abort unused operations. Instead, analyze the graph and trace back unused ends. If
-      // an "end" fusion chain ends with a zombie (zero-refcount) tensor, the zombie-ness transfers
-      // to anything that fuses with it.
-      if fusionTailReferenceCount == 0 {
-        // TODO: If one of the heads matched another instruction's tail with cached refcount = 2,
+      guard fusionTailReferenceCount > 0 else {
+        // If one of the heads matched another instruction's tail with cached refcount = 2,
         // decrement that reference count. It might now be available for fusion. This update will
         // not catch all cases where an instruction becomes fusable. For example, the fusion match
         // may encode before the zombie operation chain. To fuse, the zombie chain must go first.
+        
+        // TODO: Call `registerZombie` and print/fatalError to prove it happens. Otherwise, provide
+        // a test case where it happens (small divergence on the dependency chain). Make a massive
+        // warning when an instruction is deleted. Make a test case that proves it's okay to remove
+        // an instruction, and prove it is removed by activating `Instruction.Elementwise.dump`.
         return
       }
       
@@ -110,6 +110,7 @@ extension Context {
       
       // Make the fusion tail valid to read from. This does not prevent it from being optimized away
       // in a later compiler pass; that's the job of `referenceCount`.
+      precondition(!fusionTailAllocation.initialized, "This should never happen.")
       fusionTailAllocation.initialized = true
       
       let elementwise = Instruction.Elementwise(
