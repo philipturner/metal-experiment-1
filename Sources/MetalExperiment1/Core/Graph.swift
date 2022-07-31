@@ -21,17 +21,22 @@ struct Graph {
 
 extension Graph {
   mutating func append(_ elementwise: Instruction.Elementwise, tailReferenceCount: Int) {
+    let handle = elementwise.output.handle
     instructions.append(.elementwise(elementwise))
     if tailReferenceCount == 1 {
       // The cache should never already contain the tail. This check is costly, so only perform it
       // in debug mode.
-      assert(Self.cache[elementwise.output.handle] == nil, "Cache already contained tail.")
-      Self.cache[elementwise.output.handle] = instructions.count - 1
+      assert(Self.cache[handle] == nil, "Cache already contained tail.")
+      Self.cache[handle] = instructions.count - 1
     }
   }
   
   mutating func append(_ explicitCopy: Instruction.ExplicitCopy) {
     instructions.append(.explicitCopy(explicitCopy))
+  }
+  
+  var shouldTryRemoval: Bool {
+    Self.cache.count > 0
   }
   
   var endsWithPlaceholder: Bool {

@@ -468,7 +468,7 @@ final class MemoryTests: XCTestCase {
     }
   }
   
-  func testUnusedOperationRemoval() throws {
+  func testZombieOperationRemoval() throws {
     testHeader()
     
     func basicTestNothing(checking: Bool) {

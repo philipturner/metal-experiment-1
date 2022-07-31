@@ -25,11 +25,14 @@ enum Instruction {
     var numFusedUnaryOperations: UInt16
     var numFusedNonUnaryOperations: UInt16
     
-    var input1: Allocation
+    // `input1`, `output`, and `dataGroup` are nullable to permit efficiently reconstructing the
+    // context when
+    // fusing non-adjacent operations.
+    var input1: Allocation!
     var input2: Allocation?
     var input3: Allocation?
     var input4: Allocation?
-    var output: Allocation
+    var output: Allocation!
     var size: Int
   }
   case elementwise(Elementwise)

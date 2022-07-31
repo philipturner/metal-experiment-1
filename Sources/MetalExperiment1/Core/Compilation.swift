@@ -28,30 +28,49 @@ extension Context {
     defer {
       eagerOperations.removeAll(keepingCapacity: true)
     }
+    
     var graph = Graph(eagerOperationCount: eagerOperations.count)
+    var fusion: Instruction.Elementwise = createBlankFusion()
     
-    // TODO: Function that searches the transient instruction list for a match, returning one if it
-    // exists. Arguments are the current instruction's inputs.
-    
-    var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
-    var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
-    var fusionDataGroup: DataGroup?
-    var fusionHeadAllocation1: Allocation?
-    var fusionHeadAllocation2: Allocation?
-    var fusionHeadAllocation3: Allocation?
-    var fusionHeadAllocation4: Allocation?
+//    var fusionOperations: SmallVector<SIMD8<UInt16>> = .init()
+//    var fusionMetadata: SmallVector<SIMD2<UInt64>> = .init()
+//    var fusionDataGroup: DataGroup?
+//    var fusionHeadAllocation1: Allocation?
+//    var fusionHeadAllocation2: Allocation?
+//    var fusionHeadAllocation3: Allocation?
+//    var fusionHeadAllocation4: Allocation?
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
-    var fusionSize: Int = -9999
-    var numFusedUnaryOperations: UInt16 = 0
-    var numFusedNonUnaryOperations: UInt16 = 0
+//    var fusionSize: Int = -9999
+//    var numFusedUnaryOperations: UInt16 = 0
+//    var numFusedNonUnaryOperations: UInt16 = 0
     
-    // TODO: Call `switchContext` based on the following heuristic. If there were no previous
-    // instructions and you just added one because of a forced graph break, don't search the
-    // history. There won't be any matching instructions.
-    //
+//    fusionHeadAllocation1 = input.reference!.takeUnretainedValue()
+//    fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+//    fusionDataGroup = unary.dataGroup
+    
+    @inline(__always)
+    func createBlankFusion() -> Instruction.Elementwise {
+      .init(
+        operations: .init(),
+        metadata: .init(),
+        dataGroup: .u32_i64_u64, // Must override this, otherwise results are undefined.
+        numFusedUnaryOperations: 0,
+        numFusedNonUnaryOperations: 0,
+        input1: nil,
+        input2: nil,
+        input3: nil,
+        input4: nil,
+        output: nil,
+        size: -9999)
+    }
+    
     // Extracts matching instruction from history to continue working on. Changes the variables
-    // above to reflect the extracted instruction.
+    // above to reflect the extracted instruction. Returns whether context did switch.
+    //
+    // Call `switchContext` based on the following heuristic. If there were no previous instructions
+    // and you just added one because of a forced graph break, don't search the history. There won't
+    // be any matching instructions.
     @inline(__always)
     func switchContext(
       _ key1: Graph.SearchKey,
@@ -59,9 +78,12 @@ extension Context {
       _ key3: Graph.SearchKey? = nil,
       dataGroup: DataGroup,
       availableHeads: Int
-    ) {
+    ) -> Bool {
+//      return false
       if graph.shouldRemove(matching: key1, key2, key3) {
-        switchContextSlowPath(key1, key2, key3, dataGroup, availableHeads)
+        return switchContextSlowPath(key1, key2, key3, dataGroup, availableHeads)
+      } else {
+        return false
       }
     }
     
@@ -72,22 +94,31 @@ extension Context {
       _ key3: Graph.SearchKey?,
       _ dataGroup: DataGroup,
       _ availableHeads: Int
-    ) {
+    ) -> Bool {
+      // TODO: Store the elementwise directly in the local variable, avoiding ARC overhead.
       let elementwise = graph.remove(
         matching: key1, key2, key3, dataGroup: dataGroup, availableHeads: availableHeads)
       if let elementwise = elementwise {
-        fusionOperations = elementwise.operations
-        fusionMetadata = elementwise.metadata
-        fusionDataGroup = elementwise.dataGroup
-        fusionHeadAllocation1 = elementwise.input1
-        fusionHeadAllocation2 = elementwise.input2
-        fusionHeadAllocation3 = elementwise.input3
-        fusionHeadAllocation4 = elementwise.input4
+//        graph.append(elementwise, tailReferenceCount: 1)
+//        return false
+        fusion = elementwise
+//        print("DID SWITCH CONTEXT")
+//        fusionOperations = elementwise.operations
+//        fusionMetadata = elementwise.metadata
+//        fusionDataGroup = elementwise.dataGroup
+//        fusionHeadAllocation1 = elementwise.input1
+//        fusionHeadAllocation2 = elementwise.input2
+//        fusionHeadAllocation3 = elementwise.input3
+//        fusionHeadAllocation4 = elementwise.input4
+        fusion.output = nil
         fusionTailReferenceCount = 0
         fusionTail = elementwise.output.handle
-        fusionSize = elementwise.size
-        numFusedUnaryOperations = elementwise.numFusedUnaryOperations
-        numFusedNonUnaryOperations = elementwise.numFusedNonUnaryOperations
+//        fusionSize = elementwise.size
+//        numFusedUnaryOperations = elementwise.numFusedUnaryOperations
+//        numFusedNonUnaryOperations = elementwise.numFusedNonUnaryOperations
+        return true
+      } else {
+        return false
       }
     }
     
@@ -96,36 +127,36 @@ extension Context {
     @inline(never)
     func appendOperationFusion() {
       defer {
-        fusionOperations = .init()
-        fusionMetadata = .init()
-        fusionDataGroup = nil
-        fusionHeadAllocation1 = nil
-        fusionHeadAllocation2 = nil
-        fusionHeadAllocation3 = nil
-        fusionHeadAllocation4 = nil
+        fusion = createBlankFusion()
+//        fusionOperations = .init()
+//        fusionMetadata = .init()
+//        fusionDataGroup = nil
+//        fusionHeadAllocation1 = nil
+//        fusionHeadAllocation2 = nil
+//        fusionHeadAllocation3 = nil
+//        fusionHeadAllocation4 = nil
         fusionTailReferenceCount = -9999
         fusionTail = nil
-        fusionSize = -9999
-        numFusedUnaryOperations = 0
-        numFusedNonUnaryOperations = 0
+//        fusionSize = -9999
+//        numFusedUnaryOperations = 0
+//        numFusedNonUnaryOperations = 0
       }
       func noMissingHeads() -> Bool {
-        if fusionHeadAllocation2 == nil {
-          if fusionHeadAllocation3 != nil {
+        if fusion.input2 == nil {
+          if fusion.input3 != nil {
             return false
           }
-        } else if fusionHeadAllocation3 == nil {
-          if fusionHeadAllocation4 != nil {
+        } else if fusion.input3 == nil {
+          if fusion.input4 != nil {
             return false
           }
         }
         return true
       }
-      guard let fusionHeadAllocation1 = fusionHeadAllocation1,
+      guard fusion.input1 != nil,
             let fusionTail = fusionTail,
-            let fusionDataGroup = fusionDataGroup,
             fusionTailReferenceCount >= 0,
-            fusionSize >= 0,
+            fusion.size >= 0,
             noMissingHeads() else {
         fatalError("Something went wrong while fusing operations.")
       }
@@ -149,37 +180,44 @@ extension Context {
       precondition(!fusionTailAllocation.initialized, "This should never happen.")
       fusionTailAllocation.initialized = true
       
-      let elementwise = Instruction.Elementwise(
-        operations: fusionOperations,
-        metadata: fusionMetadata,
-        dataGroup: fusionDataGroup,
-        numFusedUnaryOperations: numFusedUnaryOperations,
-        numFusedNonUnaryOperations: numFusedNonUnaryOperations,
-        input1: fusionHeadAllocation1,
-        input2: fusionHeadAllocation2,
-        input3: fusionHeadAllocation3,
-        input4: fusionHeadAllocation4,
-        output: fusionTailAllocation,
-        size: fusionSize)
-      graph.append(elementwise, tailReferenceCount: fusionTailReferenceCount)
       if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
-        let numFusedOperations = numFusedUnaryOperations + numFusedNonUnaryOperations
+        let numFusedOperations = fusion.numFusedUnaryOperations + fusion.numFusedNonUnaryOperations
         if numFusedOperations >= 2 {
           print("""
-              Fused \(numFusedOperations) operations (\(numFusedUnaryOperations) unary, \
-            \(numFusedNonUnaryOperations) non-unary)
+              Fused \(numFusedOperations) operations (\(fusion.numFusedUnaryOperations) unary, \
+            \(fusion.numFusedNonUnaryOperations) non-unary)
             """)
-        } else if numFusedUnaryOperations == 1 {
-          precondition(numFusedNonUnaryOperations == 0)
+        } else if fusion.numFusedUnaryOperations == 1 {
+          precondition(fusion.numFusedNonUnaryOperations == 0)
           print("  Appended single unary operation")
-        } else if numFusedNonUnaryOperations == 1 {
-          precondition(numFusedUnaryOperations == 0)
+        } else if fusion.numFusedNonUnaryOperations == 1 {
+          precondition(fusion.numFusedUnaryOperations == 0)
           print("  Appended single non-unary operation")
         } else {
           print("  Appended copying operation")
         }
       }
+      
+//      let elementwise = Instruction.Elementwise(
+//        operations: fusionOperations,
+//        metadata: fusionMetadata,
+//        dataGroup: fusionDataGroup,
+//        numFusedUnaryOperations: numFusedUnaryOperations,
+//        numFusedNonUnaryOperations: numFusedNonUnaryOperations,
+//        input1: fusionHeadAllocation1,
+//        input2: fusionHeadAllocation2,
+//        input3: fusionHeadAllocation3,
+//        input4: fusionHeadAllocation4,
+//        output: fusionTailAllocation,
+//        size: fusionSize)
+      fusion.output = fusionTailAllocation
+      // TODO: Efficiently swap the local `elementwise` variable here to avoid ARC overhead.
+      // TODO: Make `append` operate on an `__owned` value. Or append a placeholder then swap.
+      graph.append(fusion/*elementwise*/, tailReferenceCount: fusionTailReferenceCount)
+      
     }
+    
+    // MARK: - Switch Statement
     
     // Separating each case with a newline to make this much easier to read.
     for i in eagerOperations.indices {
@@ -190,7 +228,7 @@ extension Context {
         var restartingFusion: Bool
         if input == fusionTail {
           // In the middle of an operation fusion.
-          if fusionDataGroup! == unary.dataGroup {
+          if fusion.dataGroup == unary.dataGroup {
             restartingFusion = false
           } else {
             restartingFusion = true
@@ -216,12 +254,21 @@ extension Context {
         
         // Restart operation fusion.
         if restartingFusion {
-          if fusionDataGroup != nil {
+          let shouldTryRemoval = graph.shouldTryRemoval
+          if fusion.input1 != nil {
             appendOperationFusion()
           }
-          fusionHeadAllocation1 = input.reference!.takeUnretainedValue()
-          fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
-          fusionDataGroup = unary.dataGroup
+          if shouldTryRemoval && switchContext(
+            .init(input, referenceCount), dataGroup: unary.dataGroup, availableHeads: 0) {
+            // Switched context.
+          } else {
+            fusion.input1 = input.reference!.takeUnretainedValue()
+            fusion.size = input.dataType.contiguousSize(byteCount: input.byteCount)
+            fusion.dataGroup = unary.dataGroup
+//            fusionHeadAllocation1 = input.reference!.takeUnretainedValue()
+//            fusionSize = input.dataType.contiguousSize(byteCount: input.byteCount)
+//            fusionDataGroup = unary.dataGroup
+          }
         }
         
         // Append operation.
@@ -230,12 +277,12 @@ extension Context {
         if unary.operation == .max {
           // Skip no-ops.
         } else {
-          fusionOperations.append(unary.operation)
+          fusion.operations.append(unary.operation)
           if let metadata = unary.metadata {
-            fusionMetadata.append(metadata)
+            fusion.metadata.append(metadata)
           }
         }
-        numFusedUnaryOperations += 1
+        fusion.numFusedUnaryOperations += 1
         
         // Release input.
         if referenceCount == 0 {
@@ -253,9 +300,9 @@ extension Context {
         var restartingFusion = true
         if input1 == fusionTail || input2 == fusionTail {
           // In the middle of an operation fusion.
-          if fusionDataGroup! == binary.dataGroup {
+          if fusion.dataGroup == binary.dataGroup {
             // Before fusing, factor in whether enough heads are available.
-            if fusionHeadAllocation4 == nil {
+            if fusion.input4 == nil {
               restartingFusion = false
             }
           }
@@ -308,18 +355,25 @@ extension Context {
         
         // Restart operation fusion.
         if restartingFusion {
-          if fusionDataGroup != nil {
+          let shouldTryRemoval = graph.shouldTryRemoval
+          if fusion.input1 != nil {
             appendOperationFusion()
           }
-          fusionHeadAllocation1 = input1.reference!.takeUnretainedValue()
-          fusionSize = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
-          fusionDataGroup = binary.dataGroup
+          if shouldTryRemoval && switchContext(
+            .init(input1, referenceCount1), .init(input2, referenceCount2),
+            dataGroup: binary.dataGroup, availableHeads: 1) {
+            // Switched context.
+          } else {
+            fusion.input1 = input1.reference!.takeUnretainedValue()
+            fusion.size = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
+            fusion.dataGroup = binary.dataGroup
+          }
         }
         
         // Ensure operands are in correct registers.
         if fusionTail == nil {
           // No tail exists yet; beginning of operation fusion.
-          fusionHeadAllocation2 = input2.reference!.takeUnretainedValue()
+          fusion.input2 = input2.reference!.takeUnretainedValue()
         } else {
           // Take special care to avoid bugs when input1 == input2, or either input has already been
           // read. Previous tail is always register 1, fetch other input from device RAM.
@@ -329,45 +383,45 @@ extension Context {
           
           if input1 == fusionTail {
             let newHead = input2.reference!.takeUnretainedValue()
-            if fusionHeadAllocation2 == nil {
-              fusionHeadAllocation2 = newHead
-            } else if fusionHeadAllocation3 == nil {
+            if fusion.input2 == nil {
+              fusion.input2 = newHead
+            } else if fusion.input3 == nil {
               // RHS: reg3 -> reg2
-              fusionHeadAllocation3 = newHead
-              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
-            } else {
+              fusion.input3 = newHead
+              fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            } else /*fusion.input4 == nil*/ {
               // RHS: reg4 -> reg2
-              fusionHeadAllocation4 = newHead
-              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
+              fusion.input4 = newHead
+              fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
             }
           } else if input2 == fusionTail {
             let newHead = input1.reference!.takeUnretainedValue()
-            if fusionHeadAllocation2 == nil {
-              fusionHeadAllocation2 = newHead
-            } else if fusionHeadAllocation3 == nil {
+            if fusion.input2 == nil {
+              fusion.input2 = newHead
+            } else if fusion.input3 == nil {
               // LHS: reg3 -> reg2
-              fusionHeadAllocation3 = newHead
-              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
-            } else {
+              fusion.input3 = newHead
+              fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            } else /*fusion.input4 == nil*/ {
               // LHS: reg3 -> reg2
-              fusionHeadAllocation4 = newHead
-              fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
+              fusion.input4 = newHead
+              fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_4.rawValue)
             }
             
             // LHS: reg2 -> reg1
             // RHS: reg1 -> reg2
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
           } else {
             fatalError("This should never happen.")
           }
         }
         
         // Append operation.
-        fusionOperations.append(1000 + binary.operation)
+        fusion.operations.append(1000 + binary.operation)
         if let metadata = binary.metadata {
-          fusionMetadata.append(metadata)
+          fusion.metadata.append(metadata)
         }
-        numFusedNonUnaryOperations += 1
+        fusion.numFusedNonUnaryOperations += 1
         
         // Release inputs.
         if referenceCount1 == 0 {
@@ -391,10 +445,10 @@ extension Context {
         var restartingFusion = true
         if input1 == fusionTail || input2 == fusionTail || input3 == fusionTail {
           // In the middle of an operation fusion.
-          if fusionDataGroup! == ternary.dataGroup {
+          if fusion.dataGroup == ternary.dataGroup {
             // Before fusing, factor in whether enough heads are available.
-            if fusionHeadAllocation3 == nil {
-              precondition(fusionHeadAllocation4 == nil, "Input 3 is missing.")
+            if fusion.input3 == nil {
+              precondition(fusion.input4 == nil, "Input 3 is missing.")
               restartingFusion = false
             }
           }
@@ -456,19 +510,19 @@ extension Context {
         }
         // Restart operation fusion.
         if restartingFusion {
-          if fusionDataGroup != nil {
+          if fusion.input1 != nil {
             appendOperationFusion()
           }
-          fusionHeadAllocation1 = input1.reference!.takeUnretainedValue()
-          fusionSize = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
-          fusionDataGroup = ternary.dataGroup
+          fusion.input1 = input1.reference!.takeUnretainedValue()
+          fusion.size = firstShapeMatch.dataType.contiguousSize(byteCount: firstShapeMatch.byteCount)
+          fusion.dataGroup = ternary.dataGroup
         }
         
         // Ensure operands are in correct registers.
         if fusionTail == nil {
           // No tail exists yet; beginning of operation fusion.
-          fusionHeadAllocation2 = input2.reference!.takeUnretainedValue()
-          fusionHeadAllocation3 = input3.reference!.takeUnretainedValue()
+          fusion.input2 = input2.reference!.takeUnretainedValue()
+          fusion.input3 = input3.reference!.takeUnretainedValue()
         } else {
           // Take special care to avoid bugs when input1 == input2, or either input has already been
           // read. Previous tail is always register 1, fetch other input from device RAM.
@@ -496,23 +550,23 @@ extension Context {
             fatalError("This should never happen.")
           }
           
-          if fusionHeadAllocation2 == nil {
-            precondition(fusionHeadAllocation3 == nil, "Input 2 is missing.")
-            fusionHeadAllocation2 = newHead1
-            fusionHeadAllocation3 = newHead2
+          if fusion.input2 == nil {
+            precondition(fusion.input3 == nil, "Input 2 is missing.")
+            fusion.input3 = newHead1
+            fusion.input4 = newHead2
           } else {
-            precondition(fusionHeadAllocation3 == nil, "This should never happen.")
-            precondition(fusionHeadAllocation4 == nil, "Input 3 is missing.")
-            fusionHeadAllocation3 = newHead1
-            fusionHeadAllocation4 = newHead2
+            precondition(fusion.input3 == nil, "This should never happen.")
+            precondition(fusion.input4 == nil, "Input 3 is missing.")
+            fusion.input3 = newHead1
+            fusion.input4 = newHead2
             
             // newHead1: reg3 -> reg2
             // undefined: reg2 -> reg3
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
             
             // newHead2: reg4 -> reg3
             // undefined: reg3 -> reg4
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_3_4.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_3_4.rawValue)
           }
           
           if tailRegister == 1 {
@@ -520,24 +574,24 @@ extension Context {
           } else if tailRegister == 2 {
             // input1: reg2 -> reg1
             // input2: reg1 -> reg2
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
           } else /*tailRegister == 3*/ {
             // input1: reg2 -> reg1
             // input3: reg1 -> reg2
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_1_2.rawValue)
             
             // input2: reg3 -> reg2
             // input3: reg2 -> reg3
-            fusionOperations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
+            fusion.operations.append(3000 + RegisterSwapType.swap_registers_2_3.rawValue)
           }
         }
         
         // Append operation.
-        fusionOperations.append(2000 + ternary.operation)
+        fusion.operations.append(2000 + ternary.operation)
         if let metadata = ternary.metadata {
-          fusionMetadata.append(metadata)
+          fusion.metadata.append(metadata)
         }
-        numFusedNonUnaryOperations += 1
+        fusion.numFusedNonUnaryOperations += 1
         
         // Release inputs.
         if referenceCount1 == 0 {
@@ -561,7 +615,7 @@ extension Context {
         fusionTail = output
         
       case .explicitCopy(let explicitCopy):
-        if fusionDataGroup != nil {
+        if fusion.input1 != nil {
           appendOperationFusion()
         }
         
@@ -582,7 +636,7 @@ extension Context {
     }
     
     // Finish compilation and return the compiled operations.
-    if fusionDataGroup != nil {
+    if fusion.input1 != nil {
       appendOperationFusion()
     }
     
@@ -632,6 +686,8 @@ extension Context {
     // TODO: This can actually happen if the last fusion is a zombie. Leave the precondition here
     // until I create a test for it, then transform into something that peels back the list's end.
     // The final product should either (a) end with a valid instruction or (b) have zero length.
+    //
+    // MemoryTests.testZombieOperationRemoval
     precondition(!graph.endsWithPlaceholder, """
       Last instruction should never be a placeholder. That breaks the command stream's iteration \
       mechanism.

@@ -211,7 +211,7 @@ private extension Context {
     var shouldBarrier3: Bool = false
     var shouldBarrier4: Bool = false
     do {
-      let input1 = instruction.input1
+      let input1 = instruction.input1!
       try input1.materialize()
       encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
       shouldBarrier1 = ectx.memoryBarrier(allocation: input1)
@@ -235,7 +235,7 @@ private extension Context {
       var resources: [MTLBuffer] = []
       resources.reserveCapacity(4)
       if shouldBarrier1 {
-        resources.append(instruction.input1.mtlBuffer!)
+        resources.append(instruction.input1!.mtlBuffer!)
       }
       if shouldBarrier2 {
         resources.append(instruction.input2!.mtlBuffer!)
@@ -250,7 +250,7 @@ private extension Context {
     }
     
     do {
-      let output = instruction.output
+      let output = instruction.output!
       try output.materialize()
       encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 7)
       ectx.useAllocation(output)
