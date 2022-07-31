@@ -29,6 +29,7 @@ public class PluggableDeviceTensorHandle {
   }
   
   deinit {
+    // TODO: Implement this stuff in a force-inlined protocol extension.
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
     if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
       Context.deallocate(_cTensorHandle)
@@ -82,6 +83,8 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     let (cTensorHandle, _) = shape.withUnsafeBufferPointer {
       // TODO: Fuse `allocate` and `initialize` into one function, reducing overhead. Keep the
       // separate ones around for compatibility/flexibility.
+      //
+      // TODO: New function names are `createTensor` and `destroyTensor`.
       Context.allocate(Scalar.self, $0)
     }
     Context.initialize(cTensorHandle) { buffer in

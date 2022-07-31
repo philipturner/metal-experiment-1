@@ -332,5 +332,32 @@ final class TensorTests: XCTestCase {
       output[i] = reg1
       #endif
     }
+    
+    // Non-adjacent fusion resulting in a zombie.
+    do {
+      if showMarkers {
+        print("MARKER 7")
+      }
+      func getOutput() -> Tensor<Float> {
+        let tensor1 = sqrt(Tensor<Float>([25, 25, 25]))
+        let tensor2 = Tensor<Float>([2, 2, 2])
+        let tensor3 = Tensor<Float>([3, 3, 3])
+        let tensor4 = max(tensor2, tensor3) // 3.0
+        // Fusion break
+        let tensor5 = Tensor<Float>([4, 4, 4])
+        _ = -tensor5 // Zombie tensor
+        // Fusion break + context switch
+        _ = Tensor<Int32>(tensor4) // Zombie tensor
+        return tensor1
+      }
+      XCTAssertEqual(getOutput().scalars, [5, 5, 5])
+      
+      #if false // Dumped instructions
+      var reg1 = input1[i]
+      reg1 = sqrt_f32(reg1)
+      output[i] = reg1
+      #endif
+    }
   }
 }
+

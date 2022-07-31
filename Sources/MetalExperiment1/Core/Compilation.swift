@@ -121,8 +121,9 @@ extension Context {
         fatalError("Something went wrong while fusing operations.")
       }
       
-      // The frontend will never read this operation's results, so abort it. This may make
-      // benchmarks difficult, because not every dispatched operation actually executes.
+      // The frontend will never read this operation's results, so abort it. The tail was
+      // deallocated; dereferencing its handle creates a runtime segfault. This may make benchmarks
+      // difficult, because not every dispatched operation actually executes.
       guard fusionTailReferenceCount > 0 else {
         return
       }
@@ -583,8 +584,9 @@ extension Context {
     if fusion.input1 != nil {
       appendOperationFusion()
     }
+    return graph.finish()
     
-    // Referring to all the source code above:
+    // Referring to the source code above:
     //
     // Here's how non-adjacent operation fusion works. When there is no source tail, look back at
     // the history of ops. Find a compatible one with a refcount=1 tail, then pull it out of the
@@ -607,29 +609,5 @@ extension Context {
     // (O(n^2)). The instruction must be re-inserted at the end of the list to preserve temporal
     // order of execution; one of its heads might come from another instruction during this
     // compilation.
-    //
-    // Do not compress the list before sending it off to the command stream. It is faster to scan
-    // over placeholders and not encode them. This is why `compileEagerOperations` returns an array
-    // of optional values.
-    //
-    // In the worst case, two fusable unary operation streams are interlaced. It switches contexts
-    // after each operation. Assuming `maxCommandsPerBatch == 128`, it ends with 127 null values and
-    // 2 non-null values. To reduce the overhead of lookup, periodically compress the list when:
-    // - (1) At least 8 elements are null
-    // - AND
-    // - (2) Null elements make up at least 1/4 of the list.
-    //
-    // Thus, the compiler should keep track of how many null elements exist at a given moment.
-    
-    // TODO: This can actually happen if the last fusion is a zombie. Leave the precondition here
-    // until I create a test for it, then transform into something that peels back the list's end.
-    // The final product should either (a) end with a valid instruction or (b) have zero length.
-    //
-    // MemoryTests.testZombieOperationRemoval
-    precondition(!graph.endsWithPlaceholder, """
-      Last instruction should never be a placeholder. That breaks the command stream's iteration \
-      mechanism.
-      """)
-    return graph.instructions
   }
 }

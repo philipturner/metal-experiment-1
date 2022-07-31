@@ -320,6 +320,9 @@ private extension Context {
               commandBufferID: commandBufferID)
             commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
           }
+        } else {
+          // System ran out of memory while encoding the first instruction. Skip spawning a no-op
+          // command buffer.
         }
         if encounteredError {
           if _fastLoadCommittedBatches() == 0 {

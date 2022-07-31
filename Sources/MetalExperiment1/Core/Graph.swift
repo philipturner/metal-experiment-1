@@ -6,16 +6,14 @@
 //
 
 struct Graph {
-  private(set) var instructions: [Instruction?]
-  
-  // Keep the cache's object around between compiler passes, avoiding the overhead of allocatng a
-  // Swift object every pass.
-  private static var cache: [AllocationHandle: Int] = [:]
+  private var instructions: [Instruction?]
+  private var cache: [AllocationHandle: Int]
+  private var numInstructionPlaceholders = 0
   
   init(eagerOperationCount: Int) {
     self.instructions = []
     self.instructions.reserveCapacity(eagerOperationCount)
-    Self.cache.removeAll(keepingCapacity: true)
+    self.cache = [:]
   }
 }
 
@@ -26,8 +24,8 @@ extension Graph {
     if tailReferenceCount == 1 {
       // The cache should never already contain the tail. This check is costly, so only perform it
       // in debug mode.
-      assert(Self.cache[handle] == nil, "Cache already contained tail.")
-      Self.cache[handle] = instructions.count - 1
+      assert(cache[handle] == nil, "Cache already contained tail.")
+      cache[handle] = instructions.count - 1
     }
   }
   
@@ -36,11 +34,21 @@ extension Graph {
   }
   
   var shouldTryRemoval: Bool {
-    Self.cache.count > 0
+    cache.count > 0
   }
   
   var endsWithPlaceholder: Bool {
     instructions.count > 0 && instructions.last! == nil
+  }
+  
+  mutating func finish() -> [Instruction?] {
+    // The last instruction should never be a placeholder. That breaks the command stream's
+    // iteration mechanism. I could pop placeholders off the end until the last element is valid,
+    // but that would cause problems when the system runs out of memory. If any placeholder exists,
+    // it could spawn a no-op command buffer when the command stream subdivides the list of
+    // instructions.
+    instructions.removeAll(where: { $0 == nil })
+    return instructions
   }
 }
 
@@ -66,7 +74,7 @@ extension Graph {
        (key3?.referenceCount ?? 1) > 0 {
       return false
     }
-    if Self.cache.isEmpty {
+    if cache.isEmpty {
       return false
     }
     return true
@@ -98,7 +106,7 @@ extension Graph {
       }
       
       guard key.referenceCount == 0,
-            let match = Self.cache[key.handle] else {
+            let match = cache[key.handle] else {
         continue
       }
       
