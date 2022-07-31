@@ -43,8 +43,53 @@ extension Context {
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
     var fusionSize: Int = -9999
-    var numFusedUnaryOperations: Int = 0
-    var numFusedNonUnaryOperations: Int = 0
+    var numFusedUnaryOperations: UInt16 = 0
+    var numFusedNonUnaryOperations: UInt16 = 0
+    
+    // TODO: Call `switchContext` based on the following heuristic. If there were no previous
+    // instructions and you just added one because of a forced graph break, don't search the
+    // history. There won't be any matching instructions.
+    //
+    // Extracts matching instruction from history to continue working on. Changes the variables
+    // above to reflect the extracted instruction.
+    @inline(__always)
+    func switchContext(
+      _ key1: Graph.SearchKey,
+      _ key2: Graph.SearchKey? = nil,
+      _ key3: Graph.SearchKey? = nil,
+      dataGroup: DataGroup,
+      availableHeads: Int
+    ) {
+      if graph.shouldRemove(matching: key1, key2, key3) {
+        switchContextSlowPath(key1, key2, key3, dataGroup, availableHeads)
+      }
+    }
+    
+    @inline(never)
+    func switchContextSlowPath(
+      _ key1: Graph.SearchKey,
+      _ key2: Graph.SearchKey?,
+      _ key3: Graph.SearchKey?,
+      _ dataGroup: DataGroup,
+      _ availableHeads: Int
+    ) {
+      let elementwise = graph.remove(
+        matching: key1, key2, key3, dataGroup: dataGroup, availableHeads: availableHeads)
+      if let elementwise = elementwise {
+        fusionOperations = elementwise.operations
+        fusionMetadata = elementwise.metadata
+        fusionDataGroup = elementwise.dataGroup
+        fusionHeadAllocation1 = elementwise.input1
+        fusionHeadAllocation2 = elementwise.input2
+        fusionHeadAllocation3 = elementwise.input3
+        fusionHeadAllocation4 = elementwise.input4
+        fusionTailReferenceCount = 0
+        fusionTail = elementwise.output.handle
+        fusionSize = elementwise.size
+        numFusedUnaryOperations = elementwise.numFusedUnaryOperations
+        numFusedNonUnaryOperations = elementwise.numFusedNonUnaryOperations
+      }
+    }
     
     // Call this before encoding operations that can't be fused. Avoid proactively peeking at the
     // next operation and seeing whether the fusion ends, because that's costly (0.03 - 0.04 µs).
@@ -88,16 +133,6 @@ extension Context {
       // The frontend will never read this operation's results, so abort it. This may make
       // benchmarks difficult, because not every dispatched operation actually executes.
       guard fusionTailReferenceCount > 0 else {
-        // If one of the heads matched another instruction's tail with cached refcount = 2,
-        // decrement that reference count. It might now be available for fusion. This update will
-        // not catch all cases where an instruction becomes fusable. For example, the fusion match
-        // may encode before the zombie operation chain. To fuse, the zombie chain must go first.
-        
-        // TODO: Call `registerZombie` and print/fatalError to prove it happens. Otherwise, provide
-        // a test case where it happens (small divergence on the dependency chain). Make a massive
-        // warning when an instruction is deleted. Make a test case that proves it's okay to remove
-        // an instruction, and prove it is removed by activating `Instruction.Elementwise.dump`.
-//        let reference
         return
       }
       
@@ -118,6 +153,8 @@ extension Context {
         operations: fusionOperations,
         metadata: fusionMetadata,
         dataGroup: fusionDataGroup,
+        numFusedUnaryOperations: numFusedUnaryOperations,
+        numFusedNonUnaryOperations: numFusedNonUnaryOperations,
         input1: fusionHeadAllocation1,
         input2: fusionHeadAllocation2,
         input3: fusionHeadAllocation3,

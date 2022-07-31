@@ -43,31 +43,36 @@ extension Graph {
   struct SearchKey {
     var handle: AllocationHandle
     var referenceCount: Int
+    
+    init(_ handle: AllocationHandle, _ referenceCount: Int) {
+      self.handle = handle
+      self.referenceCount = referenceCount
+    }
   }
   
   @inline(__always)
-  mutating func remove(
+  func shouldRemove(
     matching key1: SearchKey,
-    _ key2: SearchKey? = nil,
-    _ key3: SearchKey? = nil,
-    availableHeads: Int
-  ) -> Instruction.Elementwise? {
+    _ key2: SearchKey?,
+    _ key3: SearchKey?
+  ) -> Bool {
     if key1.referenceCount == 0,
        key2?.referenceCount == 0,
        key3?.referenceCount == 0 {
-      return nil
+      return false
     }
     if Self.cache.isEmpty {
-      return nil
+      return false
     }
-    return removeSlowPath(matching: key1, key2, key3, availableHeads: availableHeads)
+    return true
   }
   
-  @inline(never)
-  private mutating func removeSlowPath(
+  // Wrap this in an `@inline(never)` nested function.
+  mutating func remove(
     matching key1: SearchKey,
     _ key2: SearchKey?,
     _ key3: SearchKey?,
+    dataGroup: DataGroup,
     availableHeads: Int
   ) -> Instruction.Elementwise? {
     for i in 0..<3 {
@@ -93,8 +98,6 @@ extension Graph {
             let match = Self.cache[key.handle] else {
         continue
       }
-      // TODO: Remove the key from the cache, utilizing `swap` to invoke one function call to
-      // dictionary subscript instead of 2.
       
       // Using `swap` might avoid ARC overhead of extracting the instruction from the list.
       var instruction: Instruction? = /*placeholder*/nil
@@ -116,7 +119,9 @@ extension Graph {
       }
       
       var canUseMatch: Bool
-      if elementwise.input4 != nil {
+      if elementwise.dataGroup != dataGroup {
+        canUseMatch = false
+      } else if elementwise.input4 != nil {
         canUseMatch = availableHeads == 0
       } else if elementwise.input3 != nil {
         canUseMatch = availableHeads <= 1
@@ -145,57 +150,5 @@ extension Graph {
       }
     }
     return nil
-  }
-  
-  mutating func registerZombies(
-    _ allocation1: Allocation,
-    _ allocation2: Allocation?,
-    _ allocation3: Allocation?,
-    _ allocation4: Allocation?
-  ) {
-    for i in 0..<4 {
-      var handle: AllocationHandle
-      switch i {
-      case 0:
-        handle = allocation1.handle
-      case 1:
-        guard let allocation2 = allocation2 else {
-          continue
-        }
-        handle = allocation2.handle
-      case 2:
-        guard let allocation3 = allocation3 else {
-          continue
-        }
-        handle = allocation3.handle
-      case 3:
-        guard let allocation4 = allocation4 else {
-          continue
-        }
-        handle = allocation4.handle
-      default:
-        fatalError("This should never happen.")
-      }
-      let referenceCount = handle.referenceCount.load(ordering: .relaxed)
-      guard referenceCount == 0 else {
-        continue
-      }
-//      
-//      var instructionIndex: Int
-//      if let index = Self.cache[handle] {
-//        Self.cache[handle] = nil
-//        instructionIndex = index
-//      } else {
-//        let index = instructions.firstIndex(where: {
-//          guard case .elementwise(let elementwise) = $0 else {
-//            continue
-//          }
-//          return elementwise.output.handle
-//        })
-//      }
-//      
-//      print("WARNING: INSTRUCTION REMOVED AT INDEX '\(index)'")
-//      self.instructions[instructionIndex] = nil
-    }
   }
 }

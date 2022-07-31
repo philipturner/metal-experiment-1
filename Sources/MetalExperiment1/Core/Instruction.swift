@@ -21,6 +21,10 @@ enum Instruction {
     var metadata: SmallVector<SIMD2<UInt64>>
     var dataGroup: DataGroup
     
+    // Debug info for reconstructing context when fusing non-adjacent operations.
+    var numFusedUnaryOperations: UInt16
+    var numFusedNonUnaryOperations: UInt16
+    
     var input1: Allocation
     var input2: Allocation?
     var input3: Allocation?
