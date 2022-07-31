@@ -24,6 +24,19 @@ func testHeader(_ message: String? = nil) {
   Context.barrier()
 }
 
+protocol DummyPluggableDevice: AnyObject {
+  
+}
+
+func doSomething<T: DummyPluggableDevice>(type: T.Type, _ x: any DummyPluggableDevice) {
+  _ = Unmanaged.passUnretained(x as! T).toOpaque()
+}
+
+func doSomething2(_ x: any DummyPluggableDevice) {
+  let type2 = type(of: x)
+  doSomething(type: type2, x)
+}
+
 final class MetalExperiment1Tests: XCTestCase {
   func testSynchronizationLatency() throws {
     testHeader("Synchronization latency")

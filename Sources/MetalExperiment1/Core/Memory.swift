@@ -12,29 +12,17 @@ extension Context {
   // Returns (handle, rank) to match the style of other function calls. Avoids a possible second
   // virtual function call by transforming the generic parameter into something statically typed.
   @inline(never)
-  public static func allocate(
+  public static func createTensor(
     _ type: Any.Type,
-    _ shape: UnsafeBufferPointer<Int>
-  ) -> (OpaquePointer, Int) {
+    _ shape: UnsafeBufferPointer<Int>,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) -> OpaquePointer {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = Context.global.sync {
-      Context.global.globalTensorCount += 1
-      return Context.global._internalAllocate(1, dataType, byteCount, shape)
+      Context.global._internalCreateTensor(1, dataType, byteCount, shape, body)
     }
-    return (handle._cHandle, shape.count)
-  }
-  
-  @inline(never)
-  public static func initialize(
-    _ cHandle: OpaquePointer,
-    _ body: (UnsafeMutableRawBufferPointer) -> Void
-  ) {
-    Context.global.sync {
-      let reference = AllocationHandle(cHandle).reference!
-      reference.retain().takeUnretainedValue().initialize(body)
-      reference.release()
-    }
+    return handle._cHandle
   }
   
   @inline(never)
@@ -54,7 +42,6 @@ extension Context {
     _ cHandle: OpaquePointer
   ) {
     Context.global.sync {
-      Context.global.globalTensorCount -= 1
       let handle = AllocationHandle(cHandle)
       precondition(
         handle.referenceCount.load(ordering: .relaxed) == 0,
@@ -65,9 +52,56 @@ extension Context {
       reference.release()
     }
   }
+  
+  // Only use this in the test suite.
+  @inline(never)
+  internal static func allocate(
+    _ type: Any.Type,
+    _ shape: UnsafeBufferPointer<Int>
+  ) -> OpaquePointer {
+    let dataType = DataType(type)
+    let byteCount = shape.reduce(dataType.stride, *)
+    let handle = Context.global.sync {
+      Context.global._internalAllocate(1, dataType, byteCount, shape)
+    }
+    return handle._cHandle
+  }
+  
+  // Only use this in the test suite.
+  @inline(never)
+  public static func initialize(
+    _ cHandle: OpaquePointer,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    Context.global.sync {
+      let reference = AllocationHandle(cHandle).reference!
+      reference.retain().takeUnretainedValue().initialize(body)
+      reference.release()
+    }
+  }
 }
 
 extension Context {
+  @inline(__always)
+  func _internalCreateTensor(
+    _ referenceCount: Int,
+    _ dataType: DataType,
+    _ byteCount: Int,
+    _ shape: UnsafeBufferPointer<Int>,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) -> AllocationHandle {
+    let id = nextAllocationID
+    nextAllocationID = id + 1
+    let allocation = Allocation(
+      id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
+      shape: shape)
+    
+    let handle = allocation.handle
+    handle.reference = .passRetained(allocation)
+    allocation.initialize(body)
+    return handle
+  }
+  
   @inline(__always)
   func _internalAllocate(
     _ referenceCount: Int,
@@ -427,6 +461,7 @@ public struct AllocationHandle: Hashable {
     var bufferSize = 0
     bufferSize += 1 // referenceCount
     bufferSize += 1 // reference
+    bufferSize += 1 // pluggable device memory address
     bufferSize += 1 // dataType
     bufferSize += 1 // byteCount
     bufferSize += 1 // rank
@@ -434,13 +469,15 @@ public struct AllocationHandle: Hashable {
     bufferSize *= MemoryLayout<Int>.stride
     baseAddress = malloc(bufferSize)!.assumingMemoryBound(to: Int.self)
     
+    let pluggableDeviceAddress = Unmanaged.passUnretained(Context.global).toOpaque()
     baseAddress[0] = referenceCount
     baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
-    baseAddress[2] = Int(dataType.rawValue)
-    baseAddress[3] = byteCount
-    baseAddress[4] = shape.count
+    baseAddress[2] = Int(bitPattern: pluggableDeviceAddress)
+    baseAddress[3] = Int(dataType.rawValue)
+    baseAddress[4] = byteCount
+    baseAddress[5] = shape.count
     
-    let shapeBuffer = UnsafeMutableBufferPointer(start: baseAddress + 5, count: shape.count)
+    let shapeBuffer = UnsafeMutableBufferPointer(start: baseAddress + 6, count: shape.count)
     _ = shapeBuffer.initialize(from: shape)
   }
   
@@ -473,24 +510,31 @@ public struct AllocationHandle: Hashable {
     }
   }
   
+  // Use context object's memory address as a unique identfier. This is unique across
+  // implementations, even with the OpenCL backend.
+  @inline(__always)
+  internal var pluggableDevice: OpaquePointer {
+    OpaquePointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
+  }
+  
   @inline(__always)
   internal var dataType: DataType {
-    let rawValue = UInt16(truncatingIfNeeded: baseAddress[2])
+    let rawValue = UInt16(truncatingIfNeeded: baseAddress[3])
     return DataType(rawValue: rawValue).unsafelyUnwrapped
   }
   
   @inlinable @inline(__always)
   public var byteCount: Int {
-    baseAddress[3]
-  }
-  
-  @inlinable @inline(__always)
-  public var rank: Int {
     baseAddress[4]
   }
   
   @inlinable @inline(__always)
+  public var rank: Int {
+    baseAddress[5]
+  }
+  
+  @inlinable @inline(__always)
   public var shape: UnsafeBufferPointer<Int> {
-    UnsafeBufferPointer(start: baseAddress + 5, count: rank)
+    UnsafeBufferPointer(start: baseAddress + 6, count: rank)
   }
 }

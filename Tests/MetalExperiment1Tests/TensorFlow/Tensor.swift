@@ -20,15 +20,31 @@ public class PluggableDeviceTensorHandle {
   internal var _shape: [Int]?
   
   public init(_owning base: CTensorHandle) {
+    // Only check tensor leaks in debug mode because that's costly.
+    assert({
+      FrontendContext.local.globalTensorCount += 1
+      return true
+    }())
     self._cTensorHandle = base
   }
   
   public init(_owning base: CTensorHandle, shape: [Int]) {
+    // Only check tensor leaks in debug mode because that's costly.
+    assert({
+      FrontendContext.local.globalTensorCount += 1
+      return true
+    }())
     self._cTensorHandle = base
     self._shape = shape
   }
   
   deinit {
+    // Only check tensor leaks in debug mode because that's costly.
+    assert({
+      FrontendContext.local.globalTensorCount -= 1
+      return true
+    }())
+    
     // TODO: Implement this stuff in a force-inlined protocol extension.
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
     if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
@@ -80,17 +96,20 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     shape: [Int],
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
-    let (cTensorHandle, _) = shape.withUnsafeBufferPointer {
+    let cTensorHandle = shape.withUnsafeBufferPointer {
       // TODO: Fuse `allocate` and `initialize` into one function, reducing overhead. Keep the
       // separate ones around for compatibility/flexibility.
       //
       // TODO: New function names are `createTensor` and `destroyTensor`.
-      Context.allocate(Scalar.self, $0)
+      Context.createTensor(Scalar.self, $0, { buffer in
+        let pointer = buffer.assumingMemoryBound(to: Scalar.self)
+        scalarsInitializer(pointer.baseAddress!)
+      })
     }
-    Context.initialize(cTensorHandle) { buffer in
-      let pointer = buffer.assumingMemoryBound(to: Scalar.self)
-      scalarsInitializer(pointer.baseAddress!)
-    }
+//    Context.initialize(cTensorHandle) { buffer in
+//      let pointer = buffer.assumingMemoryBound(to: Scalar.self)
+//      scalarsInitializer(pointer.baseAddress!)
+//    }
     self.init(_owning: cTensorHandle, shape: shape)
   }
   

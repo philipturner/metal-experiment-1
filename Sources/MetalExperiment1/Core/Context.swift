@@ -19,9 +19,6 @@ public class Context {
   var synchronizationEvent: MTLEvent
   var synchronizationCounter: UInt64 = 0
   
-  // For leak checking in tests, lower overhead than S4TF's `Context.local.globalTensorCount`.
-  var globalTensorCount: Int = 0
-  
   static let maxBatchesInFlight = 3
   static var maxCommandsPerBatch = 128
   static var maxCommandsPerSmallBatch = 16

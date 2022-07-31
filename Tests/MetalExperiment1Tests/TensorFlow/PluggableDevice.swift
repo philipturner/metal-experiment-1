@@ -7,4 +7,8 @@
 
 import MetalExperiment1
 
-// Reimplement functionality of CTensorHandle.
+// Reimplement functionality of CTensorHandle here.
+
+public protocol PluggableDevice: AnyObject {
+  
+}

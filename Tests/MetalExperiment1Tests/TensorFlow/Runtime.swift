@@ -25,16 +25,19 @@ public final class _ExecutionContext {
     return _ThreadLocalState.local.deviceScopes._currentDevice
   }
   
-//  @usableFromInline
-//  @inline(never)
+  @usableFromInline
   @inline(__always)
-  @inlinable
+//  @inline(never)
   static func eagerExecute(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<OpaquePointer>,
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
+    // If an input is on the wrong device, swap it with a temporary tensor on the correct device.
+    // This is extremely costly, but should never happen in an average use case. Use `malloc`
+    // instead of `withUnsafeTemporaryAllocation` to create the alternative `input`.
+    
 //    for input in inputs {
 //      _ = AllocationHandle(input).referenceCount
 //    }
