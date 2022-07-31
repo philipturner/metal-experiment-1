@@ -15,6 +15,7 @@ struct EncodingContext {
   private var computeEncoderID: Int = -1
   var pipelineStateID: Int = -1
   var synchronizedResources: Set<AllocationHandle> = []
+  var barrierResources: [MTLBuffer] = []
   
   @inline(__always)
   init(commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
@@ -66,6 +67,7 @@ struct EncodingContext {
   
   @inline(__always)
   mutating func makeComputeCommandEncoder() -> MTLComputeCommandEncoder {
+    precondition(barrierResources.isEmpty, "Did not finish memory barrier in last compute pass.")
     if let computeEncoder = computeEncoder {
       return computeEncoder
     } else {
@@ -147,23 +149,27 @@ struct EncodingContext {
   
   // Returns whether the encoder should wait on the resource.
   @inline(__always)
-  mutating func memoryBarrier(allocation: Allocation) -> Bool {
+  mutating func addBarrierResource(_ allocation: Allocation, buffer: MTLBuffer) {
     guard allocation.lastModifiedCommandBufferID == commandBufferID,
           allocation.lastModifiedCommandEncoderID == computeEncoderID else {
-      return false
+      return
     }
-    memoryBarrierSlowPath(allocation)
-    return true
+    barrierResources.append(buffer)
+    
+    // This check is costly, so only perform it in debug mode.
+    assert(
+      synchronizedResources.contains(allocation.handle),
+      "Did not erase encoder ID after executing memory barrier on resource.")
+    synchronizedResources.remove(allocation.handle)
+    allocation.lastModifiedCommandEncoderID = -1
   }
   
-  @inline(never)
-  private mutating func memoryBarrierSlowPath(_ allocation: Allocation) {
-    let handle = allocation.handle
-    precondition(
-      synchronizedResources.contains(handle),
-      "Did not erase encoder ID after executing memory barrier on resource.")
-    synchronizedResources.remove(handle)
-    allocation.lastModifiedCommandEncoderID = -1
+  @inline(__always)
+  mutating func memoryBarrier() {
+    if barrierResources.count > 0 {
+      computeEncoder!.memoryBarrier(resources: barrierResources)
+      barrierResources.removeAll(keepingCapacity: true)
+    }
   }
 }
 
@@ -184,6 +190,14 @@ extension Context {
 }
 
 private extension Context {
+  // Reuse this array object between each function call. It avoids creating a new array object
+  // unless absolutely necessary.
+  static var barrierResources: [MTLBuffer] = {
+    var output: [MTLBuffer] = []
+    output.reserveCapacity(4)
+    return output
+  }()
+  
   func encodeElementwise(
     _ instruction: Instruction.Elementwise,
     into ectx: inout EncodingContext
@@ -206,55 +220,32 @@ private extension Context {
       }
     }
     
-    var shouldBarrier1: Bool
-    var shouldBarrier2: Bool = false
-    var shouldBarrier3: Bool = false
-    var shouldBarrier4: Bool = false
-    do {
-      let input1 = instruction.input1!
-      try input1.materialize()
-      encoder.setBuffer(input1.mtlBuffer!, offset: 0, index: 3)
-      shouldBarrier1 = ectx.memoryBarrier(allocation: input1)
-    }
-    if let input2 = instruction.input2 {
-      try input2.materialize()
-      encoder.setBuffer(input2.mtlBuffer!, offset: 0, index: 4)
-      shouldBarrier2 = ectx.memoryBarrier(allocation: input2)
-    }
-    if let input3 = instruction.input3 {
-      try input3.materialize()
-      encoder.setBuffer(input3.mtlBuffer!, offset: 0, index: 5)
-      shouldBarrier3 = ectx.memoryBarrier(allocation: input3)
-    }
-    if let input4 = instruction.input4 {
-      try input4.materialize()
-      encoder.setBuffer(input4.mtlBuffer!, offset: 0, index: 6)
-      shouldBarrier4 = ectx.memoryBarrier(allocation: input4)
-    }
-    if shouldBarrier1 || shouldBarrier2 || shouldBarrier3 || shouldBarrier4 {
-      var resources: [MTLBuffer] = []
-      resources.reserveCapacity(4)
-      if shouldBarrier1 {
-        resources.append(instruction.input1!.mtlBuffer!)
+    for i in 0..<5 {
+      var allocation: Allocation?
+      switch i {
+      case 0: allocation = instruction.input1
+      case 1: allocation = instruction.input2
+      case 2: allocation = instruction.input3
+      case 3: allocation = instruction.input4
+      default: /*4*/
+        allocation = instruction.output
       }
-      if shouldBarrier2 {
-        resources.append(instruction.input2!.mtlBuffer!)
+      guard let allocation = allocation else {
+        continue
       }
-      if shouldBarrier3 {
-        resources.append(instruction.input3!.mtlBuffer!)
+      
+      try allocation.materialize()
+      let buffer = allocation.mtlBuffer!
+      encoder.setBuffer(buffer, offset: 0, index: 3 + i)
+      if i < 4 {
+        // Allocation is an input.
+        ectx.addBarrierResource(allocation, buffer: buffer)
+      } else {
+        // Allocation is the output.
+        ectx.useAllocation(allocation)
       }
-      if shouldBarrier4 {
-        resources.append(instruction.input4!.mtlBuffer!)
-      }
-      encoder.memoryBarrier(resources: resources)
     }
-    
-    do {
-      let output = instruction.output!
-      try output.materialize()
-      encoder.setBuffer(output.mtlBuffer!, offset: 0, index: 7)
-      ectx.useAllocation(output)
-    }
+    ectx.memoryBarrier()
     
     enum MemoryCast: UInt16, RawRepresentable {
       case f32_i32_native = 0

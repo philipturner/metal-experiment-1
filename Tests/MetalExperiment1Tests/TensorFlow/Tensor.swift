@@ -80,6 +80,8 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
     let (cTensorHandle, _) = shape.withUnsafeBufferPointer {
+      // TODO: Fuse `allocate` and `initialize` into one function, reducing overhead. Keep the
+      // separate ones around for compatibility/flexibility.
       Context.allocate(Scalar.self, $0)
     }
     Context.initialize(cTensorHandle) { buffer in

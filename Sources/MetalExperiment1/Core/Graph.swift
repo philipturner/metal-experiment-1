@@ -90,13 +90,11 @@ extension Graph {
           continue
         }
         key = key2
-      case 2:
+      default: /*2*/
         guard let key3 = key3 else {
           continue
         }
         key = key3
-      default:
-        fatalError("This should never happen.")
       }
       
       guard key.referenceCount == 0,

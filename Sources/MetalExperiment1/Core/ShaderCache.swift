@@ -12,6 +12,8 @@ enum ShaderCache {
   static var semaphores: [StringWrapper: DispatchSemaphore] = [:]
   static var pipelines: [StringWrapper: MTLComputePipelineState] = [:]
   
+  // TODO: Avoid relying on static variables so much. If someone uses two Metal devices, everything
+  // will break. Instead, make this an instance property.
   private static var device: MTLDevice!
   private static var defaultLibrary: MTLLibrary?
   private static var shaderSourceDirectory: URL = Bundle.module.resourceURL!
