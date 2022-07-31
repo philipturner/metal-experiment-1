@@ -137,16 +137,7 @@ extension Graph {
       }
       
       if canUseMatch {
-        // TODO: Mark the fusion tail as un-initialized.
-        
-        // TODO: Extract some of the removal logic into the enclosing function body. This lets me
-        // unpack the elementwise operation into local variables inside an `@inline(never)`
-        // function without either (a) duplicating many CPU instructions or (b) invoking two
-        // function calls. Alternatively, the function call is permissible because the overhead is
-        // dwarfed by calling into `removeSlowPath` and its calls to `Dictionary` subscript.
-        //
-        // Store the number of fused operations as a tiny piece of metadata somewhere inside the
-        // elementwise instruction. It should be possible without changing the memory stride.
+        elementwise.output.initialized = false
         return elementwise
       } else {
         // Insert element back into list.
