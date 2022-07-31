@@ -97,6 +97,7 @@ extension Context {
         // a test case where it happens (small divergence on the dependency chain). Make a massive
         // warning when an instruction is deleted. Make a test case that proves it's okay to remove
         // an instruction, and prove it is removed by activating `Instruction.Elementwise.dump`.
+//        let reference
         return
       }
       

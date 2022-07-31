@@ -148,43 +148,54 @@ extension Graph {
   }
   
   mutating func registerZombies(
-    _ handle1: AllocationHandle?,
-    _ handle2: AllocationHandle?,
-    _ handle3: AllocationHandle?,
-    _ handle4: AllocationHandle?
+    _ allocation1: Allocation,
+    _ allocation2: Allocation?,
+    _ allocation3: Allocation?,
+    _ allocation4: Allocation?
   ) {
     for i in 0..<4 {
       var handle: AllocationHandle
       switch i {
       case 0:
-        guard let handle1 = handle1 else {
-          continue
-        }
-        handle = handle1
+        handle = allocation1.handle
       case 1:
-        guard let handle2 = handle2 else {
+        guard let allocation2 = allocation2 else {
           continue
         }
-        handle = handle2
+        handle = allocation2.handle
       case 2:
-        guard let handle3 = handle3 else {
+        guard let allocation3 = allocation3 else {
           continue
         }
-        handle = handle3
+        handle = allocation3.handle
       case 3:
-        guard let handle4 = handle4 else {
+        guard let allocation4 = allocation4 else {
           continue
         }
-        handle = handle4
+        handle = allocation4.handle
       default:
         fatalError("This should never happen.")
       }
-      
-      if let index = Self.cache[handle] {
-        print("WARNING: INSTRUCTION REMOVED AT INDEX '\(index)'")
-        Self.cache[handle] = nil
-        self.instructions[index] = nil
+      let referenceCount = handle.referenceCount.load(ordering: .relaxed)
+      guard referenceCount == 0 else {
+        continue
       }
+//      
+//      var instructionIndex: Int
+//      if let index = Self.cache[handle] {
+//        Self.cache[handle] = nil
+//        instructionIndex = index
+//      } else {
+//        let index = instructions.firstIndex(where: {
+//          guard case .elementwise(let elementwise) = $0 else {
+//            continue
+//          }
+//          return elementwise.output.handle
+//        })
+//      }
+//      
+//      print("WARNING: INSTRUCTION REMOVED AT INDEX '\(index)'")
+//      self.instructions[instructionIndex] = nil
     }
   }
 }
