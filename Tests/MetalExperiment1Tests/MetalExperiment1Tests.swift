@@ -219,8 +219,11 @@ final class MetalExperiment1Tests: XCTestCase {
         """)
     }
     
+    let maxCommandsPerBatch = Context.global.sync {
+      Context.global.maxCommandsPerBatch
+    }
     for _ in 0..<5 {
-      profileStream(length: Context.maxCommandsPerBatch * 4)
+      profileStream(length: maxCommandsPerBatch * 4)
     }
   }
   

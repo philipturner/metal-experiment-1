@@ -208,14 +208,14 @@ private extension Context {
       if ectx.pipelineStateID == 1 {
         // Avoid overhead of Metal API call.
       } else {
-        encoder.setComputePipelineState(ShaderCache.elementwise_f32_i32)
+        encoder.setComputePipelineState(Context.global.shaderCache.elementwise_f32_i32)
         ectx.pipelineStateID = 1
       }
     case .u32_i64_u64:
       if ectx.pipelineStateID == 2 {
         // Avoid overhead of Metal API call.
       } else {
-        encoder.setComputePipelineState(ShaderCache.elementwise_u32_i64_u64)
+        encoder.setComputePipelineState(Context.global.shaderCache.elementwise_u32_i64_u64)
         ectx.pipelineStateID = 2
       }
     }

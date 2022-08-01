@@ -9,72 +9,70 @@ import Atomics
 import MetalPerformanceShadersGraph
 
 extension Context {
-  // Returns (handle, rank) to match the style of other function calls. Avoids a possible second
-  // virtual function call by transforming the generic parameter into something statically typed.
   @inline(never)
-  public static func createTensor(
+  public func createTensor(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) -> OpaquePointer {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
-    let handle = Context.global.sync {
-      Context.global._internalCreateTensor(1, dataType, byteCount, shape, body)
+    let handle = self.sync {
+      self._internalCreateTensor(1, dataType, byteCount, shape, body)
     }
     return handle._cHandle
   }
   
   @inline(never)
-  public static func readTensor(
-    _ cHandle: OpaquePointer,
+  public func readTensor(
+    _ handle: OpaquePointer,
     _ body: (UnsafeRawBufferPointer) -> Void
   ) {
-    Context.global.sync {
-      let reference = AllocationHandle(cHandle).reference!
+    self.sync {
+      let reference = AllocationHandle(handle).reference!
       reference.retain().takeUnretainedValue().read(body)
       reference.release()
     }
   }
   
   @inline(never)
-  public static func deleteTensor(
-    _ cHandle: OpaquePointer
+  public func deleteTensor(
+    _ handle: OpaquePointer
   ) {
-    Context.global.sync {
-      let handle = AllocationHandle(cHandle)
+    self.sync {
+      let allocationHandle = AllocationHandle(handle)
       precondition(
-        handle.referenceCount.load(ordering: .relaxed) == 0,
+        allocationHandle.referenceCount.load(ordering: .relaxed) == 0,
         "Deallocated a buffer with a reference count not equal to zero.")
       
-      let reference = handle.reference!
-      handle.reference = nil
+      let reference = allocationHandle.reference!
+      allocationHandle.reference = nil
       reference.release()
     }
   }
   
   // Only use this in the test suite.
   @inline(never)
-  internal static func allocate(
+  internal func allocate(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>
   ) -> OpaquePointer {
     let dataType = DataType(type)
     let byteCount = shape.reduce(dataType.stride, *)
-    let handle = Context.global.sync {
-      Context.global._internalAllocate(1, dataType, byteCount, shape)
+    let handle = self.sync {
+      self._internalAllocate(1, dataType, byteCount, shape)
     }
     return handle._cHandle
   }
   
   // Only use this in the test suite.
   @inline(never)
-  public static func initialize(
-    _ cHandle: OpaquePointer,
+  internal func initialize(
+    _ handle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
-    Context.global.sync {
-      let reference = AllocationHandle(cHandle).reference!
+    self.sync {
+      let reference = AllocationHandle(handle).reference!
       reference.retain().takeUnretainedValue().initialize(body)
       reference.release()
     }

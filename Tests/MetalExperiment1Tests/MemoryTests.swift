@@ -4,14 +4,14 @@ import XCTest
 fileprivate func allocate(capacity: Int) -> OpaquePointer {
   withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
     shape[0] = capacity
-    return Context.allocate(Float.self, UnsafeBufferPointer(shape))
+    return Context.global.allocate(Float.self, UnsafeBufferPointer(shape))
   }
 }
 
 fileprivate func releaseBuffer(_ handle: CTensorHandle) {
   let atomic = AllocationHandle(handle).referenceCount
   if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-    Context.deleteTensor(handle)
+    Context.global.deleteTensor(handle)
   }
 }
 
@@ -43,12 +43,12 @@ final class MemoryTests: XCTestCase {
       let handle = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
       defer { releaseBuffer(handle) }
       
-      Context.initialize(handle) { bufferPointer in
+      Context.global.initialize(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      Context.readTensor(handle) { bufferPointer in
+      Context.global.readTensor(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)
@@ -105,7 +105,7 @@ final class MemoryTests: XCTestCase {
         handles.append(handle)
       }
       for handle in handles {
-        Context.initialize(handle) { _ in }
+        Context.global.initialize(handle) { _ in }
       }
       for handle in handles {
         releaseBuffer(handle)
@@ -184,7 +184,7 @@ final class MemoryTests: XCTestCase {
       // The compiler mistakes this for `allocate(byteCount:)`.
       let _avoidNameCollision = allocate(capacity:)
       let handle = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
-      Context.initialize(handle) { _ in }
+      Context.global.initialize(handle) { _ in }
       return handle
     }
     func deallocate(handle: OpaquePointer) {
@@ -357,9 +357,9 @@ final class MemoryTests: XCTestCase {
     
     var tensor3: Tensor<Float>?
     Context.global.sync { Context.global.permitExceedingSystemRAM = true }
-    Context.initialize(bufferID1) { _ in }
+    Context.global.initialize(bufferID1) { _ in }
     Context.global.sync { Context.global.permitExceedingSystemRAM = true }
-    Context.initialize(bufferID2) { _ in }
+    Context.global.initialize(bufferID2) { _ in }
     Context.global.sync { Context.global.permitExceedingSystemRAM = true }
     tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
     Context.global.sync { Context.global.permitExceedingSystemRAM = false }

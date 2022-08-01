@@ -11,7 +11,10 @@ import Metal
 public class Context {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
-  static let global = Context()
+  // TODO: Rename `Context.global` to `.default`, make only available in tests.
+  
+  // TODO: Make this internal.
+  public static let global = Context()
   var device: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
@@ -19,9 +22,9 @@ public class Context {
   var synchronizationEvent: MTLEvent
   var synchronizationCounter: UInt64 = 0
   
-  static let maxBatchesInFlight = 3
-  static var maxCommandsPerBatch = 128
-  static var maxCommandsPerSmallBatch = 16
+  // `maxCommandsPerBatch` would be mutable if an AI changed parameters of JIT compilation.
+  var maxCommandsPerBatch = 128
+  var maxCommandsPerSmallBatch = 16
   var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
   var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
   var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
@@ -44,6 +47,10 @@ public class Context {
   var permitExceedingSystemRAM = false
   var preferSharedStorage: Bool
   
+  var shaderCache: ShaderCache
+  // TODO: Object for MPSMatrixMultiplication objects (if needed)
+  // TODO: Object for MPSGraph objects
+  
   // Using mutex locks instead of GCD for fast synchronization across processes.
   #if os(Windows)
   private var _mutex: SRWLOCK
@@ -53,7 +60,7 @@ public class Context {
   
   init() {
     self.device = MTLCreateSystemDefaultDevice()!
-    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: Context.maxBatchesInFlight)!
+    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: 3)!
     self.preferSharedStorage = device.hasUnifiedMemory
     self.synchronizationFence = device.makeFence()!
     self.synchronizationEvent = device.makeEvent()!
@@ -65,7 +72,7 @@ public class Context {
     pthread_mutex_init(&_mutex, nil)
     #endif
     
-    ShaderCache.load(device: device)
+    self.shaderCache = ShaderCache(device: device)
   }
   
   deinit {

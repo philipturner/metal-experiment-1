@@ -42,7 +42,7 @@ public final class _ExecutionContext {
 //      _ = AllocationHandle(input).referenceCount
 //    }
 //    _ = _ExecutionContext.global.something
-    Context.executeOperation(name, attributes, inputs, outputs)
+    Context.global.executeOperation(name, attributes, inputs, outputs)
   }
   
   static let somethingKey = ThreadLocalStorage.Key(destructor: nil)

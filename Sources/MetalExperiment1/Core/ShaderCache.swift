@@ -7,24 +7,29 @@
 
 import Metal
 
-enum ShaderCache {
-  static let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.ShaderCache.dispatchQueue")
-  static var semaphores: [StringWrapper: DispatchSemaphore] = [:]
-  static var pipelines: [StringWrapper: MTLComputePipelineState] = [:]
+class ShaderCache {
+  let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.ShaderCache.dispatchQueue")
+  var semaphores: [StringWrapper: DispatchSemaphore] = [:]
+  var pipelines: [StringWrapper: MTLComputePipelineState] = [:]
   
   // TODO: Avoid relying on static variables so much. If someone uses two Metal devices, everything
   // will break. Instead, make this an instance property.
-  private static var device: MTLDevice!
-  private static var defaultLibrary: MTLLibrary?
-  private static var shaderSourceDirectory: URL = Bundle.module.resourceURL!
-  private static var binaryArchiveDirectory: URL = shaderSourceDirectory
-    .appendingPathComponent("Archives", isDirectory: true)
+  private var device: MTLDevice
+  private var defaultLibrary: MTLLibrary?
+  private var shaderSourceDirectory: URL
+  private var binaryArchiveDirectory: URL
   
-  // Called during `Context.init`. Since the global context is currently initializing, it can't
-  // access the device via `Context.global.device`.
-  static func load(device: MTLDevice) {
-    Self.device = device
-    Self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
+  lazy var elementwise_f32_i32 = wait(name: "elementwise_f32_i32")
+  lazy var elementwise_u32_i64_u64 = wait(name: "elementwise_u32_i64_u64")
+  
+  // Called during `Context.init`. Since the encapsulating context is currently initializing, it
+  // can't access the device via `Context.global.device`.
+  init(device: MTLDevice) {
+    self.device = device
+    self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
+    self.shaderSourceDirectory = Bundle.module.resourceURL!
+    self.binaryArchiveDirectory = shaderSourceDirectory
+      .appendingPathComponent("Archives", isDirectory: true)
     
     // In SwiftPM builds, the bundle does not include a Metal library. You have to compile shaders
     // at runtime, although this only incurs a measurable cost once. On the second run through
@@ -42,7 +47,7 @@ enum ShaderCache {
   }
   
   @inline(__always)
-  static func enqueue(name: StringWrapper, asynchronous: Bool = true) {
+  func enqueue(name: StringWrapper, asynchronous: Bool = true) {
     if semaphores[name] != nil {
       // Already enqueued.
     } else {
@@ -51,10 +56,10 @@ enum ShaderCache {
   }
   
   @inline(never)
-  static func actuallyEnqueue(name: StringWrapper, asynchronous: Bool) {
+  func actuallyEnqueue(name: StringWrapper, asynchronous: Bool) {
     let semaphore = DispatchSemaphore(value: 0)
     semaphores[name] = semaphore
-    let closure = {
+    let closure = { [self] in
       let nameString = name.makeString()
       var library: MTLLibrary
       if let defaultLibrary = defaultLibrary {
@@ -86,7 +91,7 @@ enum ShaderCache {
     }
   }
   
-  static func wait(name: StringWrapper) -> MTLComputePipelineState {
+  func wait(name: StringWrapper) -> MTLComputePipelineState {
     // Catch shader loading bugs.
     guard let semaphore = semaphores[name] else {
       fatalError("Waited on pipeline '\(name.makeString())' before it was enqueued.")
@@ -103,7 +108,4 @@ enum ShaderCache {
   }
 }
 
-extension ShaderCache {
-  static let elementwise_f32_i32 = Self.wait(name: "elementwise_f32_i32")
-  static let elementwise_u32_i64_u64 = Self.wait(name: "elementwise_u32_i64_u64")
-}
+

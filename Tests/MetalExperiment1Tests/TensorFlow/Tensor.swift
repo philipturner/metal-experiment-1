@@ -10,10 +10,9 @@ import Darwin
 
 public typealias CTensorHandle = OpaquePointer
 
-// MARK: - PluggableDeviceTensorHandle
+// MARK: - TFETensorHandle
 
-// Mirrors the functionality of `TFETensorHandle`.
-public class PluggableDeviceTensorHandle {
+public class TFETensorHandle {
   public let _cTensorHandle: CTensorHandle
   
   @usableFromInline
@@ -45,9 +44,10 @@ public class PluggableDeviceTensorHandle {
       return true
     }())
     
+    // TODO: Call `releaseTensor` and profile performance
     let atomic = AllocationHandle(_cTensorHandle).referenceCount
     if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-      Context.deleteTensor(_cTensorHandle)
+      Context.global.deleteTensor(_cTensorHandle)
     }
   }
   
@@ -74,20 +74,16 @@ public class PluggableDeviceTensorHandle {
 // MARK: - TensorHandle
 
 public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
-  @usableFromInline let handle: PluggableDeviceTensorHandle
+  @usableFromInline let handle: TFETensorHandle
   
   public var _cTensorHandle: CTensorHandle { handle._cTensorHandle }
   
   public init(_owning cTensorHandle: CTensorHandle) {
-    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle)
+    self.handle = TFETensorHandle(_owning: cTensorHandle)
   }
   
   public init(_owning cTensorHandle: CTensorHandle, shape: [Int]) {
-    self.handle = PluggableDeviceTensorHandle(_owning: cTensorHandle, shape: shape)
-  }
-  
-  public init(handle: PluggableDeviceTensorHandle) {
-    self.handle = handle
+    self.handle = TFETensorHandle(_owning: cTensorHandle, shape: shape)
   }
   
   @inlinable
@@ -96,19 +92,11 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
     let cTensorHandle = shape.withUnsafeBufferPointer {
-      // TODO: Fuse `allocate` and `initialize` into one function, reducing overhead. Keep the
-      // separate ones around for compatibility/flexibility.
-      //
-      // TODO: New function names are `createTensor` and `destroyTensor`.
-      Context.createTensor(Scalar.self, $0, { buffer in
+      Context.global.createTensor(Scalar.self, $0, { buffer in
         let pointer = buffer.assumingMemoryBound(to: Scalar.self)
         scalarsInitializer(pointer.baseAddress!)
       })
     }
-//    Context.initialize(cTensorHandle) { buffer in
-//      let pointer = buffer.assumingMemoryBound(to: Scalar.self)
-//      scalarsInitializer(pointer.baseAddress!)
-//    }
     self.init(_owning: cTensorHandle, shape: shape)
   }
   
@@ -129,7 +117,7 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @inline(never)
   func makeHostCopy() -> [Scalar] {
     var output: [Scalar]?
-    Context.readTensor(_cTensorHandle) { tensorBuffer in
+    Context.global.readTensor(_cTensorHandle) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)

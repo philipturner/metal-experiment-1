@@ -49,11 +49,11 @@ extension Context {
     } else {
       shouldFlush = false
     }
-    guard eagerOperations.count > Context.maxCommandsPerBatch ||
+    guard eagerOperations.count > maxCommandsPerBatch ||
           shouldFlush else {
       return
     }
-    precondition(eagerOperations.count <= Context.maxCommandsPerBatch + 1)
+    precondition(eagerOperations.count <= maxCommandsPerBatch + 1)
     
     // The stream gets off to a very slow start right after reading a buffer's contents, being
     // unable to fuse unary operations and creating a no-op pass through the compiler. This
@@ -62,7 +62,7 @@ extension Context {
     // 128 commands to queue up.
     if !waitingOnTimer && justFinishedBarrier && backPressure == 0 {
       justFinishedBarrier = false
-      if eagerOperations.count <= Context.maxCommandsPerBatch {
+      if eagerOperations.count <= maxCommandsPerBatch {
         waitingOnTimer = true
         
         let delay = Int(schedulingLatency.average)
@@ -99,7 +99,7 @@ extension Context {
         }
       }
     }
-    if eagerOperations.count <= Context.maxCommandsPerBatch,
+    if eagerOperations.count <= maxCommandsPerBatch,
        waitingOnTimer && backPressure == 0 {
       return
     }
@@ -108,7 +108,7 @@ extension Context {
     // `maybeFlushStream` is called in the middle of submitting an operation, and all of the inputs
     // are being retained. That prevents fusion.
     var currentOperation: EagerOperation?
-    if eagerOperations.count > Context.maxCommandsPerSmallBatch {
+    if eagerOperations.count > maxCommandsPerSmallBatch {
       currentOperation = eagerOperations.removeLast()
     }
     defer {

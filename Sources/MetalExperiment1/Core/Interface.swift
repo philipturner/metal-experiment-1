@@ -16,14 +16,14 @@ extension Context {
   // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
   // After the first level of recursion, store elements in their native layout stride.
   @inline(never)
-  public static func executeOperation(
+  public func executeOperation(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
     _ inputs: UnsafeBufferPointer<OpaquePointer>,
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
-    Context.global.sync {
-      Context.global._executeOperation(name, attributes, inputs, outputs)
+    self.sync {
+      self._executeOperation(name, attributes, inputs, outputs)
     }
   }
   
