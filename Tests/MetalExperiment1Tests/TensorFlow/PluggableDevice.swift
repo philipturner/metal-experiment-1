@@ -51,6 +51,10 @@ public struct PluggableDeviceTensorHandle {
     UnsafeAtomic(at: UnsafeMutablePointer(OpaquePointer(baseAddress)))
   }
   
+  public var pluggableDevice: Int {
+    baseAddress[2]
+  }
+  
   public var byteCount: Int {
     baseAddress[4]
   }

@@ -21,7 +21,7 @@ func testHeader(_ message: String? = nil) {
   Context.global.sync {
     Allocation.debugInfoEnabled = false
   }
-  Context.barrier()
+  Context.global.barrier()
 }
 
 fileprivate protocol DummyPluggableDevice: AnyObject {}
@@ -84,9 +84,9 @@ final class MetalExperiment1Tests: XCTestCase {
     profileThreadLocalState(iterations: 5)
     profileThreadLocalState(iterations: 1000)
     
-    Context.barrier()
+    Context.global.barrier()
     defer {
-      Context.barrier()
+      Context.global.barrier()
     }
     
     do {

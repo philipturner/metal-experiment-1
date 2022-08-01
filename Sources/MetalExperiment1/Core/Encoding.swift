@@ -8,6 +8,7 @@
 import MetalPerformanceShaders
 
 struct EncodingContext {
+  let context: Context
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
   private var blitEncoder: MTLBlitCommandEncoder?
@@ -18,23 +19,23 @@ struct EncodingContext {
   var barrierResources: [MTLBuffer] = []
   
   @inline(__always)
-  init(commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
+  init(context: Context, commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
+    self.context = context
     self.commandBuffer = commandBuffer
     self.commandBufferID = commandBufferID
   }
   
   @inline(__always)
   func encodeWaitForEvent() {
-    let ctx = Context.global
-    commandBuffer.encodeWaitForEvent(ctx.synchronizationEvent, value: ctx.synchronizationCounter)
+    commandBuffer.encodeWaitForEvent(
+      context.synchronizationEvent, value: context.synchronizationCounter)
   }
   
   @inline(__always)
   func encodeSignalEvent() {
-    let ctx = Context.global
-    let newCounter = ctx.synchronizationCounter + 1
-    ctx.synchronizationCounter = newCounter
-    commandBuffer.encodeSignalEvent(ctx.synchronizationEvent, value: newCounter)
+    let newCounter = context.synchronizationCounter + 1
+    context.synchronizationCounter = newCounter
+    commandBuffer.encodeSignalEvent(context.synchronizationEvent, value: newCounter)
   }
   
   // MARK: - Starting Encoding Passes
@@ -59,7 +60,7 @@ struct EncodingContext {
     
     let blitEncoder = commandBuffer.makeBlitCommandEncoder()!
     if usingFence {
-      blitEncoder.waitForFence(Context.global.synchronizationFence)
+      blitEncoder.waitForFence(context.synchronizationFence)
     }
     self.blitEncoder = blitEncoder
     return blitEncoder
@@ -87,7 +88,7 @@ struct EncodingContext {
     precondition(synchronizedResources.isEmpty, "This should never happen.")
     let computeEncoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
     if usingFence {
-      computeEncoder.waitForFence(Context.global.synchronizationFence)
+      computeEncoder.waitForFence(context.synchronizationFence)
     }
     self.computeEncoder = computeEncoder
     self.computeEncoderID += 1
@@ -110,7 +111,7 @@ struct EncodingContext {
     usingEvent: Bool
   ) {
     if !usingEvent {
-      computeEncoder.waitForFence(Context.global.synchronizationFence)
+      computeEncoder.waitForFence(context.synchronizationFence)
     }
     computeEncoder.endEncoding()
     self.computeEncoder = nil
@@ -126,7 +127,7 @@ struct EncodingContext {
     usingEvent: Bool
   ) {
     if !usingEvent {
-      blitEncoder.waitForFence(Context.global.synchronizationFence)
+      blitEncoder.waitForFence(context.synchronizationFence)
     }
     blitEncoder.endEncoding()
     self.blitEncoder = nil
@@ -189,15 +190,7 @@ extension Context {
   }
 }
 
-private extension Context {
-  // Reuse this array object between each function call. It avoids creating a new array object
-  // unless absolutely necessary.
-  static var barrierResources: [MTLBuffer] = {
-    var output: [MTLBuffer] = []
-    output.reserveCapacity(4)
-    return output
-  }()
-  
+extension Context {
   func encodeElementwise(
     _ instruction: Instruction.Elementwise,
     into ectx: inout EncodingContext
@@ -208,14 +201,14 @@ private extension Context {
       if ectx.pipelineStateID == 1 {
         // Avoid overhead of Metal API call.
       } else {
-        encoder.setComputePipelineState(Context.global.shaderCache.elementwise_f32_i32)
+        encoder.setComputePipelineState(shaderCache.elementwise_f32_i32)
         ectx.pipelineStateID = 1
       }
     case .u32_i64_u64:
       if ectx.pipelineStateID == 2 {
         // Avoid overhead of Metal API call.
       } else {
-        encoder.setComputePipelineState(Context.global.shaderCache.elementwise_u32_i64_u64)
+        encoder.setComputePipelineState(shaderCache.elementwise_u32_i64_u64)
         ectx.pipelineStateID = 2
       }
     }

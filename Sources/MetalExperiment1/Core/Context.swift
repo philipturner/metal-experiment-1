@@ -8,14 +8,13 @@
 import Atomics
 import Metal
 
+// TODO: Rename `MTLPluggableDevice`.
 public class Context {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
   // TODO: Rename `Context.global` to `.default`, make only available in tests.
-  
-  // TODO: Make this internal.
-  public static let global = Context()
-  var device: MTLDevice
+  public static let global = Context(mtlDevice: MTLCreateSystemDefaultDevice()!)
+  var mtlDevice: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   var synchronizationFence: MTLFence
@@ -47,6 +46,7 @@ public class Context {
   var permitExceedingSystemRAM = false
   var preferSharedStorage: Bool
   
+  var heapAllocator: HeapAllocator
   var shaderCache: ShaderCache
   // TODO: Object for MPSMatrixMultiplication objects (if needed)
   // TODO: Object for MPSGraph objects
@@ -58,12 +58,18 @@ public class Context {
   private var _mutex: pthread_mutex_t
   #endif
   
-  init() {
-    self.device = MTLCreateSystemDefaultDevice()!
-    self.commandQueue = device.makeCommandQueue(maxCommandBufferCount: 3)!
-    self.preferSharedStorage = device.hasUnifiedMemory
-    self.synchronizationFence = device.makeFence()!
-    self.synchronizationEvent = device.makeEvent()!
+  init(mtlDevice: MTLDevice) {
+    
+    // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
+    // on background threads while initializing everything else.
+    self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
+    self.heapAllocator = HeapAllocator(mtlDevice: mtlDevice)
+    
+    self.mtlDevice = mtlDevice
+    self.commandQueue = mtlDevice.makeCommandQueue(maxCommandBufferCount: 3)!
+    self.preferSharedStorage = mtlDevice.hasUnifiedMemory
+    self.synchronizationFence = mtlDevice.makeFence()!
+    self.synchronizationEvent = mtlDevice.makeEvent()!
     
     self._mutex = .init()
     #if os(Windows)
@@ -72,7 +78,7 @@ public class Context {
     pthread_mutex_init(&_mutex, nil)
     #endif
     
-    self.shaderCache = ShaderCache(device: device)
+    
   }
   
   deinit {

@@ -24,8 +24,8 @@ class ShaderCache {
   
   // Called during `Context.init`. Since the encapsulating context is currently initializing, it
   // can't access the device via `Context.global.device`.
-  init(device: MTLDevice) {
-    self.device = device
+  init(mtlDevice: MTLDevice) {
+    self.device = mtlDevice
     self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
     self.shaderSourceDirectory = Bundle.module.resourceURL!
     self.binaryArchiveDirectory = shaderSourceDirectory

@@ -165,8 +165,8 @@ class HeapBlock: AllocatorBlockProtocol {
     // dependencies between commands for better performance.
     desc.hazardTrackingMode = .untracked
     
-    let device = Context.global.device
-    return device.makeHeap(descriptor: desc)
+    let mtlDevice = Context.global.mtlDevice
+    return mtlDevice.makeHeap(descriptor: desc)
   }
   
   func makeBuffer(length: Int) -> MTLBuffer? {
@@ -218,8 +218,14 @@ class BufferPool {
 
 // MARK: - Declaration of HeapAllocator
 
-enum HeapAllocator {
+// TODO: Change this from static to an instance type.
+class HeapAllocator {
+  init(mtlDevice: MTLDevice) {
+    
+  }
+  
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
+  // TODO: Make `debugInfoEnabled` not static.
   static var debugInfoEnabled = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_HEAP_ALLOCATOR")
   
   private static var allocatedBuffers: [UnsafeMutableRawPointer: BufferBlock] = [:]
@@ -243,14 +249,14 @@ enum HeapAllocator {
   }
   
   static var maxBufferLength: Int {
-    let device = Context.global.device
-    return device.maxBufferLength
+    let mtlDevice = Context.global.mtlDevice
+    return mtlDevice.maxBufferLength
   }
   
   static func allocationSize(length: Int, usingShared: Bool) -> Int {
-    let device = Context.global.device
+    let mtlDevice = Context.global.mtlDevice
     let options: MTLResourceOptions = usingShared ? .storageModeShared : .storageModePrivate
-    let sizeAlign = device.heapBufferSizeAndAlign(length: length, options: options)
+    let sizeAlign = mtlDevice.heapBufferSizeAndAlign(length: length, options: options)
     precondition(sizeAlign.align >= 16, """
       Custom shaders assume heap alignment is at least 16 bytes. Instead, got \(sizeAlign.align)
       bytes.
@@ -259,13 +265,13 @@ enum HeapAllocator {
   }
   
   static var maxAvailableSize: Int {
-    let device = Context.global.device
+    let mtlDevice = Context.global.mtlDevice
     #if os(macOS)
-    let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+    let maxWorkingSize = Int(mtlDevice.recommendedMaxWorkingSetSize)
     #else
-    let maxWorkingSize = device.maxBufferLength
+    let maxWorkingSize = mtlDevice.maxBufferLength
     #endif
-    return maxWorkingSize - device.currentAllocatedSize
+    return maxWorkingSize - mtlDevice.currentAllocatedSize
   }
   
   static func formatSize(_ size: Int) -> String {

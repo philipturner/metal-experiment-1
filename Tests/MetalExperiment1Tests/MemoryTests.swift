@@ -216,7 +216,7 @@ final class MemoryTests: XCTestCase {
       
       // This part of the test causes a massive bottleneck on discrete GPUs.
       if Context.global.preferSharedStorage {
-        let largeBufferSize = Context.global.device.maxBufferLength
+        let largeBufferSize = Context.global.mtlDevice.maxBufferLength
         let largeBufferHandle1 = allocate(byteCount: largeBufferSize)
         defer { deallocate(handle: largeBufferHandle1) }
         Context.global.sync {
@@ -245,7 +245,7 @@ final class MemoryTests: XCTestCase {
         HeapAllocator._releaseCachedBufferBlocks()
       } else {
         // Without making a barrier, the `XCTAssertFalse` below fails on discrete GPUs.
-        Context.barrier()
+        Context.global.barrier()
       }
       
       let smallBufferHandle4 = allocate(byteCount: 1_000)
@@ -329,13 +329,13 @@ final class MemoryTests: XCTestCase {
       HeapAllocator._releaseCachedBufferBlocks()
     }
     
-    let device = Context.global.device
+    let mtlDevice = Context.global.mtlDevice
 #if os(macOS)
-    var maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+    var maxWorkingSize = Int(mtlDevice.recommendedMaxWorkingSetSize)
 #else
-    var maxWorkingSize = device.maxBufferLength
+    var maxWorkingSize = mtlDevice.maxBufferLength
 #endif
-    var maxBufferLength = device.maxBufferLength
+    var maxBufferLength = mtlDevice.maxBufferLength
     
     // If most of the device's memory is allocated, this causes a command buffer abortion on
     // discrete GPUs.

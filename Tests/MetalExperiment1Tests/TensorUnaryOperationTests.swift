@@ -149,7 +149,7 @@ func tensorOperationHeader(_ message: String? = nil) {
     profilingEncoding = Context.profilingEncoding
     Context.profilingEncoding = false
   }
-  Context.barrier()
+  Context.global.barrier()
 }
 
 func tensorOperationFooter() {

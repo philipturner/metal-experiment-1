@@ -263,7 +263,7 @@ class Allocation {
   @inline(never)
   private func actuallyMaterialize(checkingMemoryBounds: Bool = true) throws {
     if checkingMemoryBounds {
-      let device = Context.global.device
+      let mtlDevice = Context.global.mtlDevice
       let allocatedSize = HeapAllocator.totalAllocatedMemory
       if Context.global.permitExceedingSystemRAM {
         // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
@@ -277,9 +277,9 @@ class Allocation {
         // On iOS, the threshold is different because `MTLDevice.recommendedMaxWorkingSetSize` does
         // not exist.
         #if os(macOS)
-        let threshold = device.maxBufferLength
+        let threshold = mtlDevice.maxBufferLength
         #else
-        let threshold = (device.maxBufferLength * 7) / 8
+        let threshold = (mtlDevice.maxBufferLength * 7) / 8
         #endif
         if allocatedSize + handle.byteCount <= threshold {
           if HeapAllocator.debugInfoEnabled {
@@ -289,9 +289,9 @@ class Allocation {
         }
       } else {
         #if os(macOS)
-        let maxWorkingSize = Int(device.recommendedMaxWorkingSetSize)
+        let maxWorkingSize = Int(mtlDevice.recommendedMaxWorkingSetSize)
         #else
-        let maxWorkingSize = device.maxBufferLength
+        let maxWorkingSize = mtlDevice.maxBufferLength
         #endif
         if allocatedSize + handle.byteCount > maxWorkingSize {
           if HeapAllocator.debugInfoEnabled {

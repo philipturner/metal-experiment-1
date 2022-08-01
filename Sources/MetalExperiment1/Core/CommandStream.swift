@@ -8,11 +8,11 @@
 import Metal
 
 extension Context {
-  static func barrier() {
-    Context.global.sync {
-      let ctx = Context.global
-      ctx._internalFlushStream()
-      ctx._internalBarrier()
+  // Used in tests.
+  func barrier() {
+    self.sync {
+      _internalFlushStream()
+      _internalBarrier()
     }
   }
   
@@ -223,6 +223,7 @@ private extension Context {
     
     var commandBufferID = _fastLoadCommittedBatches()
     var encodingContext = EncodingContext(
+      context: self,
       commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
       commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -316,6 +317,7 @@ private extension Context {
           rangeStart = nextIterator
           if encounteredError {
             encodingContext = EncodingContext(
+              context: self,
               commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
               commandBufferID: commandBufferID)
             commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer

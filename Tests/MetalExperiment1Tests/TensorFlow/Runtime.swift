@@ -26,8 +26,7 @@ public final class _ExecutionContext {
   }
   
   @usableFromInline
-  @inline(__always)
-//  @inline(never)
+  @inline(never)
   static func eagerExecute(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
