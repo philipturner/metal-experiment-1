@@ -1,5 +1,5 @@
 //
-//  Context.swift
+//  MTLPluggableDevice.swift
 //  
 //
 //  Created by Philip Turner on 7/8/22.
@@ -48,6 +48,7 @@ public class Context {
   
   var heapAllocator: HeapAllocator
   var shaderCache: ShaderCache
+  // TODO: Transform `OperationRegistry` into an instance
   // TODO: Object for MPSMatrixMultiplication objects (if needed)
   // TODO: Object for MPSGraph objects
   
@@ -59,9 +60,8 @@ public class Context {
   #endif
   
   init(mtlDevice: MTLDevice) {
-    
     // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
-    // on background threads while initializing everything else.
+    // on background threads.
     self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
     self.heapAllocator = HeapAllocator(mtlDevice: mtlDevice)
     
@@ -77,8 +77,6 @@ public class Context {
     #else
     pthread_mutex_init(&_mutex, nil)
     #endif
-    
-    
   }
   
   deinit {

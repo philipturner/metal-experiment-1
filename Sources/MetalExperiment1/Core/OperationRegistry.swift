@@ -1,5 +1,5 @@
 //
-//  Interface.swift
+//  OperationRegistry.swift
 //  
 //
 //  Created by Philip Turner on 7/15/22.
@@ -23,23 +23,13 @@ extension Context {
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
     self.sync {
-      self._executeOperation(name, attributes, inputs, outputs)
+      let string = StringWrapper(wrapping: name)
+      guard let function = OperationRegistry.registry[string] else {
+        fatalError("Could not find operation '\(string.makeString())'.")
+      }
+      function.call(attributes, inputs, outputs, self)
+      self.maybeFlushStream()
     }
-  }
-  
-  @inline(__always)
-  private func _executeOperation(
-    _ name: UnsafeRawBufferPointer,
-    _ attributes: UnsafeRawBufferPointer,
-    _ inputs: UnsafeBufferPointer<OpaquePointer>,
-    _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
-  ) {
-    let string = StringWrapper(wrapping: name)
-    guard let function = OperationRegistry.registry[string] else {
-      fatalError("Could not find operation '\(string.makeString())'.")
-    }
-    function.call(attributes, inputs, outputs)
-    self.maybeFlushStream()
   }
 }
 
@@ -146,12 +136,13 @@ extension OperationRegistry {
 
 struct OperationRegistry {
   typealias FunctionSignature = @convention(c) (
-    OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int) -> Void
+    OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int, UnsafeMutableRawPointer) -> Void
   
   struct Arguments {
     var attributes: UnsafeRawBufferPointer
     var inputs: UnsafeBufferPointer<OpaquePointer>
     var outputs: UnsafeMutableBufferPointer<OpaquePointer>
+    var context: Unmanaged<Context>
     
     @inline(__always)
     init(
@@ -160,11 +151,13 @@ struct OperationRegistry {
       _ inputsPtr: OpaquePointer?,
       _ inputsCount: Int,
       _ outputsPtr: OpaquePointer?,
-      _ outputsCount: Int
+      _ outputsCount: Int,
+      _ handle: UnsafeMutableRawPointer
     ) {
       attributes = .init(start: .init(attributesPtr), count: attributesCount)
       inputs = .init(start: .init(inputsPtr), count: inputsCount)
       outputs = .init(start: .init(outputsPtr), count: outputsCount)
+      context = Unmanaged<Context>.fromOpaque(handle)
     }
   }
   
@@ -180,12 +173,14 @@ struct OperationRegistry {
     func call(
       _ attributes: UnsafeRawBufferPointer,
       _ inputs: UnsafeBufferPointer<OpaquePointer>,
-      _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
+      _ outputs: UnsafeMutableBufferPointer<OpaquePointer>,
+      _ pluggableDevice: Context
     ) {
       body(
         .init(attributes.baseAddress), attributes.count,
         .init(inputs.baseAddress), inputs.count,
-        .init(outputs.baseAddress), outputs.count)
+        .init(outputs.baseAddress), outputs.count,
+        Unmanaged.passUnretained(pluggableDevice).toOpaque())
     }
   }
   
@@ -273,7 +268,7 @@ extension OperationRegistry {
     _ operation_bool: UnaryOperationType?,
     _ metadata: UInt64? = nil
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -347,7 +342,7 @@ extension OperationRegistry {
     _ args: inout Arguments,
     _ operation: UnaryOperationType
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -378,7 +373,7 @@ extension OperationRegistry {
     _ operation_f32: UnaryOperationType,
     _ operation_i32: UnaryOperationType
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -477,7 +472,7 @@ extension OperationRegistry {
   static func dispatchCast(
     _ args: inout Arguments
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -524,195 +519,195 @@ extension OperationRegistry {
 extension OperationRegistry {
   // Codes 0 - 7
   static let abs = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .abs_f32, .abs_i32, nil)
   }
   static let acos = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .acos_f32, nil, nil)
   }
   static let acosh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .acosh_f32, nil, nil)
   }
   static let asin = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .asin_f32, nil, nil)
   }
   static let asinh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .asinh_f32, nil, nil)
   }
   static let atan = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .atan_f32, nil, nil)
   }
   static let atanh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .atanh_f32, nil, nil)
   }
   
   // Codes 10 - 16
   static let cast = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchCast(&args)
   }
   
   // Codes 20 - 26
   static let ceil = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .ceil_f32, nil, nil)
   }
   static let cos = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .cos_f32, nil, nil)
   }
   static let cosh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .cosh_f32, nil, nil)
   }
   static let elu = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .elu_f32, nil, nil)
   }
   static let exp = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .exp_f32, nil, nil)
   }
   static let expm1 = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .expm1_f32, nil, nil)
   }
   static let floor = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .floor_f32, nil, nil)
   }
   
   // Codes 30 - 32
   static let isFinite = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryRelational(&args, .is_finite_f32)
   }
   static let isInf = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryRelational(&args, .is_inf_f32)
   }
   static let isNan = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryRelational(&args, .is_nan_f32)
   }
   
   // Codes 40 - 48
   static let leakyRelu = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let alpha: Double = decodeScalar(&args.attributes)
     let metadata = UInt64(Float(alpha).bitPattern)
     dispatchUnary(&args, .leaky_relu_f32, nil, nil, metadata)
   }
   static let log = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .log_f32, nil, nil)
   }
   static let log1p = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .log1p_f32, nil, nil)
   }
   static let logicalNot = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, nil, nil, .logical_not_bool)
   }
   static let neg = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .neg_f32, .neg_i32, nil)
   }
   static let relu = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .relu_f32, nil, nil)
   }
   static let relu6 = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .relu6_f32, nil, nil)
   }
   static let round = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .round_f32, nil, nil)
   }
   
   // Codes 50 - 57
   static let rsqrt = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .rsqrt_f32, nil, nil)
   }
   static let selu = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .selu_f32, nil, nil)
   }
   static let sigmoid = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .sigmoid_f32, nil, nil)
   }
   static let sign = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .sign_f32, .sign_i32, nil)
   }
   static let sin = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .sin_f32, nil, nil)
   }
   static let sinh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .sinh_f32, nil, nil)
   }
   static let softplus = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .softplus_f32, nil, nil)
   }
   
   // Codes 60 - 65
   static let softsign = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .softsign_f32, nil, nil)
   }
   static let sqrt = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .sqrt_f32, nil, nil)
   }
   static let square = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .square_f32, .square_i32, nil)
   }
   static let tan = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .tan_f32, nil, nil)
   }
   static let tanh = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnary(&args, .tanh_f32, nil, nil)
   }
   
   // Codes 70 - 85
   static let scalarAdd = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_add_f32, .scalar_add_i32)
   }
   static let scalarSub = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_sub_f32, .scalar_sub_i32)
   }
   static let scalarSubInverse = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_sub_inverse_f32, .scalar_sub_inverse_i32)
   }
   static let scalarMul = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_mul_f32, .scalar_mul_i32)
   }
   static let scalarDiv = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_div_f32, .scalar_div_i32)
   }
   static let scalarDivInverse = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchUnaryScalar(&args, .scalar_div_inverse_f32, .scalar_div_inverse_i32)
   }
 }
@@ -748,7 +743,7 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
@@ -849,7 +844,7 @@ extension OperationRegistry {
     _ allowBool: Bool
   ) {
     let allowBroadcasting = operation_f32 != .approximate_equal_f32
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
@@ -922,135 +917,135 @@ extension OperationRegistry {
 extension OperationRegistry {
   // Codes 0 - 4
   static let addV2 = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .add_f32, .add_i32, nil, nil, true)
   }
   static let approximateEqual = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let tolerance: Double = decodeScalar(&args.attributes)
     let metadata = UInt64(Float(tolerance).bitPattern)
     dispatchBinaryComparison(&args, .approximate_equal_f32, metadata, false)
   }
   static let equal = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.equal, false)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, true)
   }
   static let less = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.less, false)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let greater = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.greater, false)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let notEqual = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.equal, true)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, true)
   }
   static let greaterEqual = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.less, true)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   static let lessEqual = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let metadata = createComparisonMetadata(.greater, true)
     dispatchBinaryComparison(&args, .comparison_f32, metadata, false)
   }
   
   // Codes 10 - 15
   static let div = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .div_f32, .div_i32, nil, nil, true)
   }
   static let eluGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .elu_grad_f32, nil, nil, nil, false)
   }
   static let leakyReluGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     let alpha: Double = decodeScalar(&args.attributes)
     let metadata = UInt64(Float(alpha).bitPattern)
     dispatchBinary(&args, .leaky_relu_grad_f32, nil, nil, metadata, false)
   }
   static let logicalAnd = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, nil, nil, .logical_and_bool, nil, false)
   }
   static let logicalOr = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, nil, nil, .logical_or_bool, nil, false)
   }
   
   // Codes 20 - 25
   static let maximum = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .maximum_f32, .maximum_i32, nil, nil, true)
   }
   static let minimum = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .minimum_f32, .minimum_i32, nil, nil, true)
   }
   static let mod = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .mod_f32, .mod_i32, nil, nil, true)
   }
   
   // Codes 30 - 34
   static let mul = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .mul_f32, .mul_i32, nil, nil, true)
   }
   static let pow = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .pow_f32, nil, nil, nil, false)
   }
   static let relu6Grad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .relu6_grad_f32, nil, nil, nil, false)
   }
   static let reluGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .relu_grad_f32, nil, nil, nil, false)
   }
   
   // Codes 40 - 44
   static let rsqrtGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .rsqrt_grad_f32, nil, nil, nil, false)
   }
   static let seluGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .selu_grad_f32, nil, nil, nil, false)
   }
   static let sigmoidGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .sigmoid_grad_f32, nil, nil, nil, false)
   }
   static let softplusGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .softplus_grad_f32, nil, nil, nil, false)
   }
   static let softsignGrad = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .softsign_grad_f32, nil, nil, nil, false)
   }
   
   // Codes 50 - 54
   static let squaredDifference = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .squared_difference_f32, .squared_difference_i32, nil, nil, true)
   }
   static let sub = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .sub_f32, .sub_i32, nil, nil, true)
   }
   static let xdivy = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchBinary(&args, .xdivy_f32, nil, nil, nil, false)
   }
 }
@@ -1074,7 +1069,7 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1171,7 +1166,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting allowed for 2nd and 3rd arguments, no other form of broadcasting allowed.
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1238,7 +1233,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting not supported.
-    let ctx = Context.global
+    let ctx = args.context.takeUnretainedValue()
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1305,11 +1300,11 @@ extension OperationRegistry {
 extension OperationRegistry {
   // Codes 0 - 2
   static let clipByValue = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchTernaryClipByValue(&args)
   }
   static let select = Function {
-    var args = Arguments($0, $1, $2, $3, $4 ,$5)
+    var args = Arguments($0, $1, $2, $3, $4, $5, $6)
     dispatchTernarySelect(&args)
   }
 }

@@ -299,7 +299,7 @@ private extension Context {
       do {
         try encodeInstruction(instruction, into: &encodingContext)
       } catch AllocationError.exceededSystemRAM {
-        Context.global.permitExceedingSystemRAM = true
+        self.permitExceedingSystemRAM = true
         
         // Retry the command that failed in the next command buffer.
         i -= 1

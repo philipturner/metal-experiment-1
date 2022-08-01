@@ -7,8 +7,7 @@
 
 import Atomics
 
-// Reimplement functionality of AllocationHandle here.
-// Call it "PluggableDeviceTensorHandle".
+public typealias PluggableDeviceHandle = OpaquePointer
 
 public protocol PluggableDevice: AnyObject {
   func createTensor(
@@ -38,6 +37,10 @@ extension PluggableDevice {
       deleteTensor(handle)
     }
   }
+  
+  var handle: PluggableDeviceHandle {
+    PluggableDeviceHandle(Unmanaged.passUnretained(self).toOpaque())
+  }
 }
 
 public struct PluggableDeviceTensorHandle {
@@ -51,8 +54,8 @@ public struct PluggableDeviceTensorHandle {
     UnsafeAtomic(at: UnsafeMutablePointer(OpaquePointer(baseAddress)))
   }
   
-  public var pluggableDevice: Int {
-    baseAddress[2]
+  public var pluggableDeviceHandle: PluggableDeviceHandle {
+    PluggableDeviceHandle(bitPattern: baseAddress[2])!
   }
   
   public var byteCount: Int {

@@ -91,8 +91,8 @@ extension Context {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
-      id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
-      shape: shape)
+      id: id, referenceCount: referenceCount, context: self, dataType: dataType,
+      byteCount: byteCount, shape: shape, isShared: self.preferSharedStorage)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -111,8 +111,8 @@ extension Context {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
-      id: id, referenceCount: referenceCount, dataType: dataType, byteCount: byteCount,
-      shape: shape, isShared: isShared)
+      id: id, referenceCount: referenceCount, context: self, dataType: dataType,
+      byteCount: byteCount, shape: shape, isShared: isShared ?? self.preferSharedStorage)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -128,7 +128,8 @@ extension Context {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
-      id: id, referenceCount: referenceCount, replicating: other, isShared: isShared)
+      id: id, referenceCount: referenceCount, replicating: other,
+      isShared: isShared ?? self.preferSharedStorage)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -227,15 +228,17 @@ class Allocation {
   init(
     id: UInt64,
     referenceCount: Int,
+    context: Context,
     dataType: DataType,
     byteCount: Int,
     shape: UnsafeBufferPointer<Int>,
-    isShared: Bool? = nil
+    isShared: Bool
   ) {
     self.id = id
     self.handle = AllocationHandle(
-      referenceCount: referenceCount, dataType: dataType, byteCount: byteCount, shape: shape)
-    self.isShared = isShared ?? Context.global.preferSharedStorage
+      referenceCount: referenceCount, context: context, dataType: dataType, byteCount: byteCount,
+      shape: shape)
+    self.isShared = isShared
   }
   
   @inline(__always)
@@ -243,9 +246,12 @@ class Allocation {
     id: UInt64,
     referenceCount: Int,
     replicating handle: AllocationHandle,
-    isShared: Bool? = nil
+    isShared: Bool
   ) {
-    self.init(id: id, referenceCount: referenceCount, dataType: handle.dataType, byteCount: handle.byteCount, shape: handle.shape, isShared: isShared)
+    self.init(
+      id: id, referenceCount: referenceCount, context: handle.pluggableDevice,
+      dataType: handle.dataType, byteCount: handle.byteCount, shape: handle.shape,
+      isShared: isShared)
   }
   
   // Lazily allocates the physical memory. If the system ran out of memory, it flushes the command
@@ -262,10 +268,11 @@ class Allocation {
   
   @inline(never)
   private func actuallyMaterialize(checkingMemoryBounds: Bool = true) throws {
+    let context = handle.pluggableDevice
     if checkingMemoryBounds {
-      let mtlDevice = Context.global.mtlDevice
-      let allocatedSize = HeapAllocator.totalAllocatedMemory
-      if Context.global.permitExceedingSystemRAM {
+      let mtlDevice = context.mtlDevice
+      let allocatedSize = context.heapAllocator.totalAllocatedMemory
+      if context.permitExceedingSystemRAM {
         // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
         // length should be >50% system memory size. If it's hovering above the system RAM size
         // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
@@ -285,7 +292,7 @@ class Allocation {
           if HeapAllocator.debugInfoEnabled {
             print("Memory allocation returned to something smaller than system RAM.")
           }
-          Context.global.permitExceedingSystemRAM = false
+          context.permitExceedingSystemRAM = false
         }
       } else {
         #if os(macOS)
@@ -306,7 +313,8 @@ class Allocation {
       }
     }
     
-    let mtlBuffer = HeapAllocator.malloc(size: handle.byteCount, usingShared: isShared)
+    let heapAllocator = context.heapAllocator
+    let mtlBuffer = heapAllocator.malloc(size: handle.byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
       fatalError("An attempt to allocate a 'MTLBuffer' returned 'nil'.")
     }
@@ -321,28 +329,28 @@ class Allocation {
     // Catch memory management bugs.
     precondition(!initialized, "Cannot initialize something twice.")
     
-    let ctx = Context.global
+    let context = handle.pluggableDevice
     var sourceAllocation: Allocation
     if isShared {
       sourceAllocation = self
       do {
         try materialize()
       } catch AllocationError.exceededSystemRAM {
-        ctx.permitExceedingSystemRAM = true
-        ctx._internalBarrier()
+        context.permitExceedingSystemRAM = true
+        context._internalBarrier()
       } catch {
         fatalError(error.localizedDescription)
       }
     } else {
-      let sourceHandle = ctx._internalAllocate(1, handle, true)
+      let sourceHandle = context._internalAllocate(1, handle, true)
       sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
-      ctx._internalRetain(handle)
+      context._internalRetain(handle)
       let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
-      Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
+      context.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     let contents = sourceAllocation.mtlBuffer!.contents()
@@ -363,18 +371,18 @@ class Allocation {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
     // compiler will then mark it as initialized and safe to read from.
-    let ctx = Context.global
+    let context = handle.pluggableDevice
     var sourceAllocation: Allocation
     if isShared {
       sourceAllocation = self
     } else {
-      let sourceHandle = Context.global._internalAllocate(1, handle, true)
+      let sourceHandle = context._internalAllocate(1, handle, true)
       sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
-      ctx._internalRetain(handle)
+      context._internalRetain(handle)
       let explicitCopy = EagerOperation.ExplicitCopy(input: handle, output: sourceHandle)
-      Context.global.eagerOperations.append(.explicitCopy(explicitCopy))
+      context.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
@@ -390,12 +398,12 @@ class Allocation {
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
     // of `bufferedOperations`, unless one of those operations references it. This violates
     // sequential order of execution, but produces the same end result.
-    ctx._internalFlushStream()
+    context._internalFlushStream()
     
     // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
     let commandBufferID = sourceAllocation.lastModifiedCommandBufferID
     if commandBufferID != -1 {
-      ctx._internalBarrier(commandBufferID: commandBufferID)
+      context._internalBarrier(commandBufferID: commandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
@@ -410,15 +418,16 @@ class Allocation {
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
+    let context = handle.pluggableDevice
+    
     // Catch memory management bugs.
     precondition(handle.reference == nil, "Handle reference was not erased.")
     precondition(handle.referenceCount.destroy() == 0, "Reference count was nonzero.")
-    Context.global.numDeinitializedAllocations += 1
+    context.numDeinitializedAllocations += 1
     
     // Activate this code if you suspect there are memory leaks.
     #if false
-    let ctx = Context.global
-    let tensorCount = ctx.nextAllocationID - ctx.numDeinitializedAllocations
+    let tensorCount = context.nextAllocationID - context.numDeinitializedAllocations
     print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
     #endif
     
@@ -427,7 +436,7 @@ class Allocation {
     assert({
       if lastModifiedCommandBufferID != -1 {
         precondition(materialized)
-        return Context.global.commandBufferDictionary[lastModifiedCommandBufferID] == nil
+        return context.commandBufferDictionary[lastModifiedCommandBufferID] == nil
       } else {
         return true
       }
@@ -436,7 +445,7 @@ class Allocation {
     guard materialized else {
       return
     }
-    HeapAllocator.free(self.mtlBuffer!)
+    context.heapAllocator.free(self.mtlBuffer!)
   }
 }
 
@@ -452,6 +461,7 @@ public struct AllocationHandle: Hashable {
   @inline(__always)
   internal init(
     referenceCount: Int,
+    context: Context,
     dataType: DataType,
     byteCount: Int,
     shape: UnsafeBufferPointer<Int>
@@ -467,7 +477,7 @@ public struct AllocationHandle: Hashable {
     bufferSize *= MemoryLayout<Int>.stride
     baseAddress = malloc(bufferSize)!.assumingMemoryBound(to: Int.self)
     
-    let pluggableDeviceAddress = Unmanaged.passUnretained(Context.global).toOpaque()
+    let pluggableDeviceAddress = Unmanaged.passUnretained(context).toOpaque()
     baseAddress[0] = referenceCount
     baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
     baseAddress[2] = Int(bitPattern: pluggableDeviceAddress)
@@ -508,11 +518,12 @@ public struct AllocationHandle: Hashable {
     }
   }
   
-  // Use context object's memory address as a unique identfier. This is unique across
-  // implementations, even with the OpenCL backend.
+  // Use context object's memory address as a unique identfier. This is unique across all
+  // pluggable device implementations.
   @inline(__always)
-  internal var pluggableDevice: OpaquePointer {
-    OpaquePointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
+  internal var pluggableDevice: Context {
+    let pointer = UnsafeRawPointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
+    return Unmanaged<Context>.fromOpaque(pointer).takeUnretainedValue()
   }
   
   @inline(__always)
