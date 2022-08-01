@@ -72,10 +72,10 @@ final class TensorTests: XCTestCase {
     // fusion produces any specific output. The comments below show what should happen in the most
     // optimal situation.
     #if false
-    Context.global.barrier()
+    defaultPluggableDevice.barrier()
     Instruction.Elementwise.enableDump = true
     defer {
-      Context.global.barrier()
+      defaultPluggableDevice.barrier()
       Instruction.Elementwise.enableDump = false
     }
     let showMarkers = true

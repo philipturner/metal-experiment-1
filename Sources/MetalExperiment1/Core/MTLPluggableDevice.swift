@@ -18,7 +18,35 @@ public class Context {
   // `MTLDevice`. These things are extremely expensive to create. However, provide a way to disable
   // the mechanism - to allow for running two virtual GPUs on a machine. This is easily accomplished
   // with the standard `init(mtlDevice:)`.
-  public static let global = Context(mtlDevice: MTLCreateSystemDefaultDevice()!)
+  public static let global = Context(mtlDevice: MTLCreateSystemDefaultDevice()!, isGlobal: true)
+  var isGlobal: Bool
+  
+  public static let `default`: Context = .global
+  
+  // Disable `fromCache` to duplicate Metal devices, imitating multi-GPU systems while using a
+  // single GPU.
+  public static func custom(mtlDevice: MTLDevice, fromCache: Bool = true) -> Context {
+    .global
+  }
+  
+  // TODO: var mtlDevice
+  
+  public var prefersSharedMemory: Bool {
+    get {
+      // Don't need to sync because booleans are inherently atomic. However, everything else is
+      // synchronized with a mutex lock.
+      self.sync {
+        self._prefersSharedMemory
+      }
+    }
+    set {
+      // Disable changing shared memory preference while encoding instructions.
+      self.sync {
+        self._prefersSharedMemory = newValue
+      }
+    }
+  }
+  
   var mtlDevice: MTLDevice
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
@@ -49,13 +77,12 @@ public class Context {
   var nextAllocationID: UInt64 = 0
   var numDeinitializedAllocations: UInt64 = 0
   var permitExceedingSystemRAM = false
-  var preferSharedStorage: Bool
+  var _prefersSharedMemory: Bool
   
   var heapAllocator: HeapAllocator
   var shaderCache: ShaderCache
-  // TODO: Transform `OperationRegistry` into an instance
-  // TODO: Object for MPSMatrixMultiplication objects (if needed)
-  // TODO: Object for MPSGraph objects
+  // TODO: Cache for MPSKernel objects (if needed)
+  // TODO: Cache for MPSGraph objects
   
   // Using mutex locks instead of GCD for fast synchronization across processes.
   #if os(Windows)
@@ -64,7 +91,9 @@ public class Context {
   private var _mutex: pthread_mutex_t
   #endif
   
-  init(mtlDevice: MTLDevice) {
+  private init(mtlDevice: MTLDevice, isGlobal: Bool = false) {
+    self.isGlobal = isGlobal
+    
     // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
     // on background threads.
     self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
@@ -72,7 +101,7 @@ public class Context {
     
     self.mtlDevice = mtlDevice
     self.commandQueue = mtlDevice.makeCommandQueue(maxCommandBufferCount: 3)!
-    self.preferSharedStorage = mtlDevice.hasUnifiedMemory
+    self._prefersSharedMemory = mtlDevice.hasUnifiedMemory
     self.synchronizationFence = mtlDevice.makeFence()!
     self.synchronizationEvent = mtlDevice.makeEvent()!
     
@@ -103,7 +132,9 @@ extension Context {
     AcquireSRWLockExclusive(&_mutex)
     #else
     let code = pthread_mutex_lock(&_mutex)
-    precondition(code == 0, "Attempt to acquire mutex returned '\(code)'.")
+    
+    // Only perform this check in debug mode because it appears frequently and in a hotpath.
+    assert(code == 0, "Attempt to acquire mutex returned '\(code)'.")
     #endif
   }
   
@@ -113,11 +144,13 @@ extension Context {
     ReleaseSRWLockExclusive(&_mutex)
     #else
     let code = pthread_mutex_unlock(&_mutex)
+    
+    // Only perform this check in debug mode because it appears frequently and in a hotpath.
     precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
     #endif
   }
   
-  // Borrowed from https://github.com/s4tf/s4tf
+  // Borrowed from `_ExecutionContext` in https://github.com/s4tf/s4tf.
   @inline(__always)
   func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
     acquireMutex()

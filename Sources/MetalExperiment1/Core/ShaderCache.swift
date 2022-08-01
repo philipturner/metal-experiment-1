@@ -8,16 +8,13 @@
 import Metal
 
 class ShaderCache {
-  let dispatchQueue = DispatchQueue(label: "com.s4tf.metal.ShaderCache.dispatchQueue")
+  var dispatchQueue = DispatchQueue(label: "com.s4tf.metal.ShaderCache.dispatchQueue")
   var semaphores: [StringWrapper: DispatchSemaphore] = [:]
   var pipelines: [StringWrapper: MTLComputePipelineState] = [:]
   
-  // TODO: Avoid relying on static variables so much. If someone uses two Metal devices, everything
-  // will break. Instead, make this an instance property.
   private var device: MTLDevice
   private var defaultLibrary: MTLLibrary?
   private var shaderSourceDirectory: URL
-  private var binaryArchiveDirectory: URL
   
   lazy var elementwise_f32_i32 = wait(name: "elementwise_f32_i32")
   lazy var elementwise_u32_i64_u64 = wait(name: "elementwise_u32_i64_u64")
@@ -28,16 +25,10 @@ class ShaderCache {
     self.device = mtlDevice
     self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
     self.shaderSourceDirectory = Bundle.module.resourceURL!
-    self.binaryArchiveDirectory = shaderSourceDirectory
-      .appendingPathComponent("Archives", isDirectory: true)
     
     // In SwiftPM builds, the bundle does not include a Metal library. You have to compile shaders
     // at runtime, although this only incurs a measurable cost once. On the second run through
     // SwiftPM tests, it loads just as fast as Xcode with the pre-compiled Metal library.
-    if defaultLibrary == nil {
-      try? FileManager.default.createDirectory(
-        at: binaryArchiveDirectory, withIntermediateDirectories: false)
-    }
     
     // Load frequently used shaders immediately. Rarely used ones finish loading asynchronously. It
     // takes longer to compile shaders on the first load if you use multiple threads. I guess the

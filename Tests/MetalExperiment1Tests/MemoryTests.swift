@@ -4,21 +4,21 @@ import XCTest
 fileprivate func allocate(capacity: Int) -> OpaquePointer {
   withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
     shape[0] = capacity
-    return Context.global.allocate(Float.self, UnsafeBufferPointer(shape))
+    return defaultPluggableDevice.allocateTensor(Float.self, UnsafeBufferPointer(shape))
   }
 }
 
 fileprivate func releaseBuffer(_ handle: CTensorHandle) {
   let atomic = AllocationHandle(handle).referenceCount
   if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-    Context.global.deleteTensor(handle)
+    defaultPluggableDevice.deleteTensor(handle)
   }
 }
 
 final class MemoryTests: XCTestCase {
   func testSimpleAllocation() throws {
     testHeader("Simple memory allocation")
-    Context.global.heapAllocator._releaseCachedBufferBlocks()
+    defaultPluggableDevice.heapAllocator._releaseCachedBufferBlocks()
     
     do {
       let firstHandle = allocate(capacity: 1000 / MemoryLayout<Float>.stride)
@@ -43,12 +43,12 @@ final class MemoryTests: XCTestCase {
       let handle = allocate(capacity: 4000 / MemoryLayout<Float>.stride)
       defer { releaseBuffer(handle) }
       
-      Context.global.initialize(handle) { bufferPointer in
+      defaultPluggableDevice.initializeTensor(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      Context.global.readTensor(handle) { bufferPointer in
+      defaultPluggableDevice.readTensor(handle) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)
@@ -96,7 +96,7 @@ final class MemoryTests: XCTestCase {
   
   func testRecyclingThroughput() throws {
     testHeader("Memory recycling throughput")
-    Context.global.heapAllocator._releaseCachedBufferBlocks()
+    defaultPluggableDevice.heapAllocator._releaseCachedBufferBlocks()
     
     func allocateDeallocate(bufferSize: Int, numBuffers: Int) {
       var handles: [OpaquePointer] = []
@@ -105,7 +105,7 @@ final class MemoryTests: XCTestCase {
         handles.append(handle)
       }
       for handle in handles {
-        Context.global.initialize(handle) { _ in }
+        defaultPluggableDevice.initializeTensor(handle) { _ in }
       }
       for handle in handles {
         releaseBuffer(handle)
@@ -114,18 +114,18 @@ final class MemoryTests: XCTestCase {
     func fakeAllocateDeallocate(numBuffers: Int) {
       var handles: [OpaquePointer?] = []
       for _ in 0..<numBuffers {
-        let handle = Context.global.sync {
+        let handle = defaultPluggableDevice.sync {
           return OpaquePointer?(nil)
         }
         handles.append(handle)
       }
       for handle in handles {
-        Context.global.sync {
+        defaultPluggableDevice.sync {
           _ = handle
         }
       }
       for handle in handles {
-        Context.global.sync {
+        defaultPluggableDevice.sync {
           _ = handle
         }
       }
@@ -137,7 +137,7 @@ final class MemoryTests: XCTestCase {
         handles.append(handle)
       }
       for handle in handles {
-        Context.global.sync {
+        defaultPluggableDevice.sync {
           _ = handle
         }
       }
@@ -178,14 +178,14 @@ final class MemoryTests: XCTestCase {
   
   func testComplexAllocation() throws {
     testHeader()
-    let heapAllocator = Context.global.heapAllocator
+    let heapAllocator = defaultPluggableDevice.heapAllocator
     heapAllocator._releaseCachedBufferBlocks()
     
     func allocate(byteCount: Int) -> OpaquePointer {
       // The compiler mistakes this for `allocate(byteCount:)`.
       let _avoidNameCollision = allocate(capacity:)
       let handle = _avoidNameCollision(byteCount / MemoryLayout<Float>.stride)
-      Context.global.initialize(handle) { _ in }
+      defaultPluggableDevice.initializeTensor(handle) { _ in }
       return handle
     }
     func deallocate(handle: OpaquePointer) {
@@ -211,55 +211,55 @@ final class MemoryTests: XCTestCase {
       heapAllocator._releaseCachedBufferBlocks()
       let smallBufferHandle1 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle1) }
-      Context.global.sync {
-        Context.global.permitExceedingSystemRAM = true
+      defaultPluggableDevice.sync {
+        defaultPluggableDevice.permitExceedingSystemRAM = true
       }
       
       // This part of the test causes a massive bottleneck on discrete GPUs.
-      if Context.global.preferSharedStorage {
-        let largeBufferSize = Context.global.mtlDevice.maxBufferLength
+      if defaultPluggableDevice.prefersSharedMemory {
+        let largeBufferSize = defaultPluggableDevice.mtlDevice.maxBufferLength
         let largeBufferHandle1 = allocate(byteCount: largeBufferSize)
         defer { deallocate(handle: largeBufferHandle1) }
-        Context.global.sync {
-          XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+        defaultPluggableDevice.sync {
+          XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
         }
       }
       
       let smallBufferHandle2 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle2) }
-      Context.global.sync {
-        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+      defaultPluggableDevice.sync {
+        XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
       }
     }
-    Context.global.sync {
-      XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+    defaultPluggableDevice.sync {
+      XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
     }
     
     do {
       let smallBufferHandle3 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle3) }
-      Context.global.sync {
-        XCTAssertTrue(Context.global.permitExceedingSystemRAM)
+      defaultPluggableDevice.sync {
+        XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
       }
       
-      if Context.global.preferSharedStorage {
+      if defaultPluggableDevice.prefersSharedMemory {
         heapAllocator._releaseCachedBufferBlocks()
       } else {
         // Without making a barrier, the `XCTAssertFalse` below fails on discrete GPUs.
-        Context.global.barrier()
+        defaultPluggableDevice.barrier()
       }
       
       let smallBufferHandle4 = allocate(byteCount: 1_000)
       defer { deallocate(handle: smallBufferHandle4) }
-      Context.global.sync {
-        XCTAssertFalse(Context.global.permitExceedingSystemRAM)
+      defaultPluggableDevice.sync {
+        XCTAssertFalse(defaultPluggableDevice.permitExceedingSystemRAM)
       }
     }
   }
   
   func testTensorHandleLifetime() throws {
     testHeader("Tensor handle lifetime")
-    Context.global.sync {
+    defaultPluggableDevice.sync {
       // Already overrode the environment variable for this in `testHeader`.
       Allocation.debugInfoEnabled = true
     }
@@ -299,7 +299,7 @@ final class MemoryTests: XCTestCase {
       print("End of function")
     }
     
-    Context.global.sync {
+    defaultPluggableDevice.sync {
       Allocation.debugInfoEnabled = false
     }
     
@@ -325,13 +325,13 @@ final class MemoryTests: XCTestCase {
   
   func testMassiveAllocation() throws {
     testHeader("Massive memory allocation")
-    let heapAllocator = Context.global.heapAllocator
+    let heapAllocator = defaultPluggableDevice.heapAllocator
     heapAllocator._releaseCachedBufferBlocks()
     defer {
       heapAllocator._releaseCachedBufferBlocks()
     }
     
-    let mtlDevice = Context.global.mtlDevice
+    let mtlDevice = defaultPluggableDevice.mtlDevice
 #if os(macOS)
     var maxWorkingSize = Int(mtlDevice.recommendedMaxWorkingSetSize)
 #else
@@ -341,7 +341,7 @@ final class MemoryTests: XCTestCase {
     
     // If most of the device's memory is allocated, this causes a command buffer abortion on
     // discrete GPUs.
-    if !Context.global.preferSharedStorage {
+    if !defaultPluggableDevice.prefersSharedMemory {
       maxWorkingSize = 2 * 1024 * 1024
       maxBufferLength = 1 * 1024 * 1024
     }
@@ -358,13 +358,13 @@ final class MemoryTests: XCTestCase {
     }
     
     var tensor3: Tensor<Float>?
-    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
-    Context.global.initialize(bufferID1) { _ in }
-    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
-    Context.global.initialize(bufferID2) { _ in }
-    Context.global.sync { Context.global.permitExceedingSystemRAM = true }
+    defaultPluggableDevice.sync { defaultPluggableDevice.permitExceedingSystemRAM = true }
+    defaultPluggableDevice.initializeTensor(bufferID1) { _ in }
+    defaultPluggableDevice.sync { defaultPluggableDevice.permitExceedingSystemRAM = true }
+    defaultPluggableDevice.initializeTensor(bufferID2) { _ in }
+    defaultPluggableDevice.sync { defaultPluggableDevice.permitExceedingSystemRAM = true }
     tensor3 = Tensor<Float>(repeating: 0, shape: [bufferCount3])
-    Context.global.sync { Context.global.permitExceedingSystemRAM = false }
+    defaultPluggableDevice.sync { defaultPluggableDevice.permitExceedingSystemRAM = false }
     guard let tensor3 = tensor3 else {
       fatalError("This should never happen.")
     }
@@ -422,12 +422,12 @@ final class MemoryTests: XCTestCase {
     
     // Don't override the environment variable for other tests.
     var previousProfilingEncoding = false
-    Context.global.sync {
+    defaultPluggableDevice.sync {
       previousProfilingEncoding = Context.profilingEncoding
       Context.profilingEncoding = true
     }
     defer {
-      Context.global.sync {
+      defaultPluggableDevice.sync {
         Context.profilingEncoding = previousProfilingEncoding
       }
     }

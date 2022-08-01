@@ -128,9 +128,7 @@ fileprivate var profilingEncoding = false
 
 func tensorOperationHeader(_ message: String? = nil) {
   Profiler.checkpoint()
-  Context.global.sync {
-    _ = Context.global
-  }
+  _ = defaultPluggableDevice
   let startupTime = Profiler.checkpoint()
   if startupTime > 1000 {
     print("=== Initialize context ===")
@@ -144,16 +142,16 @@ func tensorOperationHeader(_ message: String? = nil) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Context.global.sync {
+  defaultPluggableDevice.sync {
     Allocation.debugInfoEnabled = false
     profilingEncoding = Context.profilingEncoding
     Context.profilingEncoding = false
   }
-  Context.global.barrier()
+  defaultPluggableDevice.barrier()
 }
 
 func tensorOperationFooter() {
-  Context.global.sync {
+  defaultPluggableDevice.sync {
     Context.profilingEncoding = profilingEncoding
   }
 }

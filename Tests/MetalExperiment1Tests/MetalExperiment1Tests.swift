@@ -2,9 +2,11 @@ import XCTest
 @testable import MetalExperiment1
 import Metal
 
+internal let defaultPluggableDevice = Context.global
+
 func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()
-  _ = Context.global
+  _ = defaultPluggableDevice
   let startupTime = Profiler.checkpoint()
   if startupTime > 1000 {
     print("=== Initialize context ===")
@@ -18,10 +20,10 @@ func testHeader(_ message: String? = nil) {
   
   // Stop messages about references from flooding the console. You can re-activate this inside a
   // test function if you want.
-  Context.global.sync {
+  defaultPluggableDevice.sync {
     Allocation.debugInfoEnabled = false
   }
-  Context.global.barrier()
+  defaultPluggableDevice.barrier()
 }
 
 fileprivate protocol DummyPluggableDevice: AnyObject {}
@@ -32,7 +34,7 @@ final class MetalExperiment1Tests: XCTestCase {
     
     for _ in 0..<2 {
       Profiler.checkpoint()
-      _ = Context.global.sync {
+      _ = defaultPluggableDevice.sync {
         Bool.random()
       }
       Profiler.log("Synchronization latency")
@@ -42,7 +44,7 @@ final class MetalExperiment1Tests: XCTestCase {
       Profiler.checkpoint()
       let iterations = 100
       for _ in 0..<iterations {
-        _ = Context.global.sync {
+        _ = defaultPluggableDevice.sync {
           Bool.random()
         }
       }
@@ -84,9 +86,9 @@ final class MetalExperiment1Tests: XCTestCase {
     profileThreadLocalState(iterations: 5)
     profileThreadLocalState(iterations: 1000)
     
-    Context.global.barrier()
+    defaultPluggableDevice.barrier()
     defer {
-      Context.global.barrier()
+      defaultPluggableDevice.barrier()
     }
     
     do {
@@ -219,8 +221,8 @@ final class MetalExperiment1Tests: XCTestCase {
         """)
     }
     
-    let maxCommandsPerBatch = Context.global.sync {
-      Context.global.maxCommandsPerBatch
+    let maxCommandsPerBatch = defaultPluggableDevice.sync {
+      defaultPluggableDevice.maxCommandsPerBatch
     }
     for _ in 0..<5 {
       profileStream(length: maxCommandsPerBatch * 4)
@@ -400,5 +402,9 @@ final class MetalExperiment1Tests: XCTestCase {
       average.append(5)
     }
     XCTAssertEqual(average.average, 5)
+  }
+  
+  func testMultipleDevices() throws {
+    testHeader()
   }
 }

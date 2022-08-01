@@ -10,11 +10,6 @@ import Darwin
 // MARK: - Operation Execution
 
 extension Context {
-  // Rules for encoding attributes:
-  //
-  // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
-  // to their data. This rule applies recursively with arrays of strings, arrays of arrays, etc.
-  // After the first level of recursion, store elements in their native layout stride.
   @inline(never)
   public func executeOperation(
     _ name: UnsafeRawBufferPointer,
@@ -27,7 +22,14 @@ extension Context {
       guard let function = OperationRegistry.registry[string] else {
         fatalError("Could not find operation '\(string.makeString())'.")
       }
-      function.call(attributes, inputs, outputs, self)
+      var handle: UnsafeMutableRawPointer?
+      if isGlobal {
+        // Use internal mechanism to reduce ARC overhead. Fetch the static property which seems to
+        // not reference-count.
+      } else {
+        handle = Unmanaged<Context>.passUnretained(self).toOpaque()
+      }
+      function.call(attributes, inputs, outputs, handle)
       self.maybeFlushStream()
     }
   }
@@ -136,13 +138,25 @@ extension OperationRegistry {
 
 struct OperationRegistry {
   typealias FunctionSignature = @convention(c) (
-    OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int, UnsafeMutableRawPointer) -> Void
+    OpaquePointer?, Int, OpaquePointer?, Int, OpaquePointer?, Int, UnsafeMutableRawPointer?
+  ) -> Void
   
   struct Arguments {
     var attributes: UnsafeRawBufferPointer
     var inputs: UnsafeBufferPointer<OpaquePointer>
     var outputs: UnsafeMutableBufferPointer<OpaquePointer>
-    var context: Unmanaged<Context>
+    var handle: UnsafeMutableRawPointer?
+    
+    // Does not resolve the context during initialization. This prevents ARC from retaining it
+    // outside of where it's used.
+    @inline(__always)
+    var context: Context {
+      if let handle = handle {
+        return Unmanaged<Context>.fromOpaque(handle).takeUnretainedValue()
+      } else {
+        return .global
+      }
+    }
     
     @inline(__always)
     init(
@@ -152,12 +166,12 @@ struct OperationRegistry {
       _ inputsCount: Int,
       _ outputsPtr: OpaquePointer?,
       _ outputsCount: Int,
-      _ handle: UnsafeMutableRawPointer
+      _ handle: UnsafeMutableRawPointer?
     ) {
-      attributes = .init(start: .init(attributesPtr), count: attributesCount)
-      inputs = .init(start: .init(inputsPtr), count: inputsCount)
-      outputs = .init(start: .init(outputsPtr), count: outputsCount)
-      context = Unmanaged<Context>.fromOpaque(handle)
+      self.attributes = .init(start: .init(attributesPtr), count: attributesCount)
+      self.inputs = .init(start: .init(inputsPtr), count: inputsCount)
+      self.outputs = .init(start: .init(outputsPtr), count: outputsCount)
+      self.handle = handle
     }
   }
   
@@ -174,13 +188,11 @@ struct OperationRegistry {
       _ attributes: UnsafeRawBufferPointer,
       _ inputs: UnsafeBufferPointer<OpaquePointer>,
       _ outputs: UnsafeMutableBufferPointer<OpaquePointer>,
-      _ pluggableDevice: Context
+      _ handle: UnsafeMutableRawPointer?
     ) {
       body(
-        .init(attributes.baseAddress), attributes.count,
-        .init(inputs.baseAddress), inputs.count,
-        .init(outputs.baseAddress), outputs.count,
-        Unmanaged.passUnretained(pluggableDevice).toOpaque())
+        .init(attributes.baseAddress), attributes.count, .init(inputs.baseAddress), inputs.count,
+        .init(outputs.baseAddress), outputs.count, handle)
     }
   }
   
@@ -268,7 +280,7 @@ extension OperationRegistry {
     _ operation_bool: UnaryOperationType?,
     _ metadata: UInt64? = nil
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -342,7 +354,7 @@ extension OperationRegistry {
     _ args: inout Arguments,
     _ operation: UnaryOperationType
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -373,7 +385,7 @@ extension OperationRegistry {
     _ operation_f32: UnaryOperationType,
     _ operation_i32: UnaryOperationType
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -472,7 +484,7 @@ extension OperationRegistry {
   static func dispatchCast(
     _ args: inout Arguments
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonUnaryPrecondition(args)
     
     // Fetch input.
@@ -743,7 +755,7 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
@@ -844,7 +856,7 @@ extension OperationRegistry {
     _ allowBool: Bool
   ) {
     let allowBroadcasting = operation_f32 != .approximate_equal_f32
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
@@ -1069,7 +1081,7 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1166,7 +1178,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting allowed for 2nd and 3rd arguments, no other form of broadcasting allowed.
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1233,7 +1245,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting not supported.
-    let ctx = args.context.takeUnretainedValue()
+    let ctx = args.context
     commonTernaryPrecondition(args)
     
     // Fetch inputs.

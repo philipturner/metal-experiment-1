@@ -10,6 +10,31 @@ import MetalPerformanceShadersGraph
 
 extension Context {
   @inline(never)
+  public func allocateTensor(
+    _ type: Any.Type,
+    _ shape: UnsafeBufferPointer<Int>
+  ) -> OpaquePointer {
+    let dataType = DataType(type)
+    let byteCount = shape.reduce(dataType.stride, *)
+    let handle = self.sync {
+      self._internalAllocate(1, dataType, byteCount, shape)
+    }
+    return handle._cHandle
+  }
+  
+  @inline(never)
+  public func initializeTensor(
+    _ handle: OpaquePointer,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
+  ) {
+    self.sync {
+      let reference = AllocationHandle(handle).reference!
+      reference.retain().takeUnretainedValue().initialize(body)
+      reference.release()
+    }
+  }
+  
+  @inline(never)
   public func createTensor(
     _ type: Any.Type,
     _ shape: UnsafeBufferPointer<Int>,
@@ -50,33 +75,6 @@ extension Context {
       reference.release()
     }
   }
-  
-  // Only use this in the test suite.
-  @inline(never)
-  internal func allocate(
-    _ type: Any.Type,
-    _ shape: UnsafeBufferPointer<Int>
-  ) -> OpaquePointer {
-    let dataType = DataType(type)
-    let byteCount = shape.reduce(dataType.stride, *)
-    let handle = self.sync {
-      self._internalAllocate(1, dataType, byteCount, shape)
-    }
-    return handle._cHandle
-  }
-  
-  // Only use this in the test suite.
-  @inline(never)
-  internal func initialize(
-    _ handle: OpaquePointer,
-    _ body: (UnsafeMutableRawBufferPointer) -> Void
-  ) {
-    self.sync {
-      let reference = AllocationHandle(handle).reference!
-      reference.retain().takeUnretainedValue().initialize(body)
-      reference.release()
-    }
-  }
 }
 
 extension Context {
@@ -92,7 +90,7 @@ extension Context {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, context: self, dataType: dataType,
-      byteCount: byteCount, shape: shape, isShared: self.preferSharedStorage)
+      byteCount: byteCount, shape: shape, isShared: self._prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -112,7 +110,7 @@ extension Context {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, context: self, dataType: dataType,
-      byteCount: byteCount, shape: shape, isShared: isShared ?? self.preferSharedStorage)
+      byteCount: byteCount, shape: shape, isShared: isShared ?? self._prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -129,7 +127,7 @@ extension Context {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, replicating: other,
-      isShared: isShared ?? self.preferSharedStorage)
+      isShared: isShared ?? self._prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -193,7 +191,7 @@ class Allocation {
   let id: UInt64
   var handle: AllocationHandle
   
-  // A copy of `Context.global.preferSharedStorage`, unless this is a transient allocation for
+  // A copy of `Context.global.preferSharedMemory`, unless this is a transient allocation for
   // reading/writing to discrete GPU memory.
   let isShared: Bool
   
@@ -358,11 +356,6 @@ class Allocation {
     body(ptr)
     sourceAllocation.initialized = true
   }
-  
-  // Making a function like `read` that just modifies the underlying storage is technically
-  // possible. It takes less time than a separate `read` + `initialize` on a discrete GPU, and is
-  // relatively instantaneous on an integrated GPU. However, it would be unused in the frontend.
-//  func modify(_ body: (UnsafeRawBufferPointer) -> Void) {}
   
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will

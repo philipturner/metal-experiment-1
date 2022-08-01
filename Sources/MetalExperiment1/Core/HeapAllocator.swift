@@ -218,10 +218,8 @@ class BufferPool {
 
 // MARK: - Declaration of HeapAllocator
 
-// TODO: Change this from static to an instance type.
 class HeapAllocator {
   // Similar to the environment variable `PYTORCH_DEBUG_MPS_ALLOCATOR`.
-  // TODO: Make `debugInfoEnabled` not static.
   static var debugInfoEnabled = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_HEAP_ALLOCATOR")
   
   private var mtlDevice: MTLDevice
