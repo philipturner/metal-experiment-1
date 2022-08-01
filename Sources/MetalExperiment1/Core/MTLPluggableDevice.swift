@@ -13,6 +13,11 @@ public class Context {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
   // TODO: Rename `Context.global` to `.default`, make only available in tests.
+  //
+  // TODO: Utility that behind the scenes, caches `MTLPluggableDevice` objects for each
+  // `MTLDevice`. These things are extremely expensive to create. However, provide a way to disable
+  // the mechanism - to allow for running two virtual GPUs on a machine. This is easily accomplished
+  // with the standard `init(mtlDevice:)`.
   public static let global = Context(mtlDevice: MTLCreateSystemDefaultDevice()!)
   var mtlDevice: MTLDevice
   var commandQueue: MTLCommandQueue
