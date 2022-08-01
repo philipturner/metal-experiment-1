@@ -8,12 +8,13 @@
 struct Graph {
   private var instructions: [Instruction?]
   private var cache: [AllocationHandle: Int]
-  private var numInstructionPlaceholders = 0
+  private(set) var showingDebugInfo: Bool
   
-  init(eagerOperationCount: Int) {
+  init(eagerOperationCount: Int, showingDebugInfo: Bool) {
     self.instructions = []
     self.instructions.reserveCapacity(eagerOperationCount)
     self.cache = [:]
+    self.showingDebugInfo = showingDebugInfo
   }
 }
 
@@ -88,6 +89,10 @@ extension Graph {
     dataGroup: DataGroup,
     availableHeads: Int
   ) -> Instruction.Elementwise? {
+    let showingDebugInfo = Allocation.debugInfoEnabled || Context.profilingEncoding
+    var candidate: Instruction.Elementwise?
+    var candidateIndex = -1
+    var candidateNumHeads = availableHeads - 1
     for i in 0..<3 {
       var key: SearchKey
       switch i {
@@ -129,28 +134,55 @@ extension Graph {
         fatalError("Found non-elementwise instruction at index '\(match)': '\(getDescription())'")
       }
       
-      var canUseMatch: Bool
-      if elementwise.dataGroup != dataGroup {
-        canUseMatch = false
-      } else if elementwise.input4 != nil {
-        canUseMatch = availableHeads == 0
-      } else if elementwise.input3 != nil {
-        canUseMatch = availableHeads <= 1
-      } else if elementwise.input2 != nil {
-        canUseMatch = availableHeads <= 2
-      } else {
-        canUseMatch = availableHeads <= 3
+      var canUseMatch = false
+      if elementwise.dataGroup == dataGroup {
+        var numHeads: Int
+        if elementwise.input4 != nil {
+          numHeads = 0
+        } else if elementwise.input3 != nil {
+          numHeads = 1
+        } else if elementwise.input2 != nil {
+          numHeads = 2
+        } else {
+          numHeads = 3
+        }
+        if numHeads > candidateNumHeads {
+          canUseMatch = true
+          candidateNumHeads = numHeads
+        }
       }
       
       if canUseMatch {
-        elementwise.output.initialized = false
-        return elementwise
+        if _slowPath(showingDebugInfo) {
+          if candidateIndex == -1 {
+            print("""
+                Establishing candidate at index \(match).
+              """)
+          } else {
+            print("""
+                Replacing candidate at index \(candidateIndex) with candidate at index \(match).
+              """)
+          }
+        }
+        if candidateIndex != -1 {
+          // Avoid ARC overhead of creating an extra reference
+          func getCandidate() -> Instruction.Elementwise {
+            var elementwise: Instruction.Elementwise?
+            swap(&elementwise, &candidate)
+            return elementwise!
+          }
+          var instruction: Optional = Instruction.elementwise(getCandidate())
+          swap(&instructions[candidateIndex], &instruction)
+          precondition(instruction == nil, "Did not replace candidate with placeholder.")
+        }
+        candidate = elementwise
+        candidateIndex = match
       } else {
         // Insert element back into list.
         swap(&instructions[match], &instruction)
-        return nil
       }
     }
-    return nil
+    candidate?.output.initialized = false
+    return candidate
   }
 }

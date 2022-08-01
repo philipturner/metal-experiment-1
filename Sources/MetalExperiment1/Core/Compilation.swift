@@ -20,7 +20,9 @@ extension Context {
       eagerOperations.removeAll(keepingCapacity: true)
     }
     
-    var graph = Graph(eagerOperationCount: eagerOperations.count)
+    var graph = Graph(
+      eagerOperationCount: eagerOperations.count,
+      showingDebugInfo: Allocation.debugInfoEnabled || Context.profilingEncoding)
     var fusion: Instruction.Elementwise = createBlankFusion()
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?
@@ -80,7 +82,7 @@ extension Context {
         fusionTailReferenceCount = 0
         fusionTail = fusion.output.handle
         
-        if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
+        if _slowPath(graph.showingDebugInfo) {
           print("""
               Context switch (\(fusion.numFusedUnaryOperations) unary, \
             \(fusion.numFusedNonUnaryOperations) non-unary)
@@ -148,7 +150,7 @@ extension Context {
       // in a later compiler pass; that's the job of `referenceCount`.
       fusion.output!.initialized = true
       
-      if _slowPath(Allocation.debugInfoEnabled || Context.profilingEncoding) {
+      if _slowPath(graph.showingDebugInfo) {
         let numFusedOperations = fusion.numFusedUnaryOperations + fusion.numFusedNonUnaryOperations
         if numFusedOperations >= 2 {
           print("""

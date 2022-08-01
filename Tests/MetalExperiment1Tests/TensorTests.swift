@@ -72,10 +72,10 @@ final class TensorTests: XCTestCase {
     // fusion produces any specific output. The comments below show what should happen in the most
     // optimal situation.
     #if false
-    Context.barrier()
+    Context.global.barrier()
     Instruction.Elementwise.enableDump = true
     defer {
-      Context.barrier()
+      Context.global.barrier()
       Instruction.Elementwise.enableDump = false
     }
     let showMarkers = true
@@ -339,7 +339,7 @@ final class TensorTests: XCTestCase {
         print("MARKER 7")
       }
       func getOutput() -> Tensor<Float> {
-        let tensor1 = sqrt(Tensor<Float>([25, 25, 25]))
+        let tensor1 = sqrt(Tensor<Float>([25, 25, 25])) // 5.0
         let tensor2 = Tensor<Float>([2, 2, 2])
         let tensor3 = Tensor<Float>([3, 3, 3])
         let tensor4 = max(tensor2, tensor3) // 3.0
@@ -355,6 +355,41 @@ final class TensorTests: XCTestCase {
       #if false // Dumped instructions
       var reg1 = input1[i]
       reg1 = sqrt_f32(reg1)
+      output[i] = reg1
+      #endif
+    }
+    
+    // Binary operation fusion (non-adjacent, favored context switch)
+    do {
+      if showMarkers {
+        print("MARKER 8")
+      }
+      // highlight the chosen fusion
+      func getOutput() -> Tensor<Float> {
+        let tensor1 = sqrt(Tensor<Float>([25, 25])) // 5.0
+        let tensor2 = max(tensor1, Tensor<Float>([6])) // 6.0; scalar broadcasting
+        // Fusion break; disfavored for re-entry below
+        let tensor3 = -Tensor<Float>([7, 7]) // -7.0
+        // Fusion break; favored for re-entry below
+        _ = Tensor<Float>([8, 8]).incremented() // Zombie tensor
+        // Fusion break + context switch
+        let tensor4 = tensor2 + tensor3 // -1.0
+        return tensor4
+      }
+      XCTAssertEqual(getOutput().scalars, [-1, -1])
+      
+      #if false
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      reg1 = sqrt_f32(reg1)
+      reg1 = maximum_f32(reg1, reg2)
+      output[i] = reg1
+      
+      var reg1 = input1[i]
+      var reg2 = input2[i]
+      reg1 = neg_f32(reg1)
+      swap(&reg1, &reg2)
+      reg1 = add_f32(reg1, reg2)
       output[i] = reg1
       #endif
     }
