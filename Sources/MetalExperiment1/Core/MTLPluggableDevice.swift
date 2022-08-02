@@ -16,14 +16,27 @@ public class MTLPluggableDevice {
   // `MTLDevice`. These things are extremely expensive to create. However, provide a way to disable
   // the mechanism - to allow for running two virtual GPUs on a machine. This is easily accomplished
   // with the standard `init(mtlDevice:)`.
+  
+  /// A pluggable device that encapsulates the system default `MTLDevice`.
   public static let `default`: MTLPluggableDevice =
     MTLPluggableDevice(mtlDevice: MTLCreateSystemDefaultDevice()!, isDefault: true)
   var isDefault: Bool
   
-  // Disable `fromCache` to duplicate Metal devices, imitating multi-GPU systems while using a
-  // single GPU.
+  /// A pluggable device that encapsulates the specified `MTLDevice`.
+  ///
+  /// Creating a pluggable device is costly, so this fetches the return value from an internal cache
+  /// by default. Disabling the cache mechanism means two different `MTLPluggableDevice` instances
+  /// could wrap the same `MTLDevice`. With caching disabled, a machine with only one GPU can
+  /// simulate a multi-GPU system.
+  ///
+  /// - Parameters:
+  ///   - mtlDevice: The `MTLDevice` to execute operations on.
+  ///   - fromCache: Whether to fetch the return value from an internal cache.
+  /// - Returns: The pluggable device.
   public static func custom(mtlDevice: MTLDevice, fromCache: Bool = true) -> MTLPluggableDevice {
     .default
+//    .default
+//    MTLPluggableDevice.c
   }
   
   // TODO: var mtlDevice
