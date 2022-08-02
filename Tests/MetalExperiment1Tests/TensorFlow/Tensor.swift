@@ -44,10 +44,8 @@ public class TFETensorHandle {
       return true
     }())
     
-    // TODO: Fetch pluggable device from `_ExecutionContext` fast-path.
-//    Context.global.releaseTensor(_cTensorHandle)
-    let handle = PluggableDeviceTensorHandle(_cTensorHandle).pluggableDeviceHandle
-    let device = _ExecutionContext.global.getDevice(handle: handle)
+    let deviceHandle = PluggableDeviceTensorHandle(_cTensorHandle).pluggableDeviceHandle
+    let device = _ExecutionContext.global.getDevice(handle: deviceHandle)
     device.releaseTensor(_cTensorHandle)
   }
   

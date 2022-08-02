@@ -41,23 +41,62 @@ public final class _ExecutionContext {
     #endif
   }
   
-  @usableFromInline
-  @inline(never)
-  static func eagerExecute(
+  @inlinable @inline(never)
+  func execute(
     _ name: UnsafeRawBufferPointer,
     _ attributes: UnsafeRawBufferPointer,
-    _ inputs: UnsafeBufferPointer<OpaquePointer>,
+    _ inputs: UnsafeMutableBufferPointer<OpaquePointer>,
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
   ) {
-    // If an input is on the wrong device, swap it with a temporary tensor on the correct device.
-    // This is extremely costly, but should never happen in an average use case. Use `malloc`
-    // instead of `withUnsafeTemporaryAllocation` to create the alternative `input`.
+    let targetDeviceHandle = self.currentDeviceHandle
+    var misplacedTensorExists = false
+    for input in inputs {
+      let deviceHandle = PluggableDeviceTensorHandle(input).pluggableDeviceHandle
+      if deviceHandle != targetDeviceHandle {
+        misplacedTensorExists = true
+      }
+    }
     
-//    for input in inputs {
-//      _ = AllocationHandle(input).referenceCount
-//    }
-//    _ = _ExecutionContext.global.something
-    Context.global.executeOperation(name, attributes, inputs, outputs)
+    if !misplacedTensorExists {
+      let targetDevice = self.getDevice(handle: targetDeviceHandle)
+      targetDevice.executeOperation(name, attributes, .init(inputs), outputs)
+    } else {
+      // If an input is on the wrong device, swap it with a temporary tensor on the correct device.
+      // This is extremely costly, but should never happen in an average use case.
+      executeSlowPath(name, attributes, inputs, outputs)
+    }
+  }
+  
+  @usableFromInline @inline(never)
+  func executeSlowPath(
+    _ name: UnsafeRawBufferPointer,
+    _ attributes: UnsafeRawBufferPointer,
+    _ inputs: UnsafeMutableBufferPointer<OpaquePointer>,
+    _ outputs: UnsafeMutableBufferPointer<OpaquePointer>
+  ) {
+    let dstDevice = self.currentDevice
+    let dstDeviceHandle = dstDevice.handle
+    var temporaryTensorHandles: [OpaquePointer] = []
+    temporaryTensorHandles.reserveCapacity(inputs.count)
+    defer {
+      for newTensorHandle in temporaryTensorHandles {
+        dstDevice.releaseTensor(newTensorHandle)
+      }
+    }
+    
+    for i in 0..<inputs.count {
+      let oldTensorHandle = inputs[i]
+      let deviceHandle = PluggableDeviceTensorHandle(oldTensorHandle).pluggableDeviceHandle
+      if deviceHandle != dstDeviceHandle {
+        let srcDevice = self.getDevice(handle: deviceHandle)
+        let newTensorHandle = dstDevice.copyTensor(oldTensorHandle, srcDevice)
+        inputs[i] = newTensorHandle
+        temporaryTensorHandles.append(newTensorHandle)
+      }
+    }
+    dstDevice.executeOperation(name, attributes, .init(inputs), outputs)
+    
+    fatalError("This shouldn't happen yet.")
   }
 }
 

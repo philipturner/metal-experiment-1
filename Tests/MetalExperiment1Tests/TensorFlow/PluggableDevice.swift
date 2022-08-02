@@ -31,8 +31,10 @@ import Atomics
 // The frontend may also resolve concrete types to provide vendor-specific optimizations. If such
 // optimizations create a new frontend API that can be reasonably implemented with vanilla
 // PluggableDevice functionality, the frontend must support the API on all platforms.
+
+// The protocol members below must be thread-safe and synchronized with a mutex lock.
 public protocol PluggableDevice: AnyObject {
-  // The protocol members below must be thread-safe and synchronized with a mutex lock.
+  // Release the returned tensor handle when done using it.
   func createTensor(
     _ dataType: TF_DataType,
     _ shape: UnsafeBufferPointer<Int>,
@@ -70,7 +72,7 @@ public protocol PluggableDevice: AnyObject {
 extension PluggableDevice {
   // This is not a substitute for hardware features that transfer data between accelerators, such as
   // Infinity Fabric Link. `copyTensor` has massive overhead, so avoid using it unless absolutely
-  // necessary.
+  // necessary. Release the returned tensor handle when done using it.
   public func copyTensor(
     _ handle: OpaquePointer,
     _ source: PluggableDevice

@@ -18,7 +18,7 @@ func dispatchUnary<T0, T1>(
     encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+      _ExecutionContext.global.execute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -33,7 +33,7 @@ func dispatchUnary<T0, T1, U0>(
     encodeInputs(input1) { inputs in
       encodeAttributes(attribute1) { attributes in
         let name = encodeName(name)
-        _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+        _ExecutionContext.global.execute(name, attributes, inputs, outputs)
       }
     }
   }
@@ -48,7 +48,7 @@ func dispatchUnaryRelational<T0>(
     encodeInputs(input1) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+      _ExecutionContext.global.execute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -63,7 +63,7 @@ func dispatchBinary<T0, T1, T2>(
     encodeInputs(input1, input2) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+      _ExecutionContext.global.execute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -79,7 +79,7 @@ func dispatchBinary<T0, T1, T2, U0>(
     encodeInputs(input1, input2) { inputs in
       encodeAttributes(attribute1) { attributes in
         let name = encodeName(name)
-        _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+        _ExecutionContext.global.execute(name, attributes, inputs, outputs)
       }
     }
   }
@@ -96,7 +96,7 @@ func dispatchTernary<T0, T1, T2, T3>(
     encodeInputs(input1, input2, input3) { inputs in
       let name = encodeName(name)
       let attributes = encodeAttributes()
-      _ExecutionContext.eagerExecute(name, attributes, inputs, outputs)
+      _ExecutionContext.global.execute(name, attributes, inputs, outputs)
     }
   }
 }
@@ -130,11 +130,11 @@ func encodeAttributes<T0>(
 @inlinable @inline(__always)
 func encodeInputs<T0>(
   _ input1: Tensor<T0>,
-  _ body: (UnsafeBufferPointer<CTensorHandle>) -> Void
+  _ body: (UnsafeMutableBufferPointer<CTensorHandle>) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 1) { bufferPointer in
     bufferPointer[0] = input1._rawTensorHandle
-    body(UnsafeBufferPointer(bufferPointer))
+    body(bufferPointer)
   }
 }
 
@@ -142,12 +142,12 @@ func encodeInputs<T0>(
 func encodeInputs<T0, T1>(
   _ input1: Tensor<T0>,
   _ input2: Tensor<T1>,
-  _ body: (UnsafeBufferPointer<CTensorHandle>) -> Void
+  _ body: (UnsafeMutableBufferPointer<CTensorHandle>) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 2) { bufferPointer in
     bufferPointer[0] = input1._rawTensorHandle
     bufferPointer[1] = input2._rawTensorHandle
-    body(UnsafeBufferPointer(bufferPointer))
+    body(bufferPointer)
   }
 }
 
@@ -156,13 +156,13 @@ func encodeInputs<T0, T1, T2>(
   _ input1: Tensor<T0>,
   _ input2: Tensor<T1>,
   _ input3: Tensor<T2>,
-  _ body: (UnsafeBufferPointer<CTensorHandle>) -> Void
+  _ body: (UnsafeMutableBufferPointer<CTensorHandle>) -> Void
 ) {
   withUnsafeTemporaryAllocation(of: CTensorHandle.self, capacity: 3) { bufferPointer in
     bufferPointer[0] = input1._rawTensorHandle
     bufferPointer[1] = input2._rawTensorHandle
     bufferPointer[2] = input3._rawTensorHandle
-    body(UnsafeBufferPointer(bufferPointer))
+    body(bufferPointer)
   }
 }
 
