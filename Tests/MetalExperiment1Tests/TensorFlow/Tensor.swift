@@ -89,8 +89,9 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     shape: [Int],
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
+    let device = _ExecutionContext.global.currentDevice
     let cTensorHandle = shape.withUnsafeBufferPointer {
-      Context.global.createTensor(Scalar.tensorFlowDataType._cDataType, $0, { buffer in
+      device.createTensor(Scalar.tensorFlowDataType._cDataType, $0, { buffer in
         let pointer = buffer.assumingMemoryBound(to: Scalar.self)
         scalarsInitializer(pointer.baseAddress!)
       })
@@ -114,8 +115,9 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @usableFromInline
   @inline(never)
   func makeHostCopy() -> [Scalar] {
+    let device = _ExecutionContext.global.currentDevice
     var output: [Scalar]?
-    Context.global.readTensor(_cTensorHandle, false) { tensorBuffer in
+    device.readTensor(_cTensorHandle, false) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)

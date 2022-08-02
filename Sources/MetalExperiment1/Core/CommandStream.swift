@@ -7,7 +7,7 @@
 
 import Metal
 
-extension Context {
+extension MTLPluggableDevice {
   // Used in tests.
   func barrier() {
     self.sync {
@@ -167,7 +167,7 @@ extension Context {
 
 // Compile a stream of commands to optimize it, transforming into a lower-level IR. Memory
 // allocation happens afterwards, during `flushStream`.
-private extension Context {
+private extension MTLPluggableDevice {
   @inline(__always)
   func queryQueueBackPressure() -> Int {
     let numCommitted = _fastLoadCommittedBatches()
@@ -183,19 +183,19 @@ private extension Context {
     
     // Start profiling compilation.
     var compileStartTime: UInt64 = 0
-    if Context.profilingEncoding {
+    if MTLPluggableDevice.profilingEncoding {
       compileStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     let instructions = compileEagerOperations()
     
     // Start profiling encoding.
     var encodeStartTime: UInt64 = 0
-    if Context.profilingEncoding {
+    if MTLPluggableDevice.profilingEncoding {
       encodeStartTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
     }
     let previousBackPressure = precomputedBackPressure ?? queryQueueBackPressure()
     defer {
-      if Context.profilingEncoding {
+      if MTLPluggableDevice.profilingEncoding {
         let encodeEndTime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
         let numInstructions = instructions.reduce(into: 0) {
           if $1 != nil {
@@ -223,7 +223,7 @@ private extension Context {
     
     var commandBufferID = _fastLoadCommittedBatches()
     var encodingContext = EncodingContext(
-      context: self,
+      device: self,
       commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
       commandBufferID: commandBufferID)
     commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -317,7 +317,7 @@ private extension Context {
           rangeStart = nextIterator
           if encounteredError {
             encodingContext = EncodingContext(
-              context: self,
+              device: self,
               commandBuffer: commandQueue.makeCommandBufferWithUnretainedReferences()!,
               commandBufferID: commandBufferID)
             commandBufferDictionary[commandBufferID] = encodingContext.commandBuffer
@@ -328,7 +328,7 @@ private extension Context {
         }
         if encounteredError {
           if _fastLoadCommittedBatches() == 0 {
-            if Context.profilingEncoding || HeapAllocator.debugInfoEnabled {
+            if MTLPluggableDevice.profilingEncoding || HeapAllocator.debugInfoEnabled {
               print("""
                 One of the first commands ever submitted was to interact with an exorbitant amount \
                 of memory. An allocation may have exceeded the size of your GPU's RAM.

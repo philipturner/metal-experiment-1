@@ -1,8 +1,7 @@
 import XCTest
 @testable import MetalExperiment1
-import Metal
 
-internal let defaultPluggableDevice = Context.global
+internal let defaultPluggableDevice = MTLPluggableDevice.default
 
 func testHeader(_ message: String? = nil) {
   Profiler.checkpoint()
@@ -406,5 +405,7 @@ final class MetalExperiment1Tests: XCTestCase {
   
   func testMultipleDevices() throws {
     testHeader()
+    
+    // Implement _ExecutionContext.withDevice and MTLPluggableDevice.custom
   }
 }

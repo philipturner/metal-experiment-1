@@ -32,7 +32,7 @@ public final class _ExecutionContext {
   @usableFromInline
   init() {
     #if canImport(Metal)
-    self.defaultDevice = MetalExperiment1.Context.default
+    self.defaultDevice = MTLPluggableDevice.default
     self.defaultDeviceHandle = defaultDevice!.handle
     #elseif canImport(OpenCL)
     fatalError("OpenCL backend not implemented.")

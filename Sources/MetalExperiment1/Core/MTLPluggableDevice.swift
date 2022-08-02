@@ -8,25 +8,22 @@
 import Atomics
 import Metal
 
-// TODO: Rename `MTLPluggableDevice`.
-public class Context {
+/// A wrapper around `MTLDevice` that eagerly executes arbitrary operations.
+public class MTLPluggableDevice {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
-  // TODO: Rename `Context.global` to `.default`, make only available in tests.
-  //
   // TODO: Utility that behind the scenes, caches `MTLPluggableDevice` objects for each
   // `MTLDevice`. These things are extremely expensive to create. However, provide a way to disable
   // the mechanism - to allow for running two virtual GPUs on a machine. This is easily accomplished
   // with the standard `init(mtlDevice:)`.
-  public static let global = Context(mtlDevice: MTLCreateSystemDefaultDevice()!, isGlobal: true)
-  var isGlobal: Bool
-  
-  public static let `default`: Context = .global
+  public static let `default`: MTLPluggableDevice =
+    MTLPluggableDevice(mtlDevice: MTLCreateSystemDefaultDevice()!, isDefault: true)
+  var isDefault: Bool
   
   // Disable `fromCache` to duplicate Metal devices, imitating multi-GPU systems while using a
   // single GPU.
-  public static func custom(mtlDevice: MTLDevice, fromCache: Bool = true) -> Context {
-    .global
+  public static func custom(mtlDevice: MTLDevice, fromCache: Bool = true) -> MTLPluggableDevice {
+    .default
   }
   
   // TODO: var mtlDevice
@@ -91,8 +88,8 @@ public class Context {
   private var _mutex: pthread_mutex_t
   #endif
   
-  private init(mtlDevice: MTLDevice, isGlobal: Bool = false) {
-    self.isGlobal = isGlobal
+  private init(mtlDevice: MTLDevice, isDefault: Bool = false) {
+    self.isDefault = isDefault
     
     // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
     // on background threads.
@@ -125,7 +122,7 @@ public class Context {
   }
 }
 
-extension Context {
+extension MTLPluggableDevice {
   @inline(__always)
   func acquireMutex() {
     #if os(Windows)

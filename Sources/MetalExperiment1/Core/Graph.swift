@@ -89,7 +89,6 @@ extension Graph {
     dataGroup: DataGroup,
     availableHeads: Int
   ) -> Instruction.Elementwise? {
-    let showingDebugInfo = Allocation.debugInfoEnabled || Context.profilingEncoding
     var candidate: Instruction.Elementwise?
     var candidateIndex = -1
     var candidateNumHeads = availableHeads - 1

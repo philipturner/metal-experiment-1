@@ -5,7 +5,7 @@
 //  Created by Philip Turner on 7/13/22.
 //
 
-extension Context {
+extension MTLPluggableDevice {
   func compileEagerOperations() -> [Instruction?] {
     if Allocation.debugInfoEnabled {
       print("Compiler pass starts with \(eagerOperations.count) operations.")
@@ -22,7 +22,7 @@ extension Context {
     
     var graph = Graph(
       eagerOperationCount: eagerOperations.count,
-      showingDebugInfo: Allocation.debugInfoEnabled || Context.profilingEncoding)
+      showingDebugInfo: Allocation.debugInfoEnabled || MTLPluggableDevice.profilingEncoding)
     var fusion: Instruction.Elementwise = createBlankFusion()
     var fusionTailReferenceCount: Int = -9999
     var fusionTail: AllocationHandle?

@@ -8,7 +8,7 @@
 import MetalPerformanceShaders
 
 struct EncodingContext {
-  let context: Context
+  let device: MTLPluggableDevice
   let commandBuffer: MTLCommandBuffer
   let commandBufferID: Int
   private var blitEncoder: MTLBlitCommandEncoder?
@@ -19,8 +19,8 @@ struct EncodingContext {
   var barrierResources: [MTLBuffer] = []
   
   @inline(__always)
-  init(context: Context, commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
-    self.context = context
+  init(device: MTLPluggableDevice, commandBuffer: MTLCommandBuffer, commandBufferID: Int) {
+    self.device = device
     self.commandBuffer = commandBuffer
     self.commandBufferID = commandBufferID
   }
@@ -28,14 +28,14 @@ struct EncodingContext {
   @inline(__always)
   func encodeWaitForEvent() {
     commandBuffer.encodeWaitForEvent(
-      context.synchronizationEvent, value: context.synchronizationCounter)
+      device.synchronizationEvent, value: device.synchronizationCounter)
   }
   
   @inline(__always)
   func encodeSignalEvent() {
-    let newCounter = context.synchronizationCounter + 1
-    context.synchronizationCounter = newCounter
-    commandBuffer.encodeSignalEvent(context.synchronizationEvent, value: newCounter)
+    let newCounter = device.synchronizationCounter + 1
+    device.synchronizationCounter = newCounter
+    commandBuffer.encodeSignalEvent(device.synchronizationEvent, value: newCounter)
   }
   
   // MARK: - Starting Encoding Passes
@@ -60,7 +60,7 @@ struct EncodingContext {
     
     let blitEncoder = commandBuffer.makeBlitCommandEncoder()!
     if usingFence {
-      blitEncoder.waitForFence(context.synchronizationFence)
+      blitEncoder.waitForFence(device.synchronizationFence)
     }
     self.blitEncoder = blitEncoder
     return blitEncoder
@@ -88,7 +88,7 @@ struct EncodingContext {
     precondition(synchronizedResources.isEmpty, "This should never happen.")
     let computeEncoder = commandBuffer.makeComputeCommandEncoder(dispatchType: .concurrent)!
     if usingFence {
-      computeEncoder.waitForFence(context.synchronizationFence)
+      computeEncoder.waitForFence(device.synchronizationFence)
     }
     self.computeEncoder = computeEncoder
     self.computeEncoderID += 1
@@ -111,7 +111,7 @@ struct EncodingContext {
     usingEvent: Bool
   ) {
     if !usingEvent {
-      computeEncoder.waitForFence(context.synchronizationFence)
+      computeEncoder.waitForFence(device.synchronizationFence)
     }
     computeEncoder.endEncoding()
     self.computeEncoder = nil
@@ -127,7 +127,7 @@ struct EncodingContext {
     usingEvent: Bool
   ) {
     if !usingEvent {
-      blitEncoder.waitForFence(context.synchronizationFence)
+      blitEncoder.waitForFence(device.synchronizationFence)
     }
     blitEncoder.endEncoding()
     self.blitEncoder = nil
@@ -176,7 +176,7 @@ struct EncodingContext {
 
 // MARK: - Encoding
 
-extension Context {
+extension MTLPluggableDevice {
   func encodeInstruction(
     _ instruction: Instruction,
     into ectx: inout EncodingContext
@@ -190,7 +190,7 @@ extension Context {
   }
 }
 
-extension Context {
+extension MTLPluggableDevice {
   func encodeElementwise(
     _ instruction: Instruction.Elementwise,
     into ectx: inout EncodingContext

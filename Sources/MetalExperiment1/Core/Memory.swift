@@ -8,7 +8,7 @@
 import Atomics
 import MetalPerformanceShadersGraph
 
-extension Context {
+extension MTLPluggableDevice {
   // Only for use in test suite.
   func allocateTensor(
     _ type: TF_DataType,
@@ -84,7 +84,7 @@ extension Context {
   }
 }
 
-extension Context {
+extension MTLPluggableDevice {
   @inline(__always)
   func _internalCreateTensor(
     _ referenceCount: Int,
@@ -96,7 +96,7 @@ extension Context {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
-      id: id, referenceCount: referenceCount, context: self, dataType: dataType,
+      id: id, referenceCount: referenceCount, device: self, dataType: dataType,
       byteCount: byteCount, shape: shape, isShared: self._prefersSharedMemory)
     
     let handle = allocation.handle
@@ -116,7 +116,7 @@ extension Context {
     let id = nextAllocationID
     nextAllocationID = id + 1
     let allocation = Allocation(
-      id: id, referenceCount: referenceCount, context: self, dataType: dataType,
+      id: id, referenceCount: referenceCount, device: self, dataType: dataType,
       byteCount: byteCount, shape: shape, isShared: isShared ?? self._prefersSharedMemory)
     
     let handle = allocation.handle
@@ -233,7 +233,7 @@ class Allocation {
   init(
     id: UInt64,
     referenceCount: Int,
-    context: Context,
+    device: MTLPluggableDevice,
     dataType: DataType,
     byteCount: Int,
     shape: UnsafeBufferPointer<Int>,
@@ -241,7 +241,7 @@ class Allocation {
   ) {
     self.id = id
     self.handle = AllocationHandle(
-      referenceCount: referenceCount, context: context, dataType: dataType, byteCount: byteCount,
+      referenceCount: referenceCount, device: device, dataType: dataType, byteCount: byteCount,
       shape: shape)
     self.isShared = isShared
   }
@@ -254,7 +254,7 @@ class Allocation {
     isShared: Bool
   ) {
     self.init(
-      id: id, referenceCount: referenceCount, context: handle.pluggableDevice,
+      id: id, referenceCount: referenceCount, device: handle.pluggableDevice,
       dataType: handle.dataType, byteCount: handle.byteCount, shape: handle.shape,
       isShared: isShared)
   }
@@ -391,19 +391,32 @@ class Allocation {
     // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
     // next command buffer. That way, you synchronize without dividing into two separate command
     // buffers (more overhead). It would also reduce I/O bottlenecks if you have several calls to
-    // `read` in a row. This `MTLEvent` should never cause glitches in the graph compilier, because
+    // `read` in a row. This `MTLEvent` should never cause glitches in the graph compiler, because
     // the buffer here is not deallocated and not a placeholder. Keeping the entire pending command
     // batch intact provides more opportunities for fusing non-adjacent nodes in the graph. This
     // could be implemented by creating an `event` property on the allocation and materializing it
-    // inside the compiler. No `MTLBuffer` should be created if this is the last operation in the
+    // inside the compiler. No `MTLEvent` should be created if this is the last operation in the
     // graph.
     //
+    // Exit the barrier operation below either when (a) the command buffer finishes or (b) the
+    // `MTLEvent` notification handler executes.
+    //
     // TODO: Prioritize the copying op if on a discrete GPU. Prepend the copying op to the beginning
-    // of `bufferedOperations`, unless one of those operations references it. This violates
-    // sequential order of execution, but produces the same end result.
+    // of `eagerOperations`, unless one of those operations references it. This violates sequential
+    // order of execution, but produces the same end result.
+    //
+    // Here's how to do this. During compilation, it optionally returns the index of the last
+    // operation that references a specific tail. Intercept the completed instructions and
+    // optionally insert an explicit copy after `instructions[index]`. If the index is not the end
+    // of the list, signal a global `MTLSharedEvent` around `instructions[index]`. In the command
+    // buffer's completion handler, signal a semaphore. The `MTLSharedEvent` also signals the
+    // semaphore, but the last one to signal balances it out with a `wait`.
+    //
+    // These optimizations take a non-negligible amount of time to implement and create tests for.
+    // It's also time-intensive to create benchmarks for them (they could make CPU-side latency
+    // *worse*). I will not implement the two TODO's above in the near future.
     context._internalFlushStream()
     
-    // Encode the commands beforehand because they might write to `lastModifiedCommandBufferID`.
     let commandBufferID = sourceAllocation.lastModifiedCommandBufferID
     if commandBufferID != -1 {
       context._internalBarrier(commandBufferID: commandBufferID)
@@ -473,7 +486,7 @@ struct AllocationHandle: Hashable {
   
   init(
     referenceCount: Int,
-    context: Context,
+    device: MTLPluggableDevice,
     dataType: DataType,
     byteCount: Int,
     shape: UnsafeBufferPointer<Int>
@@ -489,7 +502,7 @@ struct AllocationHandle: Hashable {
     bufferSize *= MemoryLayout<Int>.stride
     baseAddress = malloc(bufferSize)!.assumingMemoryBound(to: Int.self)
     
-    let pluggableDeviceAddress = Unmanaged.passUnretained(context).toOpaque()
+    let pluggableDeviceAddress = Unmanaged.passUnretained(device).toOpaque()
     baseAddress[0] = referenceCount
     baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
     baseAddress[2] = Int(bitPattern: pluggableDeviceAddress)
@@ -533,9 +546,9 @@ struct AllocationHandle: Hashable {
   // Use context object's memory address as a unique identfier. This is unique across all
   // pluggable device implementations.
   @inline(__always)
-  var pluggableDevice: Context {
+  var pluggableDevice: MTLPluggableDevice {
     let pointer = UnsafeRawPointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
-    return Unmanaged<Context>.fromOpaque(pointer).takeUnretainedValue()
+    return Unmanaged<MTLPluggableDevice>.fromOpaque(pointer).takeUnretainedValue()
   }
   
   

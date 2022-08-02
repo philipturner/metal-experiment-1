@@ -5,10 +5,10 @@
 //  Created by Philip Turner on 7/31/22.
 //
 
-#if canImport(MetalExperiment1)
+#if canImport(Metal)
 import MetalExperiment1
 
-extension MetalExperiment1.Context: PluggableDevice {
+extension MTLPluggableDevice: PluggableDevice {
   
 }
 #endif

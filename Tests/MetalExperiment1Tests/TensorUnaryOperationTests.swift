@@ -144,15 +144,15 @@ func tensorOperationHeader(_ message: String? = nil) {
   // test function if you want.
   defaultPluggableDevice.sync {
     Allocation.debugInfoEnabled = false
-    profilingEncoding = Context.profilingEncoding
-    Context.profilingEncoding = false
+    profilingEncoding = MTLPluggableDevice.profilingEncoding
+    MTLPluggableDevice.profilingEncoding = false
   }
   defaultPluggableDevice.barrier()
 }
 
 func tensorOperationFooter() {
   defaultPluggableDevice.sync {
-    Context.profilingEncoding = profilingEncoding
+    MTLPluggableDevice.profilingEncoding = profilingEncoding
   }
 }
 

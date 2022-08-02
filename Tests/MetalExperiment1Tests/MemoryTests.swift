@@ -424,12 +424,12 @@ final class MemoryTests: XCTestCase {
     // Don't override the environment variable for other tests.
     var previousProfilingEncoding = false
     defaultPluggableDevice.sync {
-      previousProfilingEncoding = Context.profilingEncoding
-      Context.profilingEncoding = true
+      previousProfilingEncoding = MTLPluggableDevice.profilingEncoding
+      MTLPluggableDevice.profilingEncoding = true
     }
     defer {
       defaultPluggableDevice.sync {
-        Context.profilingEncoding = previousProfilingEncoding
+        MTLPluggableDevice.profilingEncoding = previousProfilingEncoding
       }
     }
     

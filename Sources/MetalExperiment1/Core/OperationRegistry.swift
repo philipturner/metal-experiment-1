@@ -9,7 +9,7 @@ import Darwin
 
 // MARK: - Operation Execution
 
-extension Context {
+extension MTLPluggableDevice {
   @inline(never)
   public func executeOperation(
     _ name: UnsafeRawBufferPointer,
@@ -23,11 +23,11 @@ extension Context {
         fatalError("Could not find operation '\(string.makeString())'.")
       }
       var handle: UnsafeMutableRawPointer?
-      if isGlobal {
+      if isDefault {
         // Use internal mechanism to reduce ARC overhead. Fetch the static property which seems to
         // not reference-count.
       } else {
-        handle = Unmanaged<Context>.passUnretained(self).toOpaque()
+        handle = Unmanaged<MTLPluggableDevice>.passUnretained(self).toOpaque()
       }
       function.call(attributes, inputs, outputs, handle)
       self.maybeFlushStream()
@@ -150,11 +150,11 @@ struct OperationRegistry {
     // Does not resolve the context during initialization. This prevents ARC from retaining it
     // outside of where it's used.
     @inline(__always)
-    var context: Context {
+    var device: MTLPluggableDevice {
       if let handle = handle {
-        return Unmanaged<Context>.fromOpaque(handle).takeUnretainedValue()
+        return Unmanaged<MTLPluggableDevice>.fromOpaque(handle).takeUnretainedValue()
       } else {
-        return .global
+        return MTLPluggableDevice.default
       }
     }
     
@@ -280,16 +280,16 @@ extension OperationRegistry {
     _ operation_bool: UnaryOperationType?,
     _ metadata: UInt64? = nil
   ) {
-    let ctx = args.context
+    let device = args.device
     commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    ctx._internalRetain(input)
+    device._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input)
+    let output = device._internalAllocate(2, input)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -345,7 +345,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.unary(.init(
+    device.eagerOperations.append(.unary(.init(
       operation, input, output, dataGroup, metadata)))
   }
   
@@ -354,12 +354,12 @@ extension OperationRegistry {
     _ args: inout Arguments,
     _ operation: UnaryOperationType
   ) {
-    let ctx = args.context
+    let device = args.device
     commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    ctx._internalRetain(input)
+    device._internalRetain(input)
     
     // Fetch data type.
     let dataType = input.dataType
@@ -372,11 +372,11 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, .bool, byteCount, input.shape)
+    let output = device._internalAllocate(2, .bool, byteCount, input.shape)
     encodeOutput(&args.outputs, output)
     
     // Append operation.
-    ctx.eagerOperations.append(.unary(.init(
+    device.eagerOperations.append(.unary(.init(
       operation.rawValue, input, output, .f32_i32, nil)))
   }
   
@@ -385,16 +385,16 @@ extension OperationRegistry {
     _ operation_f32: UnaryOperationType,
     _ operation_i32: UnaryOperationType
   ) {
-    let ctx = args.context
+    let device = args.device
     commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    ctx._internalRetain(input)
+    device._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input)
+    let output = device._internalAllocate(2, input)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -477,26 +477,26 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.unary(.init(
+    device.eagerOperations.append(.unary(.init(
       operation, input, output, dataGroup, metadata)))
   }
   
   static func dispatchCast(
     _ args: inout Arguments
   ) {
-    let ctx = args.context
+    let device = args.device
     commonUnaryPrecondition(args)
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    ctx._internalRetain(input)
+    device._internalRetain(input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
     let outputDataType = DataType(tensorFlowDataType: decodeScalar(&args.attributes))
     let shape = input.shape
     let byteCount = shape.reduce(outputDataType.stride, *)
-    let output = ctx._internalAllocate(2, outputDataType, byteCount, shape)
+    let output = device._internalAllocate(2, outputDataType, byteCount, shape)
     encodeOutput(&args.outputs, output)
     
     // Select operation.
@@ -523,7 +523,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.unary(.init(
+    device.eagerOperations.append(.unary(.init(
       operation, input, output, dataGroup, metadata)))
   }
 }
@@ -755,14 +755,14 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = args.context
+    let device = args.device
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
-    ctx._internalRetain(input1)
-    ctx._internalRetain(input2)
+    device._internalRetain(input1)
+    device._internalRetain(input2)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -787,7 +787,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(2, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -845,7 +845,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.binary(.init(
+    device.eagerOperations.append(.binary(.init(
       operation, input1, input2, output, dataGroup, metadata)))
   }
   
@@ -856,14 +856,14 @@ extension OperationRegistry {
     _ allowBool: Bool
   ) {
     let allowBroadcasting = operation_f32 != .approximate_equal_f32
-    let ctx = args.context
+    let device = args.device
     commonBinaryPrecondition(args)
     
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
-    ctx._internalRetain(input1)
-    ctx._internalRetain(input2)
+    device._internalRetain(input1)
+    device._internalRetain(input2)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -899,7 +899,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, .bool, byteCount, referenceInput.shape)
+    let output = device._internalAllocate(2, .bool, byteCount, referenceInput.shape)
     encodeOutput(&args.outputs, output)
     
     // Select operation.
@@ -918,7 +918,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.binary(.init(
+    device.eagerOperations.append(.binary(.init(
       operation, input1, input2, output, dataGroup, metadata)))
   }
 }
@@ -1081,16 +1081,16 @@ extension OperationRegistry {
     _ metadata: UInt64? = nil,
     _ allowBroadcasting: Bool = false
   ) {
-    let ctx = args.context
+    let device = args.device
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    ctx._internalRetain(input1)
-    ctx._internalRetain(input2)
-    ctx._internalRetain(input3)
+    device._internalRetain(input1)
+    device._internalRetain(input2)
+    device._internalRetain(input3)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -1110,7 +1110,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(2, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -1170,7 +1170,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.ternary(.init(
+    device.eagerOperations.append(.ternary(.init(
       operation, input1, input2, input3, output, dataGroup, metadata)))
   }
   
@@ -1178,16 +1178,16 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting allowed for 2nd and 3rd arguments, no other form of broadcasting allowed.
-    let ctx = args.context
+    let device = args.device
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    ctx._internalRetain(input1)
-    ctx._internalRetain(input2)
-    ctx._internalRetain(input3)
+    device._internalRetain(input1)
+    device._internalRetain(input2)
+    device._internalRetain(input3)
     
     var shouldFail = false
     if !input1.shape.elementsEqual(input2.shape) {
@@ -1209,7 +1209,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, input1)
+    let output = device._internalAllocate(2, input1)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -1237,7 +1237,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.ternary(.init(
+    device.eagerOperations.append(.ternary(.init(
       operation, input1, input2, input3, output, dataGroup, nil)))
   }
   
@@ -1245,7 +1245,7 @@ extension OperationRegistry {
     _ args: inout Arguments
   ) {
     // Scalar broadcasting not supported.
-    let ctx = args.context
+    let device = args.device
     commonTernaryPrecondition(args)
     
     // Fetch inputs.
@@ -1256,9 +1256,9 @@ extension OperationRegistry {
     
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    ctx._internalRetain(input1)
-    ctx._internalRetain(input2)
-    ctx._internalRetain(input3)
+    device._internalRetain(input1)
+    device._internalRetain(input2)
+    device._internalRetain(input3)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -1281,7 +1281,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = ctx._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(2, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -1304,7 +1304,7 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    ctx.eagerOperations.append(.ternary(.init(
+    device.eagerOperations.append(.ternary(.init(
       operation, input1, input2, input3, output, dataGroup, nil)))
   }
 }
