@@ -99,9 +99,6 @@ struct DispatchParams {
 enum ElementwiseOperationType: ushort {
   // Unary (0 - 999)
   
-  // TODO: Extra conditional branch that creates two groups of 10's. Based on the performance
-  // distribution, do not extract this to the top-level if-else chain. Check the benchmarks to prove
-  // it improves performance.
   abs_f32 = 0,
   abs_i32 = 1, // integer operation
   acos_f32 = 2,
