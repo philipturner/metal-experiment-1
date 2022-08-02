@@ -405,7 +405,12 @@ final class MetalExperiment1Tests: XCTestCase {
   
   func testMultipleDevices() throws {
     testHeader()
-    
-    // Implement _ExecutionContext.withDevice and MTLPluggableDevice.custom
+
+    let device1 = MTLPluggableDevice.default
+    let device2 = MTLPluggableDevice.default
+    XCTAssertIdentical(device1, device2)
+
+    let mtlDevice = MTLCreateSystemDefaultDevice()!
+//    let device3 = MTLPl
   }
 }

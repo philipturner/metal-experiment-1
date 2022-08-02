@@ -97,7 +97,7 @@ extension MTLPluggableDevice {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, device: self, dataType: dataType,
-      byteCount: byteCount, shape: shape, isShared: self._prefersSharedMemory)
+      byteCount: byteCount, shape: shape, isShared: self.prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -117,7 +117,7 @@ extension MTLPluggableDevice {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, device: self, dataType: dataType,
-      byteCount: byteCount, shape: shape, isShared: isShared ?? self._prefersSharedMemory)
+      byteCount: byteCount, shape: shape, isShared: isShared ?? self.prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)
@@ -134,7 +134,7 @@ extension MTLPluggableDevice {
     nextAllocationID = id + 1
     let allocation = Allocation(
       id: id, referenceCount: referenceCount, replicating: other,
-      isShared: isShared ?? self._prefersSharedMemory)
+      isShared: isShared ?? self.prefersSharedMemory)
     
     let handle = allocation.handle
     handle.reference = .passRetained(allocation)

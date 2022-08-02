@@ -6,6 +6,9 @@
 //
 
 import Atomics
+#if canImport(Metal)
+import Metal
+#endif
 import MetalExperiment1
 
 public final class _ExecutionContext {
@@ -32,7 +35,9 @@ public final class _ExecutionContext {
   @usableFromInline
   init() {
     #if canImport(Metal)
-    self.defaultDevice = MTLPluggableDevice.default
+    let mtlDevice = MTLCreateSystemDefaultDevice()!
+    let descriptor = MTLPluggableDeviceDescriptor()
+    self.defaultDevice = mtlDevice.makePluggableDevice(descriptor: descriptor)
     self.defaultDeviceHandle = defaultDevice!.handle
     #elseif canImport(OpenCL)
     fatalError("OpenCL backend not implemented.")
@@ -162,6 +167,44 @@ extension _ExecutionContext {
       fatalError("Device with handle \(handle) not found.")
     }
     return device
+  }
+  
+  /// See documentation for the top-level `withDevice(_:perform)`.
+  func withDevice<R>(_ device: PluggableDevice, perform body: () throws -> R) rethrows -> R {
+    let state = _ThreadLocalState.local
+    
+    // If possible, avoid pushing to the stack. That removes the fast-path for accessing the current
+    // device, increasing CPU-side latency everywhere in the framework.
+    var shouldModifyStack = device.handle != self.defaultDeviceHandle
+    if !shouldModifyStack {
+      // Fast-path already unavailable.
+      shouldModifyStack = state.deviceScopes._currentDevice != nil
+    }
+    if shouldModifyStack {
+      state.deviceScopes.pushDevice(device)
+    }
+    let result = try body()
+    if shouldModifyStack {
+      state.deviceScopes.popDevice()
+    }
+    return result
+  }
+  
+  /// See documentation for the top-level `withDefaultDevice(perform)`.
+  func withDefaultDevice<R>(perform body: () throws -> R) rethrows -> R {
+    let state = _ThreadLocalState.local
+    
+    // If possible, avoid pushing to the stack. That removes the fast-path for accessing the current
+    // device, increasing CPU-side latency everywhere in the framework.
+    let shouldModifyStack = state.deviceScopes._currentDevice != nil
+    if shouldModifyStack {
+      state.deviceScopes.pushDevice(nil)
+    }
+    let result = try body()
+    if shouldModifyStack {
+      state.deviceScopes.popDevice()
+    }
+    return result
   }
 }
 

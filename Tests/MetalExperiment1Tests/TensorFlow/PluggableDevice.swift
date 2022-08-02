@@ -7,8 +7,8 @@
 
 // The official header for the PluggableDevice backend API. This facilitates virtual function calls
 // into PluggableDevice instances and provides API extensions deemed necessary for properly
-// interacting with backends. It is designed to be API/ABI-stable, guaranteeing backward
-// compatibility with any framework that adopts the interface.
+// interacting with backends. It is API-stable, guaranteeing backward compatibility with any
+// framework that adopts the interface.
 //
 // This is intentionally named after the TensorFlow "PluggableDevice" mechanism for supporting
 // non-Nvidia GPUs. It shares no relation to the TensorFlow feature other than name, and does not
@@ -19,7 +19,9 @@
 // Usage:
 //
 // Include this file in the frontend's Swift module, not the backend's module. The frontend should
-// declare each backend's conformance to `PluggableDevice`.
+// declare each backend's conformance to `PluggableDevice`. Alternatively, the user can create a
+// custom pluggable device and declare conformance in an external code base. Provide a convenient
+// way for the user to "plug in" their custom device and use it to accelerate computations.
 
 import Atomics
 
@@ -29,8 +31,8 @@ import Atomics
 // backend on non-Apple platforms.
 //
 // The frontend may also resolve concrete types to provide vendor-specific optimizations. If such
-// optimizations create a new frontend API that can be reasonably implemented with vanilla
-// PluggableDevice functionality, the frontend must support the API on all platforms.
+// optimizations create a new frontend API that can be reasonably implemented with vanilla pluggable
+// device functionality, expose that API to all platforms.
 
 // The protocol members below must be thread-safe and synchronized with a mutex lock.
 public protocol PluggableDevice: AnyObject {
