@@ -78,32 +78,32 @@ public typealias PluggableDeviceHandle = OpaquePointer
 public struct PluggableDeviceTensorHandle {
   public var baseAddress: UnsafeMutablePointer<Int>
   
-  @inlinable
+  @inlinable @inline(__always)
   public init(_ handle: OpaquePointer) {
     baseAddress = UnsafeMutablePointer(handle)
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var referenceCount: UnsafeAtomic<Int> {
     UnsafeAtomic(at: UnsafeMutablePointer(OpaquePointer(baseAddress)))
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var pluggableDeviceHandle: PluggableDeviceHandle {
     PluggableDeviceHandle(bitPattern: baseAddress[2])!
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var byteCount: Int {
     baseAddress[4]
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var rank: Int {
     baseAddress[5]
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var shape: UnsafeBufferPointer<Int> {
     UnsafeBufferPointer(start: baseAddress + 6, count: rank)
   }
@@ -138,7 +138,7 @@ extension PluggableDevice {
     return alias
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public func releaseTensor(
     _ handle: OpaquePointer
   ) {
@@ -148,7 +148,7 @@ extension PluggableDevice {
     }
   }
   
-  @inlinable
+  @inlinable @inline(__always)
   public var handle: PluggableDeviceHandle {
     PluggableDeviceHandle(Unmanaged.passUnretained(self).toOpaque())
   }

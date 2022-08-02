@@ -44,11 +44,8 @@ public class TFETensorHandle {
       return true
     }())
     
-    // TODO: Call `releaseTensor` and profile performance
-    let atomic = AllocationHandle(_cTensorHandle).referenceCount
-    if atomic.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-      Context.global.deleteTensor(_cTensorHandle)
-    }
+    // TODO: Fetch pluggable device from `_ExecutionContext` fast-path.
+    Context.global.releaseTensor(_cTensorHandle)
   }
   
   @inlinable
