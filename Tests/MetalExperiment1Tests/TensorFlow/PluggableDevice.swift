@@ -15,6 +15,11 @@
 // interact with the feature internally. This allows for training models on platforms not supported
 // by TensorFlow (e.g. iOS, which can only perform model inference) and for lower overhead by
 // directly calling into user-defined code.
+//
+// Usage:
+//
+// Include this file in the frontend's Swift module, not the backend's module. The frontend should
+// declare each backend's conformance to `PluggableDevice`.
 
 import Atomics
 
@@ -68,7 +73,7 @@ extension PluggableDevice {
   // necessary.
   public func copyTensor(
     _ handle: OpaquePointer,
-    _ source: any PluggableDevice
+    _ source: PluggableDevice
   ) -> OpaquePointer {
     // To avoid creating a synchronization deadlock with the source (which could be `self`), first
     // extract the data onto the CPU.

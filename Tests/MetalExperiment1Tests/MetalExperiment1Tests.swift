@@ -70,14 +70,14 @@ final class MetalExperiment1Tests: XCTestCase {
     
     do {
       Profiler.checkpoint()
-      _ = _ExecutionContext.global.currentDeviceName
+      _ = _ExecutionContext.global.currentDevice
       Profiler.log("_ThreadLocalState startup latency")
     }
     
     func profileThreadLocalState(iterations: Int) {
       Profiler.checkpoint()
       for _ in 0..<iterations {
-        _ = _ExecutionContext.global.currentDeviceName
+        _ = _ExecutionContext.global.currentDevice
       }
       let totalTime = Profiler.checkpoint()
       let throughput = Double(totalTime) / Double(iterations)

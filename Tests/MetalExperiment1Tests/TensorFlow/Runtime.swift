@@ -5,24 +5,40 @@
 //  Created by Philip Turner on 7/31/22.
 //
 
+import Atomics
 import MetalExperiment1
 
 public final class _ExecutionContext {
   /// Global context storing all available devices, loaded functions, etc.
   public static let global: _ExecutionContext = _ExecutionContext()
   
+  /// List of devices available to this execution context.
+  /// See documentation for `withDevice(_:)` to learn about devices.
+  var devices: [PluggableDeviceHandle: PluggableDevice] = [:]
+  
+  /// The mutex for preventing potential concurrent access to `devices`.
+  var devicesMutex: Mutex = Mutex()
+  
+  @usableFromInline let defaultDevice: PluggableDevice?
+  
+  @usableFromInline let defaultDeviceHandle: PluggableDeviceHandle?
+  
+  /// Tracks the size of every thread's device stack. When it reaches zero, do not query the
+  /// thread-local device stack, which greatly increases overhead of accessing the current device.
+  /// This atomic only needs to be synchronized with respect to the calling thread.
+  @usableFromInline let allDeviceStacksSize: UnsafeAtomic<Int> = .create(0)
+  
   /// Initializes a new execution context by initializing available devices.
   @usableFromInline
   init() {
-    
-  }
-  
-  /// Returns a valid TensorFlow device name, which corresponds to the closest enclosing call to
-  /// one of the overloads of withDevice. A return value of `nil` indicates the absence of a
-  /// withDevice call on the call stack or the presence of an immediately enclosing
-  /// `withDefaultDevice(perform)` call.
-  var currentDeviceName: String? {
-    return _ThreadLocalState.local.deviceScopes._currentDevice
+    #if canImport(Metal)
+    self.defaultDevice = MetalExperiment1.Context.default
+    self.defaultDeviceHandle = defaultDevice!.handle
+    #elseif canImport(OpenCL)
+    fatalError("OpenCL backend not implemented.")
+    #else
+    // For other backends, use `withDevice(PluggableDevice)` to set the device.
+    #endif
   }
   
   @usableFromInline
@@ -43,12 +59,70 @@ public final class _ExecutionContext {
 //    _ = _ExecutionContext.global.something
     Context.global.executeOperation(name, attributes, inputs, outputs)
   }
+}
+
+extension _ExecutionContext {
+  @inlinable @inline(__always)
+  var currentDeviceHandle: PluggableDeviceHandle {
+    if allDeviceStacksSize.load(ordering: .relaxed) == 0,
+       let defaultDeviceHandle = defaultDeviceHandle {
+      return defaultDeviceHandle
+    } else {
+      return currentDeviceHandleSlowPath
+    }
+  }
   
-  static let somethingKey = ThreadLocalStorage.Key(destructor: nil)
+  @usableFromInline @inline(never)
+  var currentDeviceHandleSlowPath: PluggableDeviceHandle {
+    if let device = _ThreadLocalState.local.deviceScopes._currentDevice {
+      return device.handle
+    } else if let defaultDeviceHandle = defaultDeviceHandle {
+      return defaultDeviceHandle
+    } else {
+      fatalError("No default device was set.")
+    }
+  }
   
-  @usableFromInline
-  internal var something: UnsafeMutableRawPointer? {
-    ThreadLocalStorage.get(for: Self.somethingKey)
+  @inlinable @inline(__always)
+  var currentDevice: PluggableDevice {
+    if allDeviceStacksSize.load(ordering: .relaxed) == 0,
+       let defaultDevice = defaultDevice {
+      return defaultDevice
+    } else {
+      return currentDeviceSlowPath
+    }
+  }
+  
+  @usableFromInline @inline(never)
+  var currentDeviceSlowPath: PluggableDevice {
+    if let device = _ThreadLocalState.local.deviceScopes._currentDevice {
+      return device
+    } else if let defaultDevice = defaultDevice {
+      return defaultDevice
+    } else {
+      fatalError("No default device was set.")
+    }
+  }
+  
+  @inlinable @inline(__always)
+  func getDevice(handle: PluggableDeviceHandle) -> PluggableDevice {
+    if handle == defaultDeviceHandle {
+      return defaultDevice.unsafelyUnwrapped
+    } else {
+      return getDeviceSlowPath(handle: handle)
+    }
+  }
+  
+  @usableFromInline @inline(never)
+  func getDeviceSlowPath(handle: PluggableDeviceHandle) -> PluggableDevice {
+    precondition(devicesMutex.acquire() == 0)
+    let device = devices[handle]
+    precondition(devicesMutex.release() == 0)
+    
+    guard let device = device else {
+      fatalError("Device with handle \(handle) not found.")
+    }
+    return device
   }
 }
 
@@ -90,19 +164,32 @@ class _ThreadLocalState {
 /// that it sees fit.
 @usableFromInline
 struct DeviceScopes {
-  var deviceStack: [String?] = []
+  var deviceStack: [PluggableDevice?] = []
 
-  var _currentDevice: String? {
+  var _currentDevice: PluggableDevice? {
     return deviceStack.last ?? nil
   }
 
   @usableFromInline
-  mutating func pushDevice(_ device: String?) {
+  mutating func pushDevice(_ device: PluggableDevice?) {
+    if let handle = device?.handle {
+      let ctx = _ExecutionContext.global
+      if handle != ctx.defaultDeviceHandle {
+        _ExecutionContext.global.allDeviceStacksSize.wrappingIncrement(ordering: .relaxed)
+        precondition(ctx.devicesMutex.acquire() == 0)
+        ctx.devices[handle] = device
+        precondition(ctx.devicesMutex.release() == 0)
+      }
+    }
     deviceStack.append(device)
   }
 
   @usableFromInline
   mutating func popDevice() {
+    let lastDevice = deviceStack.popLast()
     precondition(deviceStack.popLast() != nil)
+    if lastDevice??.handle != _ExecutionContext.global.defaultDeviceHandle {
+      _ExecutionContext.global.allDeviceStacksSize.wrappingDecrement(ordering: .relaxed)
+    }
   }
 }
