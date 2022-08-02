@@ -12,15 +12,16 @@ import Metal
 public class MTLPluggableDevice {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
-  // TODO: Utility that behind the scenes, caches `MTLPluggableDevice` objects for each
-  // `MTLDevice`. These things are extremely expensive to create. However, provide a way to disable
-  // the mechanism - to allow for running two virtual GPUs on a machine. This is easily accomplished
-  // with the standard `init(mtlDevice:)`.
-  
   /// A pluggable device that encapsulates the system default `MTLDevice`.
-  public static let `default`: MTLPluggableDevice =
-    MTLPluggableDevice(mtlDevice: MTLCreateSystemDefaultDevice()!, isDefault: true)
-  var isDefault: Bool
+  public static let `default`: MTLPluggableDevice = {
+    let device = MTLPluggableDevice(mtlDevice: MTLCreateSystemDefaultDevice()!, isDefault: true)
+    deviceCacheMutex.sync {
+      withUnsafeAddress(of: device.mtlDevice) { address in
+        deviceCache[address] = device
+      }
+    }
+    return device
+  }()
   
   /// A pluggable device that encapsulates the specified `MTLDevice`.
   ///
@@ -34,13 +35,38 @@ public class MTLPluggableDevice {
   ///   - fromCache: Whether to fetch the return value from an internal cache.
   /// - Returns: The pluggable device.
   public static func custom(mtlDevice: MTLDevice, fromCache: Bool = true) -> MTLPluggableDevice {
-    .default
-//    .default
-//    MTLPluggableDevice.c
+    withUnsafeAddress(of: mtlDevice) { address in
+      if fromCache {
+        let cachedDevice = deviceCacheMutex.sync {
+          deviceCache[address]
+        }
+        if let cachedDevice = cachedDevice {
+          return cachedDevice
+        }
+      }
+      
+      let newDevice = MTLPluggableDevice(mtlDevice: mtlDevice, isDefault: false)
+      
+      // If caching is turned off, do not insert the device into the cache.
+      if fromCache {
+        deviceCacheMutex.sync {
+          precondition(deviceCache[address] == nil, "This should never happen.")
+          deviceCache[address] = newDevice
+        }
+      }
+      return newDevice
+    }
   }
   
-  // TODO: var mtlDevice
+  private static var deviceCache: [UnsafeMutableRawPointer: MTLPluggableDevice] = [:]
   
+  private static var deviceCacheMutex: Mutex = Mutex()
+  
+  /// The `MTLDevice` that executes operations.
+  public private(set) var mtlDevice: MTLDevice
+  
+  /// Whether to store tensors in CPU-accessible memory. This defaults to `true` on systems with
+  /// unified memory, and `false` otherwise.
   public var prefersSharedMemory: Bool {
     get {
       // Don't need to sync because booleans are inherently atomic. However, everything else is
@@ -57,7 +83,7 @@ public class MTLPluggableDevice {
     }
   }
   
-  var mtlDevice: MTLDevice
+  var isDefault: Bool
   var commandQueue: MTLCommandQueue
   var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
   var synchronizationFence: MTLFence
@@ -102,6 +128,7 @@ public class MTLPluggableDevice {
   #endif
   
   private init(mtlDevice: MTLDevice, isDefault: Bool = false) {
+    self.mtlDevice = mtlDevice
     self.isDefault = isDefault
     
     // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
@@ -109,7 +136,6 @@ public class MTLPluggableDevice {
     self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
     self.heapAllocator = HeapAllocator(mtlDevice: mtlDevice)
     
-    self.mtlDevice = mtlDevice
     self.commandQueue = mtlDevice.makeCommandQueue(maxCommandBufferCount: 3)!
     self._prefersSharedMemory = mtlDevice.hasUnifiedMemory
     self.synchronizationFence = mtlDevice.makeFence()!
@@ -160,7 +186,7 @@ extension MTLPluggableDevice {
     #endif
   }
   
-  // Borrowed from `_ExecutionContext` in https://github.com/s4tf/s4tf.
+  // Borrowed from `_ExecutionContext` in https://github.com/s4tf/s4tf
   @inline(__always)
   func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
     acquireMutex()

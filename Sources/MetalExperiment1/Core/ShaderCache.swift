@@ -8,7 +8,7 @@
 import Metal
 
 class ShaderCache {
-  var dispatchQueue = DispatchQueue(label: "com.s4tf.metal.ShaderCache.dispatchQueue")
+  var mutex: Mutex = Mutex()
   var semaphores: [StringWrapper: DispatchSemaphore] = [:]
   var pipelines: [StringWrapper: MTLComputePipelineState] = [:]
   
@@ -70,7 +70,7 @@ class ShaderCache {
       
       let function = library.makeFunction(name: nameString)!
       let pipeline = try! device.makeComputePipelineState(function: function)
-      dispatchQueue.sync {
+      mutex.sync {
         pipelines[name] = pipeline
       }
       semaphore.signal()
@@ -88,10 +88,11 @@ class ShaderCache {
       fatalError("Waited on pipeline '\(name.makeString())' before it was enqueued.")
     }
     semaphore.wait()
-    return dispatchQueue.sync {
+    return mutex.sync {
       guard let pipeline = pipelines[name] else {
         fatalError("Could not find pipeline '\(name.makeString())'.")
       }
+      
       // Remove pipeline from dictionary to catch shader loading bugs.
       pipelines[name] = nil
       return pipeline
