@@ -18,50 +18,38 @@
 
 import Atomics
 
+// Process all backends in the form of `any PluggableDevice`, instead of resolving the concrete
+// type. The frontend may violate this rule when automatically setting a default device. For
+// example, it may set the default to a Metal-based backend on Apple platforms, and an OpenCL-based
+// backend on non-Apple platforms.
+//
+// The frontend may also resolve concrete types to provide vendor-specific optimizations. If such
+// optimizations create a new frontend API that can be reasonably implemented with vanilla
+// PluggableDevice functionality, the frontend must support the API on all platforms.
 public protocol PluggableDevice: AnyObject {
-  func allocateTensor(
-    _ type: Any.Type,
-    _ shape: UnsafeBufferPointer<Int>
-  ) -> OpaquePointer
-  
-  // Only call this once. Initializing a tensor multiple times results in undefined behavior,
-  // possibly a runtime crash.
-  func initializeTensor(
-    _ handle: OpaquePointer,
-    _ contentsInitializer: (UnsafeMutableRawBufferPointer) -> Void)
-  
-  // Allocates and initializes the tensor in a single function call, halving the overhead of calling
-  // into the backend. Use this instead of calling `allocateTensor` and `initializeTensor`
-  // separately whenever possible.
+  // The protocol members below must be thread-safe and synchronized with a mutex lock.
   func createTensor(
-    _ type: Any.Type,
+    _ dataType: TF_DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ contentsInitializer: (UnsafeMutableRawBufferPointer) -> Void
   ) -> OpaquePointer
   
+  // `mutatingContents` determines whether to copy the data back to the accelerator. This is
+  // blocking, so avoid mutating contents directly if an asynchronous operation for doing so exists.
   func readTensor(
     _ handle: OpaquePointer,
-    _ body: (UnsafeRawBufferPointer) -> Void)
+    _ mutatingContents: Bool,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void)
   
-  // Making a function like `readTensor` that modifies the underlying storage is technically
-  // possible. It takes less time than a separate `readTensor` + `initializeTensor` on a discrete
-  // GPU, and is relatively instantaneous on an integrated GPU. However, no frontend currently
-  // requires this feature.
-  // TODO: Support this protocol member anyway.
-//  func modifyTensor(
-//    _ body: (UnsafeRawBufferPointer) -> Void)
-  
-  // This is not a substitute for hardware features that transfer data between accelerators, such as
-  // Infinity Fabric Link. Do not use this method to wrap any such features.
-  func copyTensor(
-    _ type: Any.Type,
-    _ handle: OpaquePointer,
-    _ source: any PluggableDevice
-  ) -> OpaquePointer
-  
+  // Avoid using this directly; instead use `releaseTensor` when deinitializing an object that wraps
+  // a tensor handle.
   func deleteTensor(
     _ handle: OpaquePointer)
   
+  // Prefer creating a `StaticString` and passing that as `name`. This provides quick access to a
+  // C-style string, which bridges to `UnsafeRawBufferPointer`. Furthermore, it eliminates overhead
+  // of creating and reference-counting `String` objects.
+  //
   // Rules for encoding attributes:
   //
   // Atoms of data are padded to 16 bytes. For strings and arrays, encode an `UnsafeBufferPointer`
@@ -74,7 +62,58 @@ public protocol PluggableDevice: AnyObject {
     _ outputs: UnsafeMutableBufferPointer<OpaquePointer>)
 }
 
+extension PluggableDevice {
+  // This is not a substitute for hardware features that transfer data between accelerators, such as
+  // Infinity Fabric Link. `copyTensor` has massive overhead, so avoid using it unless absolutely
+  // necessary.
+  public func copyTensor(
+    _ handle: OpaquePointer,
+    _ source: any PluggableDevice
+  ) -> OpaquePointer {
+    // To avoid creating a synchronization deadlock with the source (which could be `self`), first
+    // extract the data onto the CPU.
+    let byteCount = PluggableDeviceTensorHandle(handle).byteCount
+    let tensorData: UnsafeMutableRawBufferPointer = .allocate(byteCount: byteCount, alignment: 1)
+    defer {
+      tensorData.deallocate()
+    }
+    source.readTensor(handle, false) { temporaryBuffer in
+      tensorData.copyMemory(from: UnsafeRawBufferPointer(temporaryBuffer))
+    }
+    
+    // Next, create a tensor on `self` that matches the extracted data.
+    let dataType = PluggableDeviceTensorHandle(handle).dataType
+    let shape = PluggableDeviceTensorHandle(handle).shape
+    let alias = self.createTensor(dataType, shape) { uninitializedMemory in
+      uninitializedMemory.copyMemory(from: UnsafeRawBufferPointer(tensorData))
+    }
+    return alias
+  }
+  
+  @inlinable @inline(__always)
+  public func releaseTensor(
+    _ handle: OpaquePointer
+  ) {
+    let referenceCount = PluggableDeviceTensorHandle(handle).referenceCount
+    if referenceCount.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
+      self.deleteTensor(handle)
+    }
+  }
+  
+  // A unique identifier for the backend. Use this to cache references to the backend, reducing ARC
+  // overhead of passing around the PluggableDevice object. Never use this unmanaged reference to
+  // reconstruct the object.
+  @inlinable @inline(__always)
+  public var handle: PluggableDeviceHandle {
+    PluggableDeviceHandle(Unmanaged.passUnretained(self).toOpaque())
+  }
+}
+
 public typealias PluggableDeviceHandle = OpaquePointer
+
+//===------------------------------------------------------------------------------------------===//
+// Tensor Handle
+//===------------------------------------------------------------------------------------------===//
 
 public struct PluggableDeviceTensorHandle {
   public var baseAddress: UnsafeMutablePointer<Int>
@@ -95,6 +134,12 @@ public struct PluggableDeviceTensorHandle {
   }
   
   @inlinable @inline(__always)
+  public var dataType: TF_DataType {
+    // Only process the lower 4 bytes. The upper 4 bytes are undefined.
+    Int32(truncatingIfNeeded: baseAddress[3])
+  }
+  
+  @inlinable @inline(__always)
   public var byteCount: Int {
     baseAddress[4]
   }
@@ -110,47 +155,29 @@ public struct PluggableDeviceTensorHandle {
   }
 }
 
-extension PluggableDevice {
-  // TODO: Remove `type` parameter and encode data types with TF_DataType (shift internal `DataType`
-  // raw value to an offset of 4 bytes).
-  @_disfavoredOverload
-  @inlinable
-  public func copyTensor(
-    _ type: Any.Type,
-    _ handle: OpaquePointer,
-    _ source: any PluggableDevice
-  ) -> OpaquePointer {
-    // To avoid creating a synchronization deadlock with the source, first extract the data onto
-    // the CPU.
-    let byteCount = PluggableDeviceTensorHandle(handle).byteCount
-    let tensorData: UnsafeMutableRawBufferPointer = .allocate(byteCount: byteCount, alignment: 1)
-    defer {
-      tensorData.deallocate()
-    }
-    source.readTensor(handle) { temporaryBuffer in
-      tensorData.copyMemory(from: temporaryBuffer)
-    }
-    
-    // Next, create a tensor on `self` that matches the extracted data.
-    let shape = PluggableDeviceTensorHandle(handle).shape
-    let alias = self.createTensor(type, shape) { uninitializedMemory in
-      uninitializedMemory.copyMemory(from: UnsafeRawBufferPointer(tensorData))
-    }
-    return alias
-  }
-  
-  @inlinable @inline(__always)
-  public func releaseTensor(
-    _ handle: OpaquePointer
-  ) {
-    let referenceCount = PluggableDeviceTensorHandle(handle).referenceCount
-    if referenceCount.wrappingDecrementThenLoad(ordering: .relaxed) == 0 {
-      self.deleteTensor(handle)
-    }
-  }
-  
-  @inlinable @inline(__always)
-  public var handle: PluggableDeviceHandle {
-    PluggableDeviceHandle(Unmanaged.passUnretained(self).toOpaque())
-  }
-}
+// The backend does not need to support every data type; unsupported ones should crash at runtime.
+public typealias TF_DataType = Int32
+public let TF_FLOAT: TF_DataType = 1
+public let TF_DOUBLE: TF_DataType = 2
+public let TF_INT32: TF_DataType = 3
+public let TF_UINT8: TF_DataType = 4
+public let TF_INT16: TF_DataType = 5
+public let TF_INT8: TF_DataType = 6
+public let TF_STRING: TF_DataType = 7
+public let TF_COMPLEX64: TF_DataType = 8
+public let TF_COMPLEX: TF_DataType = 8
+public let TF_INT64: TF_DataType = 9
+public let TF_BOOL: TF_DataType = 10
+public let TF_QINT8: TF_DataType = 11
+public let TF_QUINT8: TF_DataType = 12
+public let TF_QINT32: TF_DataType = 13
+public let TF_BFLOAT16: TF_DataType = 14
+public let TF_QINT16: TF_DataType = 15
+public let TF_QUINT16: TF_DataType = 16
+public let TF_UINT16: TF_DataType = 17
+public let TF_COMPLEX128: TF_DataType = 18
+public let TF_HALF: TF_DataType = 19
+public let TF_RESOURCE: TF_DataType = 20
+public let TF_VARIANT: TF_DataType = 21
+public let TF_UINT32: TF_DataType = 22
+public let TF_UINT64: TF_DataType = 23

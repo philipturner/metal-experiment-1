@@ -4,7 +4,8 @@ import XCTest
 fileprivate func allocate(capacity: Int) -> OpaquePointer {
   withUnsafeTemporaryAllocation(of: Int.self, capacity: 1) { shape in
     shape[0] = capacity
-    return defaultPluggableDevice.allocateTensor(Float.self, UnsafeBufferPointer(shape))
+    return defaultPluggableDevice.allocateTensor(
+      Float.tensorFlowDataType._cDataType, UnsafeBufferPointer(shape))
   }
 }
 
@@ -48,7 +49,7 @@ final class MemoryTests: XCTestCase {
         ptr.initialize(repeating: 2.5)
       }
       var wereEqual = false
-      defaultPluggableDevice.readTensor(handle) { bufferPointer in
+      defaultPluggableDevice.readTensor(handle, false) { bufferPointer in
         let ptr = bufferPointer.assumingMemoryBound(to: Float.self)
         let comparisonSequence = [Float](repeating: 2.5, count: 1000)
         wereEqual = ptr.elementsEqual(comparisonSequence)

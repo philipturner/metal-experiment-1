@@ -26,6 +26,10 @@ enum DataType: UInt16, CustomStringConvertible {
   case uint32 = 9
   case uint64 = 10
   
+  // Former pathway for initialization, removed in favor of passing a `TF_DataType` from the
+  // frontend. The source code is retained because its comments describe how to efficiently process
+  // data types.
+  #if false
   init(_ type: Any.Type) {
     // Check floating-point types first because they're the most common. This should reduce the
     // average number of comparisons performed.
@@ -39,7 +43,7 @@ enum DataType: UInt16, CustomStringConvertible {
       self = .float32
       return
     }
-    
+
     // Check integral types next.
     if type == Bool.self {
       self = .bool
@@ -77,7 +81,7 @@ enum DataType: UInt16, CustomStringConvertible {
       self = .uint64
       return
     }
-    
+
     // Check `Float16` on Intel Macs last because the comparison is very costly. It creates and
     // deallocates a `String` object.
     #if (os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64)
@@ -88,7 +92,9 @@ enum DataType: UInt16, CustomStringConvertible {
     #endif
     fatalError("Did not recognize data type '\(type)'.")
   }
+  #endif
   
+  @inline(__always)
   init(tensorFlowDataType: TF_DataType) {
     switch tensorFlowDataType {
     case TF_HALF:
@@ -142,6 +148,33 @@ enum DataType: UInt16, CustomStringConvertible {
       return .uInt32
     case .uint64:
       return .uInt64
+    }
+  }
+  
+  var tensorFlowDataType: TF_DataType {
+    switch self {
+    case .float16:
+      return TF_HALF
+    case .float32:
+      return TF_FLOAT
+    case .bool:
+      return TF_BOOL
+    case .int8:
+      return TF_INT8
+    case .int16:
+      return TF_INT16
+    case .int32:
+      return TF_INT32
+    case .int64:
+      return TF_INT64
+    case .uint8:
+      return TF_UINT8
+    case .uint16:
+      return TF_UINT16
+    case .uint32:
+      return TF_UINT32
+    case .uint64:
+      return TF_UINT64
     }
   }
   

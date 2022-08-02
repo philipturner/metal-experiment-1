@@ -9,12 +9,12 @@ import Atomics
 import MetalPerformanceShadersGraph
 
 extension Context {
-  @inline(never)
-  public func allocateTensor(
-    _ type: Any.Type,
+  // Only for use in test suite.
+  func allocateTensor(
+    _ type: TF_DataType,
     _ shape: UnsafeBufferPointer<Int>
   ) -> OpaquePointer {
-    let dataType = DataType(type)
+    let dataType = DataType(tensorFlowDataType: type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = self.sync {
       self._internalAllocate(1, dataType, byteCount, shape)
@@ -22,8 +22,11 @@ extension Context {
     return handle._cHandle
   }
   
-  @inline(never)
-  public func initializeTensor(
+  // Only for use in test suite.
+  //
+  // Only call this once. Initializing a tensor multiple times results in undefined behavior,
+  // possibly a runtime crash.
+  func initializeTensor(
     _ handle: OpaquePointer,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
@@ -34,13 +37,16 @@ extension Context {
     }
   }
   
+  // Allocates and initializes the tensor in a single function call, halving the overhead of calling
+  // into the backend. Use this instead of calling `allocateTensor` and `initializeTensor`
+  // separately whenever possible.
   @inline(never)
   public func createTensor(
-    _ type: Any.Type,
+    _ type: TF_DataType,
     _ shape: UnsafeBufferPointer<Int>,
     _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) -> OpaquePointer {
-    let dataType = DataType(type)
+    let dataType = DataType(tensorFlowDataType: type)
     let byteCount = shape.reduce(dataType.stride, *)
     let handle = self.sync {
       self._internalCreateTensor(1, dataType, byteCount, shape, body)
@@ -51,11 +57,12 @@ extension Context {
   @inline(never)
   public func readTensor(
     _ handle: OpaquePointer,
-    _ body: (UnsafeRawBufferPointer) -> Void
+    _ mutatingContents: Bool,
+    _ body: (UnsafeMutableRawBufferPointer) -> Void
   ) {
     self.sync {
       let reference = AllocationHandle(handle).reference!
-      reference.retain().takeUnretainedValue().read(body)
+      reference.retain().takeUnretainedValue().read(modifying: mutatingContents, body)
       reference.release()
     }
   }
@@ -360,7 +367,7 @@ class Allocation {
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(_ body: (UnsafeRawBufferPointer) -> Void) {
+  func read(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
     // Cannot materialize here because it might not be initialized. Only safe place to materialize
     // is in the compiler, where it's at least derived from something that was initialized. The
     // compiler will then mark it as initialized and safe to read from.
@@ -370,6 +377,9 @@ class Allocation {
       sourceAllocation = self
     } else {
       let sourceHandle = context._internalAllocate(1, handle, true)
+      if modifying {
+        context._internalRetain(sourceHandle)
+      }
       sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
@@ -404,8 +414,19 @@ class Allocation {
     precondition(initialized, "Cannot read from an uninitialized allocation.")
     
     let contents = sourceAllocation.mtlBuffer!.contents()
-    let ptr = UnsafeRawBufferPointer(start: contents, count: handle.byteCount)
+    let ptr = UnsafeMutableRawBufferPointer(start: contents, count: handle.byteCount)
     body(ptr)
+    
+    if modifying {
+      if isShared {
+        // No need to copy data back to the accelerator.
+      } else {
+        context._internalRetain(handle)
+        let sourceHandle = sourceAllocation.handle
+        let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
+        context.eagerOperations.append(.explicitCopy(explicitCopy))
+      }
+    }
   }
   
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
@@ -442,17 +463,15 @@ class Allocation {
   }
 }
 
-public struct AllocationHandle: Hashable {
-  @usableFromInline
-  internal var baseAddress: UnsafeMutablePointer<Int>
+struct AllocationHandle: Hashable {
+  private var baseAddress: UnsafeMutablePointer<Int>
   
-  @inlinable @inline(__always)
-  public init(_ cHandle: OpaquePointer) {
+  @inline(__always)
+  init(_ cHandle: OpaquePointer) {
     baseAddress = UnsafeMutablePointer(cHandle)
   }
   
-  @inline(__always)
-  internal init(
+  init(
     referenceCount: Int,
     context: Context,
     dataType: DataType,
@@ -474,7 +493,7 @@ public struct AllocationHandle: Hashable {
     baseAddress[0] = referenceCount
     baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
     baseAddress[2] = Int(bitPattern: pluggableDeviceAddress)
-    baseAddress[3] = Int(dataType.rawValue)
+    baseAddress[3] = Int(dataType.rawValue) << 32
     baseAddress[4] = byteCount
     baseAddress[5] = shape.count
     
@@ -482,17 +501,17 @@ public struct AllocationHandle: Hashable {
     _ = shapeBuffer.initialize(from: shape)
   }
   
-  @inlinable @inline(__always)
-  public var _cHandle: OpaquePointer {
+  @inline(__always)
+  var _cHandle: OpaquePointer {
     OpaquePointer(baseAddress)
   }
   
-  @inlinable @inline(__always)
-  public var referenceCount: UnsafeAtomic<Int> {
+  @inline(__always)
+  var referenceCount: UnsafeAtomic<Int> {
     UnsafeAtomic(at: UnsafeMutablePointer(_cHandle))
   }
   
-  internal var reference: Unmanaged<Allocation>? {
+  var reference: Unmanaged<Allocation>? {
     @inline(__always)
     get {
       if let pointer = UnsafeRawPointer(bitPattern: baseAddress[1]) {
@@ -514,29 +533,37 @@ public struct AllocationHandle: Hashable {
   // Use context object's memory address as a unique identfier. This is unique across all
   // pluggable device implementations.
   @inline(__always)
-  internal var pluggableDevice: Context {
+  var pluggableDevice: Context {
     let pointer = UnsafeRawPointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
     return Unmanaged<Context>.fromOpaque(pointer).takeUnretainedValue()
   }
   
+  
   @inline(__always)
-  internal var dataType: DataType {
-    let rawValue = UInt16(truncatingIfNeeded: baseAddress[3])
+  var tensorFlowDataType: TF_DataType {
+    Int32(truncatingIfNeeded: baseAddress[3])
+  }
+  
+  @inline(__always)
+  var dataType: DataType {
+    let castedAddress = UnsafeMutableRawPointer(baseAddress)
+      .unsafelyUnwrapped.assumingMemoryBound(to: UInt32.self)
+    let rawValue = UInt16(truncatingIfNeeded: castedAddress[7])
     return DataType(rawValue: rawValue).unsafelyUnwrapped
   }
   
-  @inlinable @inline(__always)
-  public var byteCount: Int {
+  @inline(__always)
+  var byteCount: Int {
     baseAddress[4]
   }
   
-  @inlinable @inline(__always)
-  public var rank: Int {
+  @inline(__always)
+  var rank: Int {
     baseAddress[5]
   }
   
-  @inlinable @inline(__always)
-  public var shape: UnsafeBufferPointer<Int> {
+  @inline(__always)
+  var shape: UnsafeBufferPointer<Int> {
     UnsafeBufferPointer(start: baseAddress + 6, count: rank)
   }
 }

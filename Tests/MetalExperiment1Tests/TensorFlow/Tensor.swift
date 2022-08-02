@@ -52,7 +52,7 @@ public class TFETensorHandle {
   public var rank: Int {
     @_semantics("autodiff.nonvarying")
     get {
-      AllocationHandle(_cTensorHandle).rank
+      PluggableDeviceTensorHandle(_cTensorHandle).rank
     }
   }
   
@@ -61,7 +61,7 @@ public class TFETensorHandle {
     @_semantics("autodiff.nonvarying")
     get {
       if _slowPath(_shape == nil) {
-        _shape = Array(AllocationHandle(_cTensorHandle).shape)
+        _shape = Array(PluggableDeviceTensorHandle(_cTensorHandle).shape)
       }
       return TensorShape(_shape.unsafelyUnwrapped)
     }
@@ -89,7 +89,7 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
     scalarsInitializer: (UnsafeMutablePointer<Scalar>) -> Void
   ) {
     let cTensorHandle = shape.withUnsafeBufferPointer {
-      Context.global.createTensor(Scalar.self, $0, { buffer in
+      Context.global.createTensor(Scalar.tensorFlowDataType._cDataType, $0, { buffer in
         let pointer = buffer.assumingMemoryBound(to: Scalar.self)
         scalarsInitializer(pointer.baseAddress!)
       })
@@ -114,7 +114,7 @@ public struct TensorHandle<Scalar: _TensorFlowDataTypeCompatible> {
   @inline(never)
   func makeHostCopy() -> [Scalar] {
     var output: [Scalar]?
-    Context.global.readTensor(_cTensorHandle) { tensorBuffer in
+    Context.global.readTensor(_cTensorHandle, false) { tensorBuffer in
       let tensorPointer = tensorBuffer.assumingMemoryBound(to: Scalar.self)
       output = Array(unsafeUninitializedCapacity: tensorPointer.count) { arrayPointer, count in
         _ = arrayPointer.initialize(from: tensorPointer)
