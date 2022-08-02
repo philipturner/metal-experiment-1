@@ -47,6 +47,7 @@ public protocol PluggableDevice: AnyObject {
   // possible. It takes less time than a separate `readTensor` + `initializeTensor` on a discrete
   // GPU, and is relatively instantaneous on an integrated GPU. However, no frontend currently
   // requires this feature.
+  // TODO: Support this protocol member anyway.
 //  func modifyTensor(
 //    _ body: (UnsafeRawBufferPointer) -> Void)
   
