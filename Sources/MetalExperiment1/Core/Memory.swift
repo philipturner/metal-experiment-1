@@ -8,6 +8,9 @@
 import Atomics
 import MetalPerformanceShadersGraph
 
+internal let kConstantDataThreshold = 4096
+internal let kConstantFoldingMaxScalars = 1
+
 extension MTLPluggableDevice {
   // Only for use in test suite.
   func allocateTensor(
@@ -212,14 +215,18 @@ class Allocation {
   // memory.
   var initialized = false
   
-  // TODO: Special storage mode for scalars or small chunks of constant memory. If `size` is under
-  // 4 KB and memory is never mutated, it can be initialized on the CPU and passed into
-  // `MTLComputeCommandEncoder.setBytes`. When in graph mode, there are similar mechanisms like
-  // `MPSGraph.constant`.
+  // Special storage mode for scalars or small chunks of constant memory. If `size` < 4 KB and the
+  // contents never change, initialize on the CPU and pass the data into
+  // `MTLComputeCommandEncoder.setBytes`. `initialize(_:)` calls over the CPU-backed memory instead
+  // of the GPU-backed memory. Sometimes, the CPU-backed memory copies into `MTLBuffer` - invoking
+  // very small overhead.
   //
-  // Will call the closure in `initialize(_:)` over the CPU-backed memory instead of the GPU-backed
-  // memory. You may have to copy that CPU-backed memory to the `MTLBuffer`, but it's a very small
-  // overhead. Take the overhead of a CPU function call + 2 * (4096 / (main memory bandwidth)).
+  // The formula below outlines latency of initializing twice. In real-world usage, the benefit of
+  // skipping unnecessary Metal API calls should outweigh the tiny cost of copying constant data.
+  //
+  // (overhead of a CPU function call) +
+  // (byteCount / (main memory bandwidth)) +
+  // (byteCount / (main memory bandwidth))
   var constantData: UnsafeMutableRawPointer?
   
   // TODO: Investigate a zero-cost reshape by transferring all resources over to another allocation.
@@ -344,7 +351,7 @@ class Allocation {
   }
   
   func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
-    if handle.byteCount <= 4096 {
+    if handle.byteCount <= kConstantDataThreshold {
       initializeConstantData(body)
     } else {
       initializeTensorData(body)

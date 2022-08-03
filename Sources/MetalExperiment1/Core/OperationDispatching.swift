@@ -1,5 +1,5 @@
 //
-//  OperationRegistry.swift
+//  OperationDispatching.swift
 //  
 //
 //  Created by Philip Turner on 7/15/22.
@@ -262,6 +262,27 @@ struct OperationRegistry {
   }
 }
 
+// Quickly loop over a set of inputs. This inlines what would otherwise be a function call, without
+// bloating the program binary. The function is not used yet, but may be used if the constant
+// folding algorithm becomes more complex.
+@inline(__always)
+fileprivate func fastIterate(
+  _ input1: AllocationHandle?,
+  _ input2: AllocationHandle?,
+  _ input3: AllocationHandle?,
+  _ body: (AllocationHandle) -> Void
+) {
+  let storage = SIMD3<Int>(
+    unsafeBitCast(input1, to: Int.self),
+    unsafeBitCast(input2, to: Int.self),
+    unsafeBitCast(input3, to: Int.self))
+  for i in 0..<3 {
+    if let input = unsafeBitCast(storage[i], to: AllocationHandle?.self) {
+      body(input)
+    }
+  }
+}
+
 // MARK: - Elementwise Unary Operations
 
 extension OperationRegistry {
@@ -271,6 +292,22 @@ extension OperationRegistry {
       args.inputs.count == 1, "Passed \(args.inputs.count) inputs into a unary operation.")
     precondition(
       args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a unary operation.")
+  }
+  
+  @inline(__always)
+  static func constantFoldingHelper(
+    _ device: MTLPluggableDevice,
+    _ input: AllocationHandle
+  ) -> (shouldConstantFold: Bool, outputReferenceCount: Int) {
+    let byteCount = input.byteCount
+    if false &&
+        byteCount <= kConstantDataThreshold,
+        byteCount == input.dataType.stride {
+      return (shouldConstantFold: true, outputReferenceCount: 1)
+    } else {
+      device._internalRetain(input)
+      return (shouldConstantFold: false, outputReferenceCount: 2)
+    }
   }
   
   static func dispatchUnary(
@@ -285,11 +322,11 @@ extension OperationRegistry {
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    device._internalRetain(input)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, input)
+    let output = device._internalAllocate(refCount, input)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -344,9 +381,13 @@ extension OperationRegistry {
       }
     }
     
-    // Append operation.
-    device.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.unary(.init(
+        operation, input, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
   
   // Named after the Metal Standard Library header, `metal_relational`.
@@ -359,7 +400,7 @@ extension OperationRegistry {
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    device._internalRetain(input)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input)
     
     // Fetch data type.
     let dataType = input.dataType
@@ -372,12 +413,16 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, .bool, byteCount, input.shape)
+    let output = device._internalAllocate(refCount, .bool, byteCount, input.shape)
     encodeOutput(&args.outputs, output)
     
-    // Append operation.
-    device.eagerOperations.append(.unary(.init(
-      operation.rawValue, input, output, .f32_i32, nil)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.unary(.init(
+        operation.rawValue, input, output, .f32_i32, nil)))
+    } else {
+      
+    }
   }
   
   static func dispatchUnaryScalar(
@@ -390,11 +435,11 @@ extension OperationRegistry {
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    device._internalRetain(input)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, input)
+    let output = device._internalAllocate(refCount, input)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -476,9 +521,13 @@ extension OperationRegistry {
       }
     }
     
-    // Append operation.
-    device.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.unary(.init(
+        operation, input, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
   
   static func dispatchCast(
@@ -489,14 +538,14 @@ extension OperationRegistry {
     
     // Fetch input.
     let input = decodeInput(&args.inputs)
-    device._internalRetain(input)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input)
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
     let outputDataType = DataType(tensorFlowDataType: decodeScalar(&args.attributes))
     let shape = input.shape
     let byteCount = shape.reduce(outputDataType.stride, *)
-    let output = device._internalAllocate(2, outputDataType, byteCount, shape)
+    let output = device._internalAllocate(refCount, outputDataType, byteCount, shape)
     encodeOutput(&args.outputs, output)
     
     // Select operation.
@@ -522,9 +571,13 @@ extension OperationRegistry {
       dataGroup = .f32_i32
     }
     
-    // Append operation.
-    device.eagerOperations.append(.unary(.init(
-      operation, input, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.unary(.init(
+        operation, input, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
 }
 
@@ -735,6 +788,27 @@ extension OperationRegistry {
       args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a binary operation.")
   }
   
+  @inline(__always)
+  static func constantFoldingHelper(
+    _ device: MTLPluggableDevice,
+    _ input1: AllocationHandle,
+    _ input2: AllocationHandle
+  ) -> (shouldConstantFold: Bool, outputReferenceCount: Int) {
+    let byteCount1 = input1.byteCount
+    let byteCount2 = input2.byteCount
+    if false &&
+       byteCount1 <= kConstantDataThreshold,
+       byteCount2 <= kConstantDataThreshold,
+       byteCount1 == input1.dataType.stride,
+       byteCount2 == input2.dataType.stride {
+      return (shouldConstantFold: true, outputReferenceCount: 1)
+    } else {
+      device._internalRetain(input1)
+      device._internalRetain(input2)
+      return (shouldConstantFold: false, outputReferenceCount: 2)
+    }
+  }
+  
   enum ComparisonBase: UInt16 {
     case equal = 0
     case less = 1
@@ -761,8 +835,7 @@ extension OperationRegistry {
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
-    device._internalRetain(input1)
-    device._internalRetain(input2)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input1, input2)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -787,7 +860,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(refCount, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -844,9 +917,13 @@ extension OperationRegistry {
       }
     }
     
-    // Append operation.
-    device.eagerOperations.append(.binary(.init(
-      operation, input1, input2, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.binary(.init(
+        operation, input1, input2, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
   
   static func dispatchBinaryComparison(
@@ -862,8 +939,7 @@ extension OperationRegistry {
     // Fetch inputs.
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
-    device._internalRetain(input1)
-    device._internalRetain(input2)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input1, input2)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -899,7 +975,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, .bool, byteCount, referenceInput.shape)
+    let output = device._internalAllocate(refCount, .bool, byteCount, referenceInput.shape)
     encodeOutput(&args.outputs, output)
     
     // Select operation.
@@ -918,13 +994,17 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    device.eagerOperations.append(.binary(.init(
-      operation, input1, input2, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      device.eagerOperations.append(.binary(.init(
+        operation, input1, input2, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
 }
 
 // TODO: When implementing constant folding, transform scalar add/sub/mul/div into faster unary
-// equivalent
+// equivalent.
 
 extension OperationRegistry {
   // Codes 0 - 4
@@ -1073,6 +1153,33 @@ extension OperationRegistry {
       args.outputs.count == 1, "Passed \(args.outputs.count) outputs into a ternary operation.")
   }
   
+  // Since ternary operations are rarely called and this function is quite large, let the compiler
+  // decide whether to inline it. This differs from unary/binary analogues, which force-inline.
+  static func constantFoldingHelper(
+    _ device: MTLPluggableDevice,
+    _ input1: AllocationHandle,
+    _ input2: AllocationHandle,
+    _ input3: AllocationHandle
+  ) -> (shouldConstantFold: Bool, outputReferenceCount: Int) {
+    let byteCount1 = input1.byteCount
+    let byteCount2 = input2.byteCount
+    let byteCount3 = input3.byteCount
+    if false &&
+       byteCount1 <= kConstantDataThreshold,
+       byteCount2 <= kConstantDataThreshold,
+       byteCount3 <= kConstantDataThreshold,
+       byteCount1 == input1.dataType.stride,
+       byteCount2 == input2.dataType.stride,
+       byteCount3 == input3.dataType.stride {
+      return (shouldConstantFold: true, outputReferenceCount: 1)
+    } else {
+      device._internalRetain(input1)
+      device._internalRetain(input2)
+      device._internalRetain(input3)
+      return (shouldConstantFold: false, outputReferenceCount: 2)
+    }
+  }
+  
   static func dispatchTernary(
     _ args: inout Arguments,
     _ operation_f32: TernaryOperationType?,
@@ -1088,9 +1195,7 @@ extension OperationRegistry {
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    device._internalRetain(input1)
-    device._internalRetain(input2)
-    device._internalRetain(input3)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input1, input2, input3)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -1110,7 +1215,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(refCount, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -1170,8 +1275,12 @@ extension OperationRegistry {
     }
     
     // Append operation.
-    device.eagerOperations.append(.ternary(.init(
-      operation, input1, input2, input3, output, dataGroup, metadata)))
+    if !shouldConstantFold {
+      device.eagerOperations.append(.ternary(.init(
+        operation, input1, input2, input3, output, dataGroup, metadata)))
+    } else {
+      
+    }
   }
   
   static func dispatchTernaryClipByValue(
@@ -1185,9 +1294,7 @@ extension OperationRegistry {
     let input1 = decodeInput(&args.inputs)
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    device._internalRetain(input1)
-    device._internalRetain(input2)
-    device._internalRetain(input3)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input1, input2, input3)
     
     var shouldFail = false
     if !input1.shape.elementsEqual(input2.shape) {
@@ -1209,7 +1316,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, input1)
+    let output = device._internalAllocate(refCount, input1)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
@@ -1236,9 +1343,13 @@ extension OperationRegistry {
       dataGroup = .u32_i64_u64
     }
     
-    // Append operation.
-    device.eagerOperations.append(.ternary(.init(
-      operation, input1, input2, input3, output, dataGroup, nil)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.ternary(.init(
+        operation, input1, input2, input3, output, dataGroup, nil)))
+    } else {
+      
+    }
   }
   
   static func dispatchTernarySelect(
@@ -1256,9 +1367,7 @@ extension OperationRegistry {
     
     let input2 = decodeInput(&args.inputs)
     let input3 = decodeInput(&args.inputs)
-    device._internalRetain(input1)
-    device._internalRetain(input2)
-    device._internalRetain(input3)
+    let (shouldConstantFold, refCount) = constantFoldingHelper(device, input1, input2, input3)
     
     // Determine output shape.
     var referenceInput: AllocationHandle
@@ -1303,9 +1412,13 @@ extension OperationRegistry {
       dataGroup = .f32_i32
     }
     
-    // Append operation.
-    device.eagerOperations.append(.ternary(.init(
-      operation, input1, input2, input3, output, dataGroup, nil)))
+    if !shouldConstantFold {
+      // Append operation.
+      device.eagerOperations.append(.ternary(.init(
+        operation, input1, input2, input3, output, dataGroup, nil)))
+    } else {
+      
+    }
   }
 }
 
