@@ -54,15 +54,10 @@ struct Swift_elementwise_f32_i32 {
     }
   }
   
-  var read_layouts: SIMD3<UInt16>
-  var read_memory_casts: SIMD3<MemoryCast.RawValue>
-  var num_inputs: Int
-  var write_memory_cast: MemoryCast
-  var unary_operation_type: UnaryOperationType?
-  var binary_operation_type: BinaryOperationType?
-  var ternary_operation_type: TernaryOperationType?
-  var metadata: UInt64
-  var input1: UnsafeRawPointer?
+  let params: Instruction.Elementwise.DispatchParams
+  let operation: UInt16
+  let metadata: UInt64
+  var input1: UnsafeRawPointer
   var input2: UnsafeRawPointer?
   var input3: UnsafeRawPointer?
   var output: UnsafeMutableRawPointer
@@ -71,32 +66,39 @@ struct Swift_elementwise_f32_i32 {
     var register1: UInt32 = 0
     var register2: UInt32 = 0
     var register3: UInt32 = 0
-    for i in 0..<num_inputs {
+    for i in 0..<params.num_inputs {
+      var read_params: Instruction.Elementwise.ReadParams
       var input: UnsafeRawPointer
       switch i {
       case 0:
-        input = input1.unsafelyUnwrapped
+        read_params = params.read_param_1
+        input = input1
       case 1:
+        read_params = params.read_param_2
         input = input2.unsafelyUnwrapped
       default: /*2*/
+        read_params = params.read_param_3
         input = input3.unsafelyUnwrapped
       }
       
+      // Currently processes one scalar, which must be encoded as a scalar broadcast.
       var compressed: UInt32
-      switch read_layouts[i] {
-      case 1:
+      switch read_params.layout {
+      case 128 + 1:
         let rebound = input.assumingMemoryBound(to: UInt8.self)
         compressed = UInt32(rebound.pointee)
-      case 2:
+      case 128 + 2:
         let rebound = input.assumingMemoryBound(to: UInt16.self)
         compressed = UInt32(rebound.pointee)
-      default: /*4*/
+      case 128 + 4:
         let rebound = input.assumingMemoryBound(to: UInt32.self)
         compressed = UInt32(rebound.pointee)
+      default:
+        fatalError("Layout '\(read_params.layout)' was not a scalar broadcast.")
       }
       
       var expanded: UInt32
-      switch MemoryCast(rawValue: read_memory_casts[i]).unsafelyUnwrapped {
+      switch MemoryCast(rawValue: read_params.memory_cast)! {
       case .f32_i32_native:
         expanded = compressed
       case .f16_as_f32:
@@ -131,8 +133,13 @@ struct Swift_elementwise_f32_i32 {
     }
     
     // TODO: Start off by only constant folding unary.
-    if let operation = unary_operation_type {
+    if self.operation < 1000 {
       // MARK: - Unary
+      let operation = UnaryOperationType(rawValue: self.operation)!
+      func compares(_ other: UnaryOperationType) -> Bool {
+        operation.rawValue <= other.rawValue
+      }
+      
       @inline(__always)
       func withFloat(_ body: (Float) -> Float) {
         let input = Float(bitPattern: register1)
@@ -144,9 +151,6 @@ struct Swift_elementwise_f32_i32 {
         let input = Int32(bitPattern: register1)
         let output = body(input)
         register1 = UInt32(bitPattern: output)
-      }
-      func compares(_ other: UnaryOperationType) -> Bool {
-        operation.rawValue <= other.rawValue
       }
       
       if compares(.atan_f32) {
@@ -399,12 +403,13 @@ struct Swift_elementwise_f32_i32 {
         fatalError("Should never execute constant folding if it's a no-op.")
       }
     } else {
+      // TODO: Subtract 1000 from the operation.
       // MARK: - Binary
       _ = register2
       _ = register3
     }
     
-    switch write_memory_cast {
+    switch MemoryCast(rawValue: params.write_memory_cast)! {
     case .f32_i32_native:
       let mem_slice = register1
       let casted = output.assumingMemoryBound(to: UInt32.self)

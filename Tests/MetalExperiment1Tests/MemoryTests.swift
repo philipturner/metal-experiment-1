@@ -560,13 +560,28 @@ final class MemoryTests: XCTestCase {
     
     // TODO: Add dedicated constant folding checks to `TensorUnaryOperationTests` utility functions.
     
-    let tensor1 = Tensor<Float>([2])
-    let tensor2 = Tensor<Float>([4])
-    let tensor3 = Tensor<Int32>([7])
+    // Unary constant folding
+    do {
+      let tensor1 = Tensor<Float>([2])
+      let tensor2 = tensor1.incremented() // 3.0
+      let tensor3 = Tensor<Int32>(tensor2) // 3
+      let tensor4 = square(tensor3) // 9
+      XCTAssertEqual(tensor4.scalars, [9])
+    }
     
-    let tensor4 = tensor1 + tensor2 // 6.0
-    let tensor5 = Tensor<Int32>(tensor4) // 6
-    let tensor6 = tensor3 * tensor5 // 42
-    XCTAssertEqual(tensor6.scalars, [42])
+    // Binary constant folding
+    do {
+      let tensor1 = Tensor<Float>([2])
+      let tensor2 = Tensor<Float>([4])
+      let tensor3 = Tensor<Int32>([7])
+      
+      let tensor4 = tensor1 + tensor2 // 6.0
+      let tensor5 = Tensor<Int32>(tensor4) // 6
+      let tensor6 = tensor3 * tensor5 // 42
+      XCTAssertEqual(tensor6.scalars, [42])
+    }
+    
+    // TODO: Make this test more involved and have interplay with stuff that runs on the GPU.
+    // Accomplish this by broadcasting a scalar to interact with a large vector.
   }
 }

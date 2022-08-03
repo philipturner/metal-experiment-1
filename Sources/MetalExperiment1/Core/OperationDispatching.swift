@@ -1390,7 +1390,7 @@ extension OperationRegistry {
     
     // Generate output.
     // Setting initial refcount to 2 creates an imbalanced retain.
-    let output = device._internalAllocate(2, referenceInput)
+    let output = device._internalAllocate(refCount, referenceInput)
     encodeOutput(&args.outputs, output)
     
     // Fetch data type.
