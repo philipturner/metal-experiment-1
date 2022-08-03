@@ -74,7 +74,7 @@ public class MTLPluggableDevice: NSObject {
   var waitingOnTimer = false
   var schedulingLatency = MovingAverage<UInt64>(repeating: 50_000, count: 16)
   var schedulingQueue = DispatchQueue(
-    label: "com.s4tf.metal.Context.schedulingQueue", qos: .userInteractive)
+    label: "com.s4tf.metal.MTLPluggableDevice.schedulingQueue", qos: .userInteractive)
   
   var nextAllocationID: UInt64 = 0
   var numDeinitializedAllocations: UInt64 = 0

@@ -147,8 +147,8 @@ struct OperationRegistry {
     var outputs: UnsafeMutableBufferPointer<OpaquePointer>
     var handle: UnsafeMutableRawPointer?
     
-    // Does not resolve the context during initialization. This prevents ARC from retaining it
-    // outside of where it's used.
+    // Does not resolve the pluggable device during initialization. This prevents ARC from retaining
+    // it outside of where it's used.
     @inline(__always)
     var device: MTLPluggableDevice {
       if let handle = handle {

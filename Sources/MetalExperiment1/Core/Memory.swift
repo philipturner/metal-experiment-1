@@ -32,7 +32,8 @@ extension MTLPluggableDevice {
   ) {
     self.sync {
       let reference = AllocationHandle(handle).reference!
-      reference.retain().takeUnretainedValue().initialize(body)
+      let allocation = reference.retain().takeUnretainedValue()
+      allocation.initialize(body)
       reference.release()
     }
   }
@@ -62,7 +63,8 @@ extension MTLPluggableDevice {
   ) {
     self.sync {
       let reference = AllocationHandle(handle).reference!
-      reference.retain().takeUnretainedValue().read(modifying: mutatingContents, body)
+      let allocation = reference.retain().takeUnretainedValue()
+      allocation.read(modifying: mutatingContents, body)
       reference.release()
     }
   }
@@ -198,7 +200,7 @@ class Allocation {
   let id: UInt64
   var handle: AllocationHandle
   
-  // A copy of `Context.global.preferSharedMemory`, unless this is a transient allocation for
+  // A copy of `MTLPluggableDevice.preferSharedMemory`, unless this is a transient allocation for
   // reading/writing to discrete GPU memory.
   let isShared: Bool
   
@@ -218,11 +220,15 @@ class Allocation {
   // Will call the closure in `initialize(_:)` over the CPU-backed memory instead of the GPU-backed
   // memory. You may have to copy that CPU-backed memory to the `MTLBuffer`, but it's a very small
   // overhead. Take the overhead of a CPU function call + 2 * (4096 / (main memory bandwidth)).
+  var constantData: UnsafeMutableRawPointer?
   
   // TODO: Investigate a zero-cost reshape by transferring all resources over to another allocation.
   var mtlBuffer: MTLBuffer?
   var mpsMatrix: MPSMatrix?
   var mpsGraphTensorData: MPSGraphTensorData?
+  
+  // The last command buffer that read this allocation's underlying memory.
+  var lastReadCommandBufferID: Int = -1
   
   // The last command buffer that mutated this allocation's underlying memory.
   var lastModifiedCommandBufferID: Int = -1
@@ -273,11 +279,11 @@ class Allocation {
   
   @inline(never)
   private func actuallyMaterialize(checkingMemoryBounds: Bool = true) throws {
-    let context = handle.pluggableDevice
+    let device = handle.pluggableDevice
     if checkingMemoryBounds {
-      let mtlDevice = context.mtlDevice
-      let allocatedSize = context.heapAllocator.totalAllocatedMemory
-      if context.permitExceedingSystemRAM {
+      let mtlDevice = device.mtlDevice
+      let allocatedSize = device.heapAllocator.totalAllocatedMemory
+      if device.permitExceedingSystemRAM {
         // Give it some wiggle room to remain in `permitExceedingSystemRAM` mode. Maximum buffer
         // length should be >50% system memory size. If it's hovering above the system RAM size
         // because all that memory needs to exist, it won't suddenly deallocate upon flushing the
@@ -297,7 +303,7 @@ class Allocation {
           if HeapAllocator.debugInfoEnabled {
             print("Memory allocation returned to something smaller than system RAM.")
           }
-          context.permitExceedingSystemRAM = false
+          device.permitExceedingSystemRAM = false
         }
       } else {
         #if os(macOS)
@@ -318,44 +324,63 @@ class Allocation {
       }
     }
     
-    let heapAllocator = context.heapAllocator
+    let heapAllocator = device.heapAllocator
     let mtlBuffer = heapAllocator.malloc(size: handle.byteCount, usingShared: isShared)
     guard let mtlBuffer = mtlBuffer else {
       fatalError("An attempt to allocate a 'MTLBuffer' returned 'nil'.")
     }
     self.mtlBuffer = mtlBuffer
     self.materialized = true
+    
+    // Transfer constant data into GPU-accessible memory. This will not recursively call
+    // `actuallyMaterialize` because `materialized` is set.
+    if let constantData = constantData {
+      self.constantData = nil
+      let ptr = UnsafeRawBufferPointer(start: constantData, count: handle.byteCount)
+      initializeTensorData {
+        $0.copyMemory(from: ptr)
+      }
+    }
+  }
+  
+  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
+    if handle.byteCount <= 4096 {
+      initializeConstantData(body)
+    } else {
+      initializeTensorData(body)
+    }
   }
   
   // Fills the memory with a user-specified closure. Do not go out of bounds, or else behavior is
   // undefined. On a discrete GPU, this calls `malloc` on CPU memory and enqueues a command to copy
   // it to device memory.
-  func initialize(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
-    // Catch memory management bugs.
-    precondition(!initialized, "Cannot initialize something twice.")
+  func initializeTensorData(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
+    // Catch memory management bugs. If constant data exists, detach it from the allocation. Capture
+    // it in `body`, then deallocate afterwards.
+    precondition(!initialized && constantData == nil, "Cannot initialize something twice.")
     
-    let context = handle.pluggableDevice
+    let device = handle.pluggableDevice
     var sourceAllocation: Allocation
     if isShared {
       sourceAllocation = self
       do {
         try materialize()
       } catch AllocationError.exceededSystemRAM {
-        context.permitExceedingSystemRAM = true
-        context._internalBarrier()
+        device.permitExceedingSystemRAM = true
+        device._internalBarrier()
       } catch {
         fatalError(error.localizedDescription)
       }
     } else {
-      let sourceHandle = context._internalAllocate(1, handle, true)
+      let sourceHandle = device._internalAllocate(1, handle, true)
       sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
       // Appending the explicit copy operation before `sourceAllocation` is actually initialized.
       // This is fine because the command stream won't be flushed any time soon.
-      context._internalRetain(handle)
+      device._internalRetain(handle)
       let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
-      context.eagerOperations.append(.explicitCopy(explicitCopy))
+      device.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     let contents = sourceAllocation.mtlBuffer!.contents()
@@ -364,28 +389,46 @@ class Allocation {
     sourceAllocation.initialized = true
   }
   
+  func initializeConstantData(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
+    guard constantData == nil else {
+      preconditionFailure("Constant data already existed.")
+    }
+    let byteCount = handle.byteCount
+    constantData = .allocate(byteCount: byteCount, alignment: 0)
+    let ptr = UnsafeMutableRawBufferPointer(start: constantData, count: byteCount)
+    body(ptr)
+  }
+  
+  func read(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
+    if constantData != nil {
+      readConstantData(modifying: modifying, body)
+    } else {
+      readTensorData(modifying: modifying, body)
+    }
+  }
+  
   // Flushes the command stream. On a discrete GPU, it appends one command to copy data from the GPU
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
-  func read(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
+  func readTensorData(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
     // Cannot materialize here because it might not be initialized. Compilation is the earliest
     // stage where it's safe to materialize, as it's at least derived from something that was
     // initialized. The compiler will then mark it as initialized and safe to read from.
-    let context = handle.pluggableDevice
+    let device = handle.pluggableDevice
     var sourceAllocation: Allocation
     if isShared {
       sourceAllocation = self
     } else {
-      let sourceHandle = context._internalAllocate(1, handle, true)
+      let sourceHandle = device._internalAllocate(1, handle, true)
       if modifying {
-        context._internalRetain(sourceHandle)
+        device._internalRetain(sourceHandle)
       }
       sourceAllocation = sourceHandle.reference!.takeUnretainedValue()
       try! sourceAllocation.actuallyMaterialize(checkingMemoryBounds: false)
       
-      context._internalRetain(handle)
+      device._internalRetain(handle)
       let explicitCopy = EagerOperation.ExplicitCopy(input: handle, output: sourceHandle)
-      context.eagerOperations.append(.explicitCopy(explicitCopy))
+      device.eagerOperations.append(.explicitCopy(explicitCopy))
     }
     
     // TODO: If the last command referencing this hasn't yet been encoded, place a MTLEvent in the
@@ -415,11 +458,15 @@ class Allocation {
     // These optimizations take a non-negligible amount of time to implement and create tests for.
     // It's also time-intensive to create benchmarks for them (they could make CPU-side latency
     // *worse*). I will not implement the two TODO's above in the near future.
-    context._internalFlushStream()
+    device._internalFlushStream()
     
-    let commandBufferID = sourceAllocation.lastModifiedCommandBufferID
+    var commandBufferID = sourceAllocation.lastModifiedCommandBufferID
+    if modifying {
+      // Some commands might access the contents before they were modified.
+      commandBufferID = max(commandBufferID, self.lastReadCommandBufferID)
+    }
     if commandBufferID != -1 {
-      context._internalBarrier(commandBufferID: commandBufferID)
+      device._internalBarrier(commandBufferID: commandBufferID)
     }
     
     // If this was the outcome of a chain of operations, it should have been declared initialized
@@ -443,36 +490,64 @@ class Allocation {
         // Let the encoder register this as being modified twice.
         self.lastModifiedCommandBufferID = -1
         
-        context._internalRetain(handle)
+        device._internalRetain(handle)
         let sourceHandle = sourceAllocation.handle
         let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
-        context.eagerOperations.append(.explicitCopy(explicitCopy))
+        device.eagerOperations.append(.explicitCopy(explicitCopy))
       }
     }
+  }
+  
+  func readConstantData(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
+    guard let constantData = constantData else {
+      preconditionFailure("Constant data did not exist.")
+    }
+    
+    // If modifying, flush the command stream. Future commands might reference the allocation's
+    // current value. If the contents transferred to GPU memory while encoding, switch to
+    // `readTensorData`.
+    if modifying {
+      let device = handle.pluggableDevice
+      device._internalFlushStream()
+      if self.constantData == nil {
+        readTensorData(modifying: true, body)
+        return
+      } else {
+        precondition(
+          !materialized && !initialized,
+          "Something went wrong while modifying a tensor backed by constant memory.")
+      }
+    }
+    
+    let ptr = UnsafeMutableRawBufferPointer(start: constantData, count: handle.byteCount)
+    body(ptr)
   }
   
   // Retain a reference to this until the command buffer is finished. Hold the reference in the
   // completion handler.
   deinit {
-    let context = handle.pluggableDevice
+    if let constantData = constantData {
+      constantData.deallocate()
+    }
+    let device = handle.pluggableDevice
     
     // Catch memory management bugs.
     precondition(handle.reference == nil, "Handle reference was not erased.")
     precondition(handle.referenceCount.destroy() == 0, "Reference count was nonzero.")
-    context.numDeinitializedAllocations += 1
+    device.numDeinitializedAllocations += 1
     
     // Activate this code if you suspect there are memory leaks.
     #if false
-    let tensorCount = context.nextAllocationID - context.numDeinitializedAllocations
+    let tensorCount = device.nextAllocationID - device.numDeinitializedAllocations
     print("Allocation #\(id) deinitialized. Live allocation count: \(tensorCount)")
     #endif
     
-    // The command buffer must be released from the context before its referenced memory can
-    // deallocate. Only perform this check in debug mode because it's very costly.
+    // The command buffer should leave the dictionary before its referenced memory deallocates. Only
+    // perform this check in debug mode because it's costly.
     assert({
       if lastModifiedCommandBufferID != -1 {
         precondition(materialized)
-        return context.commandBufferDictionary[lastModifiedCommandBufferID] == nil
+        return device.commandBufferDictionary[lastModifiedCommandBufferID] == nil
       } else {
         return true
       }
@@ -481,7 +556,7 @@ class Allocation {
     guard materialized else {
       return
     }
-    context.heapAllocator.free(self.mtlBuffer!)
+    device.heapAllocator.free(self.mtlBuffer!)
   }
 }
 
@@ -552,14 +627,11 @@ struct AllocationHandle: Hashable {
     }
   }
   
-  // Use context object's memory address as a unique identfier. This is unique across all
-  // pluggable device implementations.
   @inline(__always)
   var pluggableDevice: MTLPluggableDevice {
     let pointer = UnsafeRawPointer(bitPattern: baseAddress[2]).unsafelyUnwrapped
     return Unmanaged<MTLPluggableDevice>.fromOpaque(pointer).takeUnretainedValue()
   }
-  
   
   @inline(__always)
   var tensorFlowDataType: TF_DataType {

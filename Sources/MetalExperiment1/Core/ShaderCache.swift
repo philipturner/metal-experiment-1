@@ -19,8 +19,6 @@ class ShaderCache {
   lazy var elementwise_f32_i32 = wait(name: "elementwise_f32_i32")
   lazy var elementwise_u32_i64_u64 = wait(name: "elementwise_u32_i64_u64")
   
-  // Called during `Context.init`. Since the encapsulating context is currently initializing, it
-  // can't access the device via `Context.global.device`.
   init(mtlDevice: MTLDevice) {
     self.device = mtlDevice
     self.defaultLibrary = try? device.makeDefaultLibrary(bundle: .module)
@@ -76,6 +74,8 @@ class ShaderCache {
       semaphore.signal()
     }
     if asynchronous {
+      // TODO: When adding additional custom shaders, change this to a synchronous queue if that
+      // helps performance.
       DispatchQueue.global().async(execute: closure)
     } else {
       closure()

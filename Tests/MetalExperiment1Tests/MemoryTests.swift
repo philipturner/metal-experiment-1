@@ -209,8 +209,9 @@ final class MemoryTests: XCTestCase {
     // Test mechanism for dealing with excessive memory allocation.
     
     do {
+      // Choose buffer size 10_000 (larger than 4096), otherwise data resides in constant memory.
       heapAllocator._releaseCachedBufferBlocks()
-      let smallBufferHandle1 = allocate(byteCount: 1_000)
+      let smallBufferHandle1 = allocate(byteCount: 10_000)
       defer { deallocate(handle: smallBufferHandle1) }
       defaultPluggableDevice.sync {
         defaultPluggableDevice.permitExceedingSystemRAM = true
@@ -226,7 +227,7 @@ final class MemoryTests: XCTestCase {
         }
       }
       
-      let smallBufferHandle2 = allocate(byteCount: 1_000)
+      let smallBufferHandle2 = allocate(byteCount: 10_000)
       defer { deallocate(handle: smallBufferHandle2) }
       defaultPluggableDevice.sync {
         XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
@@ -237,7 +238,7 @@ final class MemoryTests: XCTestCase {
     }
     
     do {
-      let smallBufferHandle3 = allocate(byteCount: 1_000)
+      let smallBufferHandle3 = allocate(byteCount: 10_000)
       defer { deallocate(handle: smallBufferHandle3) }
       defaultPluggableDevice.sync {
         XCTAssertTrue(defaultPluggableDevice.permitExceedingSystemRAM)
@@ -250,7 +251,7 @@ final class MemoryTests: XCTestCase {
         defaultPluggableDevice.barrier()
       }
       
-      let smallBufferHandle4 = allocate(byteCount: 1_000)
+      let smallBufferHandle4 = allocate(byteCount: 10_000)
       defer { deallocate(handle: smallBufferHandle4) }
       defaultPluggableDevice.sync {
         XCTAssertFalse(defaultPluggableDevice.permitExceedingSystemRAM)
@@ -552,5 +553,11 @@ final class MemoryTests: XCTestCase {
     
     testModifyingRead(on: MTLPluggableDevice.default)
     testModifyingRead(on: altDevice)
+  }
+  
+  func testConstantFolding() {
+    testHeader()
+    
+    
   }
 }

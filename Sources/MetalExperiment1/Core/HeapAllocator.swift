@@ -217,8 +217,8 @@ class BufferPool {
     }
     desc.storageMode = isShared ? .shared : .private
     
-    // Don't automatically track contents. The context's encoding process manually tracks
-    // dependencies between commands for better performance.
+    // Don't automatically track contents. The encoding process manually tracks dependencies between
+    // commands for better performance.
     desc.hazardTrackingMode = .untracked
     return mtlDevice.makeHeap(descriptor: desc)
   }

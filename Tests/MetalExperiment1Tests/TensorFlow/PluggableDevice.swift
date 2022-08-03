@@ -46,7 +46,7 @@ public protocol PluggableDevice: AnyObject {
   ) -> OpaquePointer
   
   // `mutatingContents` determines whether to copy the data back to the accelerator. This is
-  // blocking, so avoid mutating contents directly if an asynchronous operation for doing so exists.
+  // costly, so avoid mutating contents directly if an asynchronous operation for doing so exists.
   func readTensor(
     _ handle: OpaquePointer,
     _ mutatingContents: Bool,
@@ -84,7 +84,7 @@ extension PluggableDevice {
     // To avoid creating a synchronization deadlock with the source (which could be `self`), first
     // extract the data onto the CPU.
     let byteCount = PluggableDeviceTensorHandle(handle).byteCount
-    let tensorData: UnsafeMutableRawBufferPointer = .allocate(byteCount: byteCount, alignment: 1)
+    let tensorData: UnsafeMutableRawBufferPointer = .allocate(byteCount: byteCount, alignment: 0)
     defer {
       tensorData.deallocate()
     }

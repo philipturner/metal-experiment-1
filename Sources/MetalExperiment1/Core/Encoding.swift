@@ -138,8 +138,20 @@ struct EncodingContext {
   
   // MARK: - Memory Barriers
   
+  // Always call this before reading from an allocation's `MTLBuffer`.
   @inline(__always)
-  mutating func useAllocation(_ allocation: Allocation) {
+  func markAsRead(_ allocation: Allocation) {
+    precondition(
+      allocation.materialized, "Materialize an allocation's 'MTLBuffer' before marking it as read.")
+    allocation.lastReadCommandBufferID = commandBufferID
+  }
+  
+  // Always call this before writing to an allocation's `MTLBuffer`.
+  @inline(__always)
+  mutating func markAsModified(_ allocation: Allocation) {
+    precondition(
+      allocation.materialized,
+      "Materialize an allocation's 'MTLBuffer' before marking it as modified.")
     precondition(allocation.lastModifiedCommandBufferID == -1, "Cannot initialize something twice.")
     allocation.lastModifiedCommandBufferID = commandBufferID
     if computeEncoder != nil {
@@ -227,15 +239,22 @@ extension MTLPluggableDevice {
         continue
       }
       
-      try allocation.materialize()
-      let buffer = allocation.mtlBuffer!
-      encoder.setBuffer(buffer, offset: 0, index: 3 + i)
-      if i < 4 {
-        // Allocation is an input.
-        ectx.addBarrierResource(allocation, buffer: buffer)
+      if i < 4, let constantData = allocation.constantData {
+        // Don't materialize; instead bind the constant data.
+        let byteCount = allocation.handle.byteCount
+        encoder.setBytes(constantData, length: byteCount, index: 3 + i)
       } else {
-        // Allocation is the output.
-        ectx.useAllocation(allocation)
+        try allocation.materialize()
+        let buffer = allocation.mtlBuffer!
+        encoder.setBuffer(buffer, offset: 0, index: 3 + i)
+        if i < 4 {
+          // Allocation is an input.
+          ectx.addBarrierResource(allocation, buffer: buffer)
+          ectx.markAsRead(allocation)
+        } else {
+          // Allocation is the output.
+          ectx.markAsModified(allocation)
+        }
       }
     }
     ectx.memoryBarrier()
@@ -496,9 +515,11 @@ extension MTLPluggableDevice {
   ) throws {
     let input = instruction.input
     try input.materialize()
+    ectx.markAsRead(input)
+    
     let output = instruction.output
     try output.materialize()
-    ectx.useAllocation(output)
+    ectx.markAsModified(output)
     
     // Use a blit encoder because this command's dominant use case is marshalling data over PCIe. I
     // don't know the performance characteristics of PCIe, so it's best to delegate that to Apple's

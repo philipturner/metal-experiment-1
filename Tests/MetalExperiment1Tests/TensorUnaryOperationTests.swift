@@ -131,7 +131,7 @@ func tensorOperationHeader(_ message: String? = nil) {
   _ = defaultPluggableDevice
   let startupTime = Profiler.checkpoint()
   if startupTime > 1000 {
-    print("=== Initialize context ===")
+    print("=== Initialize pluggable device ===")
     print("Initialization time: \(startupTime) \(Profiler.timeUnit)")
   }
   
