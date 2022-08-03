@@ -29,7 +29,8 @@ let package = Package(
         .product(name: "Atomics", package: "swift-atomics")
       ],
       resources: [
-        .process("Shaders"),
+        .process("Shaders/elementwise_f32_i32.metal"),
+        .process("Shaders/elementwise_u32_i64_u64.metal"),
       ]),
     .testTarget(
       name: "MetalExperiment1Tests",
