@@ -9,14 +9,49 @@ import Darwin
 
 // Swift analogue of the `elementwise_f32_i32` ubershader.
 struct Swift_elementwise_f32_i32 {
-  enum MemoryCast: UInt16 {
+  enum MemoryCast: UInt16, RawRepresentable {
     case f32_i32_native = 0
     case f16_as_f32 = 1
     case i8_as_i32 = 2
     case i16_as_i32 = 3
     case u8_as_i32 = 4
     case u16_as_i32 = 5
-    // `bool` can be masked as either `i8` or `u8`.
+    
+    @inline(__always)
+    init(dataTypeRawValue: UInt16) {
+      let dataType = DataType(rawValue: dataTypeRawValue)
+      switch dataType.unsafelyUnwrapped {
+      case .float16:
+        self = .f16_as_f32
+      case .float32:
+        self = .f32_i32_native
+      case .bool:
+        self = .u8_as_i32
+      case .int8:
+        self = .i8_as_i32
+      case .int16:
+        self = .i16_as_i32
+      case .int32:
+        self = .f32_i32_native
+      case .uint8:
+        self = .u8_as_i32
+      case .uint16:
+        self = .u16_as_i32
+      default:
+        let description = dataType?.description ?? "invalid"
+        fatalError("'unary_f32_i32' does not support data type '\(description)'.")
+      }
+    }
+    
+    @inline(__always)
+    var readSize: UInt16 {
+      switch self {
+      case .f32_i32_native: return 4
+      case .f16_as_f32: return 2
+      case .i8_as_i32, .u8_as_i32: return 1
+      case .i16_as_i32, .u16_as_i32: return 2
+      }
+    }
   }
   
   var read_layouts: SIMD3<UInt16>

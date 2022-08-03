@@ -558,6 +558,15 @@ final class MemoryTests: XCTestCase {
   func testConstantFolding() {
     testHeader()
     
+    // TODO: Add dedicated constant folding checks to `TensorUnaryOperationTests` utility functions.
     
+    let tensor1 = Tensor<Float>([2])
+    let tensor2 = Tensor<Float>([4])
+    let tensor3 = Tensor<Int32>([7])
+    
+    let tensor4 = tensor1 + tensor2 // 6.0
+    let tensor5 = Tensor<Int32>(tensor4) // 6
+    let tensor6 = tensor3 * tensor5 // 42
+    XCTAssertEqual(tensor6.scalars, [42])
   }
 }
