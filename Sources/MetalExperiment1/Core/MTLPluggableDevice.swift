@@ -8,26 +8,14 @@
 import Atomics
 import Metal
 
-/// The options you use to specify the pluggable device storage mode.
-public enum MTLPluggableDeviceStorageMode: UInt {
-  /// Metal chooses the fastest storage mode based on ``MTLPluggableDevice/mtlDevice``.
-  case automatic = 0
-  
-  /// Store tensors in memory accessible to both the CPU and GPU.
-  case shared = 1
-  
-  /// Store tensors in memory accessible only to the GPU.
-  case `private` = 2
-}
-
 /// An object for customizing initialization of a new Metal-backed pluggable device object.
 public class MTLPluggableDeviceDescriptor: NSObject {
   /// Whether to fetch the pluggable device from an internal cache.
   ///
   /// The default value is `true`. Creating a pluggable device is costly, so this automatically
   /// fetches the pluggable device object from an internal cache. Disabling the cache mechanism
-  /// means two different `MTLPluggableDevice` instances could wrap the same `MTLDevice`. With
-  /// caching disabled, a machine with only one GPU can simulate a multi-GPU system.
+  /// means two different `MTLPluggableDevice` instances can wrap the same `MTLDevice`. With caching
+  /// disabled, a machine with only one GPU can emulate a multi-GPU system.
   public var usesDeviceCache: Bool = true
   
   /// The storage mode for tensors used to execute operations.
@@ -41,7 +29,7 @@ public class MTLPluggableDeviceDescriptor: NSObject {
   ///
   /// To minimize synchronization overhead, Metal declares one pluggable device as the "default"
   /// device. Running operations on this device incurs lower CPU overhead than other devices. The
-  /// "default" pluggable device is lazily initialized to an instance with the following properties.
+  /// "default" pluggable device lazily initializes to an instance that meets the criteria below.
   /// Once it is defined, it cannot be overriden until the app or script finishes.
   ///
   /// - ``MTLPluggableDevice/mtlDevice`` equals the value returned by
@@ -56,70 +44,134 @@ public class MTLPluggableDeviceDescriptor: NSObject {
   public var overrideMode: MTLPluggableDeviceOverrideMode = .default
 }
 
+/// The options you use to specify the pluggable device storage mode.
+public enum MTLPluggableDeviceStorageMode: UInt {
+  /// Metal chooses the fastest storage mode based on the `MTLDevice`.
+  case automatic = 0
+  
+  /// Store tensors in memory accessible to both the CPU and GPU.
+  case shared = 1
+  
+  /// Store tensors in memory accessible only to the GPU.
+  case `private` = 2
+}
+
 /// The options you use to specify the pluggable device override mode.
 public enum MTLPluggableDeviceOverrideMode: UInt {
-  /// Do not set this instance as the default pluggable device.
+  /// Do not override the default pluggable device.
+  ///
+  /// If you select this mode, ``MTLPluggableDeviceDescriptor/usesDeviceCache`` must be turned off.
   case never = 0
   
-  /// Metal sets this as the default pluggable device if it satisfies certain conditions. See
-  /// ``MTLPluggableDeviceDescriptor/overrideMode`` for a description of these conditions.
+  /// Metal sets this as the default pluggable device if it satisfies certain conditions.
+  ///
+  /// See ``MTLPluggableDeviceDescriptor/overrideMode`` for the conditions under which this becomes
+  /// the default pluggable device.
   case `default` = 1
   
-  /// Override the default pluggable device if it has not been defined.
+  /// Override the default pluggable device if it has not materialized.
   case whenPossible = 2
   
-  /// Invoke a runtime crash if the default pluggable device has already been defined.
+  /// Invoke a runtime crash if the default pluggable device has already materialized.
+  ///
+  /// Use this option to debug the process of overriding the default pluggable device. If you fail
+  /// to override it, the program will crash.
   case always = 3
 }
 
 extension MTLDevice {
-  /// Creates an object from a descriptor to execute arbitrary operations in a GPU-accelerated Swift
-  /// framework.
+  /// Creates an object to execute arbitrary operations in a GPU-accelerated Swift framework.
   ///
   /// - Parameter descriptor: A description of the pluggable device to create.
   /// - Returns: A pluggable device object.
   public func makePluggableDevice(descriptor: MTLPluggableDeviceDescriptor) -> MTLPluggableDevice? {
-    // TODO: Allow for initializing multiple Metal pluggable devices concurrently.
+    // This does not support creating multiple Metal pluggable devices concurrently.
     MTLPluggableDevice.deviceCacheMutex.sync {
-      withUnsafeAddress(of: self) { address in
-        var storageMode: MTLStorageMode
-        switch descriptor.storageMode {
-        case .automatic:
-          storageMode = self.hasUnifiedMemory ? .shared : .private
-        case .shared:
-          storageMode = .shared
-        case .private:
-          storageMode = .private
+      _makePluggableDevice(descriptor: descriptor)
+    }
+  }
+  
+  /// Internal function that works around a thread synchronization deadlock.
+  func _makePluggableDevice(descriptor: MTLPluggableDeviceDescriptor) -> MTLPluggableDevice? {
+    withUnsafeAddress(of: self) { address in
+      var storageMode: MTLStorageMode
+      switch descriptor.storageMode {
+      case .automatic:
+        storageMode = self.hasUnifiedMemory ? .shared : .private
+      case .shared:
+        storageMode = .shared
+      case .private:
+        storageMode = .private
+      }
+      let key = MTLPluggableDeviceCacheKey(
+        mtlDeviceAddress: address,
+        storageMode: storageMode)
+      
+      var shouldOverride: Bool
+      switch descriptor.overrideMode {
+      case .never:
+        guard !descriptor.usesDeviceCache else {
+          fatalError("""
+            Set override mode to '.never', but permitted writing the return value to the device \
+            cache.
+            """)
         }
-        let key = MTLPluggableDeviceCacheKey(
-          mtlDeviceAddress: address,
-          storageMode: storageMode)
-        if descriptor.usesDeviceCache {
-          if let cachedDevice = MTLPluggableDevice.deviceCache[key] {
-            return cachedDevice
-          }
-        }
-        
-        var pluggableDevice: MTLPluggableDevice
-        let defaultPluggableDevice = MTLPluggableDevice.default
-        if descriptor.usesDeviceCache,
-           self === defaultPluggableDevice.mtlDevice,
-           key.storageMode == defaultPluggableDevice.storageMode {
-          pluggableDevice = defaultPluggableDevice
+        shouldOverride = false
+      case .`default`:
+        if self === MTLCreateSystemDefaultDevice(),
+           self.hasUnifiedMemory == (descriptor.storageMode == .shared),
+           descriptor.usesDeviceCache {
+          shouldOverride = MTLPluggableDevice._defaultOverride == nil
         } else {
-          pluggableDevice = MTLPluggableDevice(mtlDevice: self, isDefault: false)
-          pluggableDevice.prefersSharedMemory = key.storageMode == .shared
+          shouldOverride = false
         }
-        
-        // If caching is turned off, do not insert the device into the cache.
-        if descriptor.usesDeviceCache {
+      case .whenPossible:
+        shouldOverride = MTLPluggableDevice._defaultOverride == nil
+      case .always:
+        guard MTLPluggableDevice._defaultOverride == nil else {
+          fatalError("""
+            Set override mode to '.always', but the default pluggable device already \
+            materialized.
+            """)
+        }
+        shouldOverride = true
+      }
+      
+      var pluggableDevice: MTLPluggableDevice
+      var fetchedFromCache: Bool
+      if descriptor.usesDeviceCache,
+         let cachedDevice = MTLPluggableDevice.deviceCache[key] {
+        pluggableDevice = cachedDevice
+        fetchedFromCache = true
+      } else {
+        pluggableDevice = MTLPluggableDevice(mtlDevice: self, isDefault: shouldOverride)
+        pluggableDevice.prefersSharedMemory = key.storageMode == .shared
+        fetchedFromCache = false
+      }
+      
+      // TODO: Properly test the overriding mechanism.
+      if shouldOverride {
+        guard MTLPluggableDevice._defaultOverride == nil else {
+          fatalError("This should never happen.")
+        }
+        MTLPluggableDevice._defaultOverride = pluggableDevice
+      }
+      
+      if descriptor.usesDeviceCache {
+        if fetchedFromCache {
+          precondition(
+            MTLPluggableDevice.deviceCache[key] != nil,
+            "Pluggable device was not already in the cache. \(MTLPluggableDevice.deviceCache) \(pluggableDevice)")
+        } else {
           precondition(
             MTLPluggableDevice.deviceCache[key] == nil,
-            "Pluggable device was already in the cache.")
+            "Pluggable device was already in the cache. \(MTLPluggableDevice.deviceCache) \(pluggableDevice)")
           MTLPluggableDevice.deviceCache[key] = pluggableDevice
         }
-        return pluggableDevice
+      } else {
+        // If caching is turned off, do not insert the device into the cache.
       }
+      return pluggableDevice
     }
   }
 }
@@ -129,15 +181,27 @@ struct MTLPluggableDeviceCacheKey: Hashable {
   var storageMode: MTLStorageMode
 }
 
+// MARK: - MTLPluggableDevice
+
 /// A wrapper around `MTLDevice` that eagerly executes arbitrary operations, using just-in-time
 /// graph compilation to reduce overhead.
 public class MTLPluggableDevice: NSObject {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
+  static var _defaultOverride: MTLPluggableDevice?
+  
   /// A pluggable device that encapsulates the system default `MTLDevice`. To access this in the
   /// public API, call `MTLDevice.makePluggableDevice` with default initialization parameters.
-  static let `default`: MTLPluggableDevice = MTLPluggableDevice(
-    mtlDevice: MTLCreateSystemDefaultDevice()!, isDefault: true)
+  static let `default`: MTLPluggableDevice = deviceCacheMutex.sync {
+    if let _defaultOverride = _defaultOverride {
+      return _defaultOverride
+    } else {
+      let mtlDevice = MTLCreateSystemDefaultDevice()!
+      let descriptor = MTLPluggableDeviceDescriptor()
+      descriptor.overrideMode = .always
+      return mtlDevice._makePluggableDevice(descriptor: descriptor)!
+    }
+  }
   
   static var deviceCache: [MTLPluggableDeviceCacheKey: MTLPluggableDevice] = [:]
 
