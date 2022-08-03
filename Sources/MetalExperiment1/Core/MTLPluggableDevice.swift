@@ -275,7 +275,7 @@ extension MTLDevice {
       var shouldOverride: Bool
       switch descriptor.overrideMode {
       case .never:
-        guard !descriptor.usesDeviceCache else {
+        if descriptor.usesDeviceCache {
           fatalError("""
             Set override mode to '.never', but permitted writing the return value to the device \
             cache.
@@ -325,11 +325,11 @@ extension MTLDevice {
         if fetchedFromCache {
           precondition(
             MTLPluggableDevice.deviceCache[key] != nil,
-            "Pluggable device was not already in the cache. \(MTLPluggableDevice.deviceCache) \(pluggableDevice)")
+            "Pluggable device was absent from the cache.")
         } else {
           precondition(
             MTLPluggableDevice.deviceCache[key] == nil,
-            "Pluggable device was already in the cache. \(MTLPluggableDevice.deviceCache) \(pluggableDevice)")
+            "Pluggable device was already in the cache.")
           MTLPluggableDevice.deviceCache[key] = pluggableDevice
         }
       } else {
