@@ -178,9 +178,9 @@ extension MTLPluggableDevice {
     let id = allocation.id
     if referenceCount == 0 {
       if allocation.initialized {
-        print("Allocation #\(id) was deallocated after being initialized.")
+        print("Allocation #\(id) was released after being initialized.")
       } else {
-        print("Allocation #\(id) was deallocated.")
+        print("Allocation #\(id) was released.")
       }
     } else {
       print("Allocation #\(id) dropped to a reference count of \(referenceCount).")
@@ -453,9 +453,9 @@ class Allocation {
     context.numDeinitializedAllocations += 1
     
     // Activate this code if you suspect there are memory leaks.
-    #if true
+    #if false
     let tensorCount = context.nextAllocationID - context.numDeinitializedAllocations
-    print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
+    print("Allocation #\(id) deinitialized. Live allocation count: \(tensorCount)")
     #endif
     
     // The command buffer must be released from the context before its referenced memory can

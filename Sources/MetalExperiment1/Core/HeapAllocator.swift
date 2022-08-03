@@ -119,7 +119,7 @@ class BufferBlock: AllocatorBlockProtocol {
   }
   
   // Activate this code if you suspect there are memory leaks.
-  #if true
+  #if false
   deinit {
     if HeapAllocator.debugInfoEnabled {
       let isShared = buffer.storageMode == .shared
@@ -170,9 +170,8 @@ class HeapBlock: AllocatorBlockProtocol {
     precondition(numBuffers == 0, "Deinitialized heap block with \(numBuffers) remaining buffers.")
     
     // Activate this code if you suspect there are memory leaks.
-    #if true
+    #if false
     if HeapAllocator.debugInfoEnabled {
-      let isShared = heap.storageMode == .shared
       let mtlDevice = bufferPool.mtlDevice
       #if os(macOS)
       let maxWorkingSize = Int(mtlDevice.recommendedMaxWorkingSetSize)
@@ -180,6 +179,8 @@ class HeapBlock: AllocatorBlockProtocol {
       let maxWorkingSize = mtlDevice.maxBufferLength
       #endif
       let maxAvailableSize = maxWorkingSize - mtlDevice.currentAllocatedSize
+      
+      let isShared = heap.storageMode == .shared
       print("""
         Deinitialized \(bufferPool.isSmall ? "small" : "large") \(isShared ? "shared" : "private") \
         heap of size \(HeapAllocator.formatSize(totalSize)) (free memory: \

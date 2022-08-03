@@ -470,12 +470,6 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertEqual(device1.storageMode, .shared)
     XCTAssertEqual(device4.storageMode, .private)
     
-    Allocation.debugInfoEnabled = true
-    defer {
-      MTLPluggableDevice.default.barrier()
-      Allocation.debugInfoEnabled = false
-    }
-    
     func getDevice<T>(_ tensor: Tensor<T>) -> MTLPluggableDevice {
       let cTensorHandle = tensor._rawTensorHandle
       let address = PluggableDeviceTensorHandle(cTensorHandle).pluggableDeviceHandle
@@ -485,7 +479,6 @@ final class MetalExperiment1Tests: XCTestCase {
     let tensor1 = Tensor<Float>([5, 5])
     XCTAssertIdentical(getDevice(tensor1), device1)
     
-    // TODO: Check for memory leaks here.
     var resultTensor: Tensor<Float>?
     withDevice(device4) {
       let tensor2 = Tensor<Float>([7, 7])
