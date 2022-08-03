@@ -513,4 +513,44 @@ final class MemoryTests: XCTestCase {
     
     basicTestNothing(checking: true)
   }
+  
+  func testModifyingRead() {
+    testHeader()
+    
+    // Test a pluggable device with storage mode opposite to the system default.
+    let mtlDevice = MTLCreateSystemDefaultDevice()!
+    let descriptor = MTLPluggableDeviceDescriptor()
+    descriptor.storageMode = mtlDevice.hasUnifiedMemory ? .private : .shared
+    let altDevice = mtlDevice.makePluggableDevice(descriptor: descriptor)!
+    
+    func testModifyingRead(on device: MTLPluggableDevice) {
+      withDevice(device) {
+        let currentDevice = _ExecutionContext.global.currentDevice
+        XCTAssertIdentical(device, currentDevice)
+        
+        let tensor1 = Tensor<Float>([8, 8])
+        let tensor2 = Tensor<Float>([9, 9])
+        let tensor3 = tensor1 + tensor2
+        device.readTensor(tensor3._rawTensorHandle, true) { buffer in
+          let reboundBuffer = buffer.assumingMemoryBound(to: Float.self)
+          XCTAssertEqual(Array(reboundBuffer), [17, 17])
+          reboundBuffer[0] = 5
+          reboundBuffer[1] = 6
+        }
+        XCTAssertEqual(tensor3.scalars, [5, 6])
+        
+        let tensor4 = Tensor<Float>([10, 10])
+        device.readTensor(tensor4._rawTensorHandle, true) { buffer in
+          let reboundBuffer = buffer.assumingMemoryBound(to: Float.self)
+          XCTAssertEqual(Array(reboundBuffer), [10, 10])
+          reboundBuffer[0] = 4
+          reboundBuffer[1] = 4
+        }
+        XCTAssertEqual(tensor4.scalars, [4, 4])
+      }
+    }
+    
+    testModifyingRead(on: MTLPluggableDevice.default)
+    testModifyingRead(on: altDevice)
+  }
 }

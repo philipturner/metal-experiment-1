@@ -411,7 +411,6 @@ final class MetalExperiment1Tests: XCTestCase {
     let device1 = MTLPluggableDevice.default
     let device2 = MTLPluggableDevice.default
     XCTAssertIdentical(device1, device2)
-
     
     let descriptor = MTLPluggableDeviceDescriptor()
     let device3 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
@@ -468,7 +467,7 @@ final class MetalExperiment1Tests: XCTestCase {
     
     // Test copying of tensors between devices that don't match.
     
-    XCTAssertEqual(device1.storageMode, .shared)
+    XCTAssertEqual(device1.storageMode, deviceStorageMode)
     XCTAssertEqual(device4.storageMode, .private)
     
     func getDevice<T>(_ tensor: Tensor<T>) -> MTLPluggableDevice {

@@ -368,9 +368,9 @@ class Allocation {
   // before flushing the command stream. You must copy the data inside the pointer, because it will
   // deallocate or become undefined after the closure finishes.
   func read(modifying: Bool, _ body: (UnsafeMutableRawBufferPointer) -> Void) {
-    // Cannot materialize here because it might not be initialized. Only safe place to materialize
-    // is in the compiler, where it's at least derived from something that was initialized. The
-    // compiler will then mark it as initialized and safe to read from.
+    // Cannot materialize here because it might not be initialized. Compilation is the earliest
+    // stage where it's safe to materialize, as it's at least derived from something that was
+    // initialized. The compiler will then mark it as initialized and safe to read from.
     let context = handle.pluggableDevice
     var sourceAllocation: Allocation
     if isShared {
@@ -434,6 +434,15 @@ class Allocation {
       if isShared {
         // No need to copy data back to the accelerator.
       } else {
+        // If on a discrete GPU, this would be marked modified when first initialized by
+        // user-defined scalars; it is the output of an explicit copy. Otherwise, it's the result of
+        // an operation on other tensors.
+        precondition(
+          self.lastModifiedCommandBufferID != -1, "Allocation should be marked modified.")
+        
+        // Let the encoder register this as being modified twice.
+        self.lastModifiedCommandBufferID = -1
+        
         context._internalRetain(handle)
         let sourceHandle = sourceAllocation.handle
         let explicitCopy = EagerOperation.ExplicitCopy(input: sourceHandle, output: handle)
