@@ -8,6 +8,171 @@
 import Atomics
 import Metal
 
+/// A wrapper around `MTLDevice` that eagerly executes arbitrary operations, using just-in-time
+/// graph compilation to reduce overhead.
+public class MTLPluggableDevice: NSObject {
+  static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
+  
+  static var _defaultOverride: MTLPluggableDevice?
+  
+  /// A pluggable device that encapsulates the system default `MTLDevice`. To access this in the
+  /// public API, call `MTLDevice.makePluggableDevice` with default initialization parameters.
+  static let `default`: MTLPluggableDevice = deviceCacheMutex.sync {
+    if let _defaultOverride = _defaultOverride {
+      return _defaultOverride
+    } else {
+      let mtlDevice = MTLCreateSystemDefaultDevice()!
+      let descriptor = MTLPluggableDeviceDescriptor()
+      descriptor.overrideMode = .always
+      return mtlDevice._makePluggableDevice(descriptor: descriptor)!
+    }
+  }
+  
+  static var deviceCache: [MTLPluggableDeviceCacheKey: MTLPluggableDevice] = [:]
+
+  static var deviceCacheMutex: Mutex = Mutex()
+  
+  /// The `MTLDevice` that executes operations.
+  public private(set) var mtlDevice: MTLDevice
+  
+  /// The resource options for tensors used to execute operations.
+  ///
+  /// Possible values are `.storageModeShared` and `.storageModePrivate`.
+  public var resourceOptions: MTLResourceOptions {
+    prefersSharedMemory ? .storageModeShared : .storageModePrivate
+  }
+  
+  /// The storage mode for tensors used to execute operations.
+  ///
+  /// Possible values are `.shared` and `.private`.
+  public var storageMode: MTLStorageMode {
+    prefersSharedMemory ? .shared : .private
+  }
+  
+  var isDefault: Bool
+  var commandQueue: MTLCommandQueue
+  var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
+  var synchronizationFence: MTLFence
+  var synchronizationEvent: MTLEvent
+  var synchronizationCounter: UInt64 = 0
+  
+  // `maxCommandsPerBatch` would be mutable if an AI changed parameters of JIT compilation.
+  var maxCommandsPerBatch = 128
+  var maxCommandsPerSmallBatch = 16
+  var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
+  var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
+  var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
+  var eagerOperations: [EagerOperation] = []
+  
+  // Read the atomic from the same thread that's modifying it.
+  func _fastLoadCommittedBatches() -> Int {
+    let ptr = unsafeBitCast(numCommittedBatches, to: UnsafePointer<Int>.self)
+    return ptr.pointee
+  }
+  
+  var justFinishedBarrier = true
+  var waitingOnTimer = false
+  var schedulingLatency = MovingAverage<UInt64>(repeating: 50_000, count: 16)
+  var schedulingQueue = DispatchQueue(
+    label: "com.s4tf.metal.Context.schedulingQueue", qos: .userInteractive)
+  
+  var nextAllocationID: UInt64 = 0
+  var numDeinitializedAllocations: UInt64 = 0
+  var permitExceedingSystemRAM = false
+  var prefersSharedMemory: Bool
+  
+  var heapAllocator: HeapAllocator
+  var shaderCache: ShaderCache
+  // TODO: Cache for MPSKernel objects (if needed)
+  // TODO: Cache for MPSGraph objects
+  
+  // Using mutex locks instead of GCD for fast synchronization across threads. This calls C
+  // functions directly to minimize overhead, instead of delegating to the `Mutex` wrapper.
+  #if os(Windows)
+  private var _mutex: SRWLOCK
+  #else
+  private var _mutex: pthread_mutex_t
+  #endif
+  
+  internal init(mtlDevice: MTLDevice, isDefault: Bool = false) {
+    self.mtlDevice = mtlDevice
+    self.isDefault = isDefault
+    
+    // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
+    // on background threads.
+    self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
+    self.heapAllocator = HeapAllocator(mtlDevice: mtlDevice)
+    
+    self.commandQueue = mtlDevice.makeCommandQueue(maxCommandBufferCount: 3)!
+    self.prefersSharedMemory = mtlDevice.hasUnifiedMemory
+    self.synchronizationFence = mtlDevice.makeFence()!
+    self.synchronizationEvent = mtlDevice.makeEvent()!
+    
+    self._mutex = .init()
+    #if os(Windows)
+    InitializeSRWLock(&_mutex)
+    #else
+    pthread_mutex_init(&_mutex, nil)
+    #endif
+    
+    super.init()
+  }
+  
+  deinit {
+    numScheduledBatches.destroy()
+    numCompletedBatches.destroy()
+    
+    #if os(Windows)
+    // SRWLOCKs do not need explicit destruction
+    #else
+    pthread_mutex_destroy(&_mutex)
+    #endif
+  }
+}
+
+extension MTLPluggableDevice {
+  @inline(__always)
+  func acquireMutex() {
+    #if os(Windows)
+    AcquireSRWLockExclusive(&_mutex)
+    #else
+    let code = pthread_mutex_lock(&_mutex)
+    
+    // Only perform this check in debug mode because it appears frequently and in a hotpath.
+    assert(code == 0, "Attempt to acquire mutex returned '\(code)'.")
+    #endif
+  }
+  
+  @inline(__always)
+  func releaseMutex() {
+    #if os(Windows)
+    ReleaseSRWLockExclusive(&_mutex)
+    #else
+    let code = pthread_mutex_unlock(&_mutex)
+    
+    // Only perform this check in debug mode because it appears frequently and in a hotpath.
+    precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
+    #endif
+  }
+  
+  // Borrowed from `_ExecutionContext` in https://github.com/s4tf/s4tf
+  @inline(__always)
+  func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+    acquireMutex()
+    defer {
+      releaseMutex()
+    }
+    return try body()
+  }
+}
+
+struct MTLPluggableDeviceCacheKey: Hashable {
+  var mtlDeviceAddress: UnsafeMutableRawPointer
+  var storageMode: MTLStorageMode
+}
+
+// MARK: - Extensions to the Metal API
+
 /// An object for customizing initialization of a new Metal-backed pluggable device object.
 public class MTLPluggableDeviceDescriptor: NSObject {
   /// Whether to fetch the pluggable device from an internal cache.
@@ -149,7 +314,6 @@ extension MTLDevice {
         fetchedFromCache = false
       }
       
-      // TODO: Properly test the overriding mechanism.
       if shouldOverride {
         guard MTLPluggableDevice._defaultOverride == nil else {
           fatalError("This should never happen.")
@@ -173,170 +337,5 @@ extension MTLDevice {
       }
       return pluggableDevice
     }
-  }
-}
-
-struct MTLPluggableDeviceCacheKey: Hashable {
-  var mtlDeviceAddress: UnsafeMutableRawPointer
-  var storageMode: MTLStorageMode
-}
-
-// MARK: - MTLPluggableDevice
-
-/// A wrapper around `MTLDevice` that eagerly executes arbitrary operations, using just-in-time
-/// graph compilation to reduce overhead.
-public class MTLPluggableDevice: NSObject {
-  static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
-  
-  static var _defaultOverride: MTLPluggableDevice?
-  
-  /// A pluggable device that encapsulates the system default `MTLDevice`. To access this in the
-  /// public API, call `MTLDevice.makePluggableDevice` with default initialization parameters.
-  static let `default`: MTLPluggableDevice = deviceCacheMutex.sync {
-    if let _defaultOverride = _defaultOverride {
-      return _defaultOverride
-    } else {
-      let mtlDevice = MTLCreateSystemDefaultDevice()!
-      let descriptor = MTLPluggableDeviceDescriptor()
-      descriptor.overrideMode = .always
-      return mtlDevice._makePluggableDevice(descriptor: descriptor)!
-    }
-  }
-  
-  static var deviceCache: [MTLPluggableDeviceCacheKey: MTLPluggableDevice] = [:]
-
-  static var deviceCacheMutex: Mutex = Mutex()
-  
-  /// The `MTLDevice` that executes operations.
-  public private(set) var mtlDevice: MTLDevice
-  
-  /// The resource options for tensors used to execute operations.
-  ///
-  /// Possible values are `.storageModeShared` and `.storageModePrivate`.
-  public var resourceOptions: MTLResourceOptions {
-    prefersSharedMemory ? .storageModeShared : .storageModePrivate
-  }
-  
-  /// The storage mode for tensors used to execute operations.
-  ///
-  /// Possible values are `.shared` and `.private`.
-  public var storageMode: MTLStorageMode {
-    prefersSharedMemory ? .shared : .private
-  }
-  
-  var isDefault: Bool
-  var commandQueue: MTLCommandQueue
-  var commandBufferDictionary: [Int: MTLCommandBuffer] = [:]
-  var synchronizationFence: MTLFence
-  var synchronizationEvent: MTLEvent
-  var synchronizationCounter: UInt64 = 0
-  
-  // `maxCommandsPerBatch` would be mutable if an AI changed parameters of JIT compilation.
-  var maxCommandsPerBatch = 128
-  var maxCommandsPerSmallBatch = 16
-  var numCommittedBatches: UnsafeAtomic<Int> = .create(0)
-  var numScheduledBatches: UnsafeAtomic<Int> = .create(0)
-  var numCompletedBatches: UnsafeAtomic<Int> = .create(0)
-  var eagerOperations: [EagerOperation] = []
-  
-  // Read the atomic from the same thread that's modifying it.
-  func _fastLoadCommittedBatches() -> Int {
-    let ptr = unsafeBitCast(numCommittedBatches, to: UnsafePointer<Int>.self)
-    return ptr.pointee
-  }
-  
-  var justFinishedBarrier = true
-  var waitingOnTimer = false
-  var schedulingLatency = MovingAverage<UInt64>(repeating: 50_000, count: 16)
-  var schedulingQueue = DispatchQueue(
-    label: "com.s4tf.metal.Context.schedulingQueue", qos: .userInteractive)
-  
-  var nextAllocationID: UInt64 = 0
-  var numDeinitializedAllocations: UInt64 = 0
-  var permitExceedingSystemRAM = false
-  var prefersSharedMemory: Bool
-  
-  var heapAllocator: HeapAllocator
-  var shaderCache: ShaderCache
-  // TODO: Cache for MPSKernel objects (if needed)
-  // TODO: Cache for MPSGraph objects
-  
-  // Using mutex locks instead of GCD for fast synchronization across threads. This directly calls C
-  // functions instead of delegating to the `Mutex` wrapper, which would cause ARC overhead.
-  #if os(Windows)
-  private var _mutex: SRWLOCK
-  #else
-  private var _mutex: pthread_mutex_t
-  #endif
-  
-  internal init(mtlDevice: MTLDevice, isDefault: Bool = false) {
-    self.mtlDevice = mtlDevice
-    self.isDefault = isDefault
-    
-    // Initialize shader cache, MPSGraph cache, etc first. They create asynchronous tasks that run
-    // on background threads.
-    self.shaderCache = ShaderCache(mtlDevice: mtlDevice)
-    self.heapAllocator = HeapAllocator(mtlDevice: mtlDevice)
-    
-    self.commandQueue = mtlDevice.makeCommandQueue(maxCommandBufferCount: 3)!
-    self.prefersSharedMemory = mtlDevice.hasUnifiedMemory
-    self.synchronizationFence = mtlDevice.makeFence()!
-    self.synchronizationEvent = mtlDevice.makeEvent()!
-    
-    self._mutex = .init()
-    #if os(Windows)
-    InitializeSRWLock(&_mutex)
-    #else
-    pthread_mutex_init(&_mutex, nil)
-    #endif
-    
-    super.init()
-  }
-  
-  deinit {
-    numScheduledBatches.destroy()
-    numCompletedBatches.destroy()
-    
-    #if os(Windows)
-    // SRWLOCKs do not need explicit destruction
-    #else
-    pthread_mutex_destroy(&_mutex)
-    #endif
-  }
-}
-
-extension MTLPluggableDevice {
-  @inline(__always)
-  func acquireMutex() {
-    #if os(Windows)
-    AcquireSRWLockExclusive(&_mutex)
-    #else
-    let code = pthread_mutex_lock(&_mutex)
-    
-    // Only perform this check in debug mode because it appears frequently and in a hotpath.
-    assert(code == 0, "Attempt to acquire mutex returned '\(code)'.")
-    #endif
-  }
-  
-  @inline(__always)
-  func releaseMutex() {
-    #if os(Windows)
-    ReleaseSRWLockExclusive(&_mutex)
-    #else
-    let code = pthread_mutex_unlock(&_mutex)
-    
-    // Only perform this check in debug mode because it appears frequently and in a hotpath.
-    precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
-    #endif
-  }
-  
-  // Borrowed from `_ExecutionContext` in https://github.com/s4tf/s4tf
-  @inline(__always)
-  func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
-    acquireMutex()
-    defer {
-      releaseMutex()
-    }
-    return try body()
   }
 }

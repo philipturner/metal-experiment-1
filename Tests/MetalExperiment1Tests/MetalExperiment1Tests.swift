@@ -406,12 +406,13 @@ final class MetalExperiment1Tests: XCTestCase {
   func testMultipleDevices() throws {
     testHeader()
     
+    let mtlDevice = MTLCreateSystemDefaultDevice()!
+    let deviceStorageMode: MTLStorageMode = mtlDevice.hasUnifiedMemory ? .shared : .private
     let device1 = MTLPluggableDevice.default
     let device2 = MTLPluggableDevice.default
     XCTAssertIdentical(device1, device2)
 
-    let mtlDevice = MTLCreateSystemDefaultDevice()!
-    let deviceStorageMode: MTLStorageMode = mtlDevice.hasUnifiedMemory ? .shared : .private
+    
     let descriptor = MTLPluggableDeviceDescriptor()
     let device3 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
     XCTAssertIdentical(device1, device3)
