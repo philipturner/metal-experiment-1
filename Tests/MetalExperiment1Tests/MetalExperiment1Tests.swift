@@ -411,6 +411,98 @@ final class MetalExperiment1Tests: XCTestCase {
     XCTAssertIdentical(device1, device2)
 
     let mtlDevice = MTLCreateSystemDefaultDevice()!
-//    let device3 = MTLPl
+    let deviceStorageMode: MTLStorageMode = mtlDevice.hasUnifiedMemory ? .shared : .private
+    let descriptor = MTLPluggableDeviceDescriptor()
+    let device3 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
+    XCTAssertIdentical(device1, device3)
+    XCTAssertEqual(device3.prefersSharedMemory, mtlDevice.hasUnifiedMemory)
+    XCTAssertTrue(device3.prefersSharedMemory)
+
+    descriptor.storageMode = .private
+    let device4 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
+    XCTAssertFalse(device4.prefersSharedMemory)
+    XCTAssertNotIdentical(device3, device4)
+    XCTAssertEqual(device4.storageMode, .private)
+
+    descriptor.storageMode = .automatic
+    descriptor.usesDeviceCache = false
+    let device5 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
+    XCTAssertNotIdentical(device3, device5)
+    XCTAssertNotIdentical(device4, device5)
+    XCTAssertEqual(device5.storageMode, deviceStorageMode)
+
+    descriptor.usesDeviceCache = true
+    let device6 = mtlDevice.makePluggableDevice(descriptor: descriptor)!
+    XCTAssertIdentical(device1, device6)
+    XCTAssertNotIdentical(device5, device6)
+    XCTAssertEqual(device6.storageMode, deviceStorageMode)
+
+    // Test `_ExecutionContext.global` device management
+
+    XCTAssertIdentical(device1, _ExecutionContext.global.defaultDevice)
+
+    withDefaultDevice {
+      let currentDevice = _ThreadLocalState.local.deviceScopes._currentDevice
+      XCTAssertIdentical(currentDevice, nil)
+    }
+
+    withDevice(device6) {
+      let currentDevice = _ThreadLocalState.local.deviceScopes._currentDevice
+      XCTAssertIdentical(currentDevice, nil)
+    }
+
+    withDevice(device5) {
+      let currentDevice = _ThreadLocalState.local.deviceScopes._currentDevice
+      XCTAssertIdentical(currentDevice, device5)
+      withDevice(device6) {
+        let currentDevice = _ThreadLocalState.local.deviceScopes._currentDevice
+        XCTAssertIdentical(currentDevice, device1)
+        XCTAssertIdentical(currentDevice, _ExecutionContext.global.defaultDevice)
+        withDefaultDevice {
+          let currentDevice = _ThreadLocalState.local.deviceScopes._currentDevice
+          XCTAssertIdentical(currentDevice, nil)
+        }
+      }
+    }
+    
+    // Test copying of tensors between devices that don't match.
+    
+    XCTAssertEqual(device1.storageMode, .shared)
+    XCTAssertEqual(device4.storageMode, .private)
+    
+    Allocation.debugInfoEnabled = true
+    defer {
+      MTLPluggableDevice.default.barrier()
+      Allocation.debugInfoEnabled = false
+    }
+    
+    func getDevice<T>(_ tensor: Tensor<T>) -> MTLPluggableDevice {
+      let cTensorHandle = tensor._rawTensorHandle
+      let address = PluggableDeviceTensorHandle(cTensorHandle).pluggableDeviceHandle
+      let unmanaged = Unmanaged<MTLPluggableDevice>.fromOpaque(.init(address))
+      return unmanaged.takeUnretainedValue()
+    }
+    let tensor1 = Tensor<Float>([5, 5])
+    XCTAssertIdentical(getDevice(tensor1), device1)
+    
+    // TODO: Check for memory leaks here.
+    var resultTensor: Tensor<Float>?
+    withDevice(device4) {
+      let tensor2 = Tensor<Float>([7, 7])
+      XCTAssertIdentical(getDevice(tensor2), device4)
+      XCTAssertIdentical(getDevice(tensor1), device1)
+      
+      let tensor3 = tensor1 + tensor2
+      XCTAssertEqual(tensor3.scalars, [12, 12])
+      XCTAssertIdentical(getDevice(tensor3), device4)
+      
+      resultTensor = tensor3
+    }
+    let tensor3 = resultTensor!
+    XCTAssertIdentical(getDevice(tensor3), device4)
+    
+    let tensor4 = tensor3 - Tensor<Float>([8])
+    XCTAssertEqual(tensor4.scalars, [4, 4])
+    XCTAssertIdentical(getDevice(tensor4), device1)
   }
 }

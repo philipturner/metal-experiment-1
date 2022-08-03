@@ -33,6 +33,8 @@ import Atomics
 // The frontend may also resolve concrete types to provide vendor-specific optimizations. If such
 // optimizations create a new frontend API that can be reasonably implemented with vanilla pluggable
 // device functionality, expose that API to all platforms.
+//
+// TODO: Make DocC comments for everything defined in this file.
 
 // The protocol members below must be thread-safe and synchronized with a mutex lock.
 public protocol PluggableDevice: AnyObject {

@@ -8,6 +8,18 @@
 import Atomics
 import Metal
 
+/// The options you use to specify the pluggable device storage mode.
+public enum MTLPluggableDeviceStorageMode: UInt {
+  /// Metal chooses the fastest storage mode based on ``MTLPluggableDevice/mtlDevice``.
+  case automatic = 0
+  
+  /// Store tensors in memory accessible to both the CPU and GPU.
+  case shared = 1
+  
+  /// Store tensors in memory accessible only to the GPU.
+  case `private` = 2
+}
+
 /// An object for customizing initialization of a new Metal-backed pluggable device object.
 public class MTLPluggableDeviceDescriptor: NSObject {
   /// Whether to fetch the pluggable device from an internal cache.
@@ -18,16 +30,46 @@ public class MTLPluggableDeviceDescriptor: NSObject {
   /// caching disabled, a machine with only one GPU can simulate a multi-GPU system.
   public var usesDeviceCache: Bool = true
   
-  /// Whether the pluggable device stores tensors in CPU-accessible memory.
+  /// The storage mode for tensors used to execute operations.
   ///
-  /// The default value is `nil`. If not set, Metal automatically determines the fastest storage
-  /// mode based on the `MTLDevice` that creates the pluggable device. The value defaults to `true`
-  /// on devices with unified memory and `false` otherwise.
-  public var prefersSharedMemory: Bool?
+  /// The default value is `.automatic`.
+  public var storageMode: MTLPluggableDeviceStorageMode = .automatic
   
-  // TODO: Mechanism to make something the default pluggable device if not set. This reduces
-  // CPU-side overhead of accessing a device and lets the user intercept the frontend's
-  // lazy initialization. They can choose what device gets the fast-path.
+  /// Whether to override the system default pluggable device.
+  ///
+  /// The default value is `.default`.
+  ///
+  /// To minimize synchronization overhead, Metal declares one pluggable device as the "default"
+  /// device. Running operations on this device incurs lower CPU overhead than other devices. The
+  /// "default" pluggable device is lazily initialized to an instance with the following properties.
+  /// Once it is defined, it cannot be overriden until the app or script finishes.
+  ///
+  /// - ``MTLPluggableDevice/mtlDevice`` equals the value returned by
+  ///   `MTLCreateSystemDefaultDevice()`.
+  /// - ``MTLPluggableDevice/storageMode`` matches whether `mtlDevice` has unified memory.
+  /// - The descriptor has `usesDeviceCache` set to `true`.
+  ///
+  /// In top-level scripting environments such as Jupyter, one can execute arbitrary code before the
+  /// "default" pluggable device materializes. This provides an opportunity to specify which
+  /// `MTLPluggableDevice` receives the synchronization fast-path. Otherwise, the first function
+  /// call into a GPU-accelerated framework typically defines the default pluggable device.
+  public var overrideMode: MTLPluggableDeviceOverrideMode = .default
+}
+
+/// The options you use to specify the pluggable device override mode.
+public enum MTLPluggableDeviceOverrideMode: UInt {
+  /// Do not set this instance as the default pluggable device.
+  case never = 0
+  
+  /// Metal sets this as the default pluggable device if it satisfies certain conditions. See
+  /// ``MTLPluggableDeviceDescriptor/overrideMode`` for a description of these conditions.
+  case `default` = 1
+  
+  /// Override the default pluggable device if it has not been defined.
+  case whenPossible = 2
+  
+  /// Invoke a runtime crash if the default pluggable device has already been defined.
+  case always = 3
 }
 
 extension MTLDevice {
@@ -37,11 +79,21 @@ extension MTLDevice {
   /// - Parameter descriptor: A description of the pluggable device to create.
   /// - Returns: A pluggable device object.
   public func makePluggableDevice(descriptor: MTLPluggableDeviceDescriptor) -> MTLPluggableDevice? {
+    // TODO: Allow for initializing multiple Metal pluggable devices concurrently.
     MTLPluggableDevice.deviceCacheMutex.sync {
       withUnsafeAddress(of: self) { address in
+        var storageMode: MTLStorageMode
+        switch descriptor.storageMode {
+        case .automatic:
+          storageMode = self.hasUnifiedMemory ? .shared : .private
+        case .shared:
+          storageMode = .shared
+        case .private:
+          storageMode = .private
+        }
         let key = MTLPluggableDeviceCacheKey(
           mtlDeviceAddress: address,
-          prefersSharedMemory: descriptor.prefersSharedMemory ?? self.hasUnifiedMemory)
+          storageMode: storageMode)
         if descriptor.usesDeviceCache {
           if let cachedDevice = MTLPluggableDevice.deviceCache[key] {
             return cachedDevice
@@ -52,10 +104,11 @@ extension MTLDevice {
         let defaultPluggableDevice = MTLPluggableDevice.default
         if descriptor.usesDeviceCache,
            self === defaultPluggableDevice.mtlDevice,
-           key.prefersSharedMemory == defaultPluggableDevice.prefersSharedMemory {
+           key.storageMode == defaultPluggableDevice.storageMode {
           pluggableDevice = defaultPluggableDevice
         } else {
           pluggableDevice = MTLPluggableDevice(mtlDevice: self, isDefault: false)
+          pluggableDevice.prefersSharedMemory = key.storageMode == .shared
         }
         
         // If caching is turned off, do not insert the device into the cache.
@@ -73,12 +126,12 @@ extension MTLDevice {
 
 struct MTLPluggableDeviceCacheKey: Hashable {
   var mtlDeviceAddress: UnsafeMutableRawPointer
-  var prefersSharedMemory: Bool
+  var storageMode: MTLStorageMode
 }
 
 /// A wrapper around `MTLDevice` that eagerly executes arbitrary operations, using just-in-time
 /// graph compilation to reduce overhead.
-public class MTLPluggableDevice {
+public class MTLPluggableDevice: NSObject {
   static var profilingEncoding = fetchEnvironmentBoolean("TENSORFLOW_DEBUG_COMMAND_STREAM")
   
   /// A pluggable device that encapsulates the system default `MTLDevice`. To access this in the
@@ -93,8 +146,19 @@ public class MTLPluggableDevice {
   /// The `MTLDevice` that executes operations.
   public private(set) var mtlDevice: MTLDevice
   
-  /// Whether the pluggable device stores tensors in CPU-accessible memory.
-  public private(set) var prefersSharedMemory: Bool
+  /// The resource options for tensors used to execute operations.
+  ///
+  /// Possible values are `.storageModeShared` and `.storageModePrivate`.
+  public var resourceOptions: MTLResourceOptions {
+    prefersSharedMemory ? .storageModeShared : .storageModePrivate
+  }
+  
+  /// The storage mode for tensors used to execute operations.
+  ///
+  /// Possible values are `.shared` and `.private`.
+  public var storageMode: MTLStorageMode {
+    prefersSharedMemory ? .shared : .private
+  }
   
   var isDefault: Bool
   var commandQueue: MTLCommandQueue
@@ -126,6 +190,7 @@ public class MTLPluggableDevice {
   var nextAllocationID: UInt64 = 0
   var numDeinitializedAllocations: UInt64 = 0
   var permitExceedingSystemRAM = false
+  var prefersSharedMemory: Bool
   
   var heapAllocator: HeapAllocator
   var shaderCache: ShaderCache
@@ -160,6 +225,8 @@ public class MTLPluggableDevice {
     #else
     pthread_mutex_init(&_mutex, nil)
     #endif
+    
+    super.init()
   }
   
   deinit {

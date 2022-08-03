@@ -38,12 +38,18 @@ public final class _ExecutionContext {
     let mtlDevice = MTLCreateSystemDefaultDevice()!
     let descriptor = MTLPluggableDeviceDescriptor()
     self.defaultDevice = mtlDevice.makePluggableDevice(descriptor: descriptor)
-    self.defaultDeviceHandle = defaultDevice!.handle
     #elseif canImport(OpenCL)
     fatalError("OpenCL backend not implemented.")
     #else
     // For other backends, use `withDevice(PluggableDevice)` to set the device.
     #endif
+    
+    if let defaultDevice = self.defaultDevice {
+      self.defaultDeviceHandle = defaultDevice.handle
+      devices[defaultDeviceHandle!] = defaultDevice
+    } else {
+      self.defaultDeviceHandle = nil
+    }
   }
   
   @inlinable @inline(never)
@@ -100,8 +106,6 @@ public final class _ExecutionContext {
       }
     }
     dstDevice.executeOperation(name, attributes, .init(inputs), outputs)
-    
-    fatalError("This shouldn't happen yet.")
   }
 }
 
@@ -254,24 +258,38 @@ struct DeviceScopes {
 
   @usableFromInline
   mutating func pushDevice(_ device: PluggableDevice?) {
+    if device?.handle != _ExecutionContext.global.defaultDeviceHandle {
+      _ExecutionContext.global.allDeviceStacksSize.wrappingIncrement(ordering: .relaxed)
+    }
     if let handle = device?.handle {
       let ctx = _ExecutionContext.global
       if handle != ctx.defaultDeviceHandle {
-        _ExecutionContext.global.allDeviceStacksSize.wrappingIncrement(ordering: .relaxed)
-        precondition(ctx.devicesMutex.acquire() == 0)
-        ctx.devices[handle] = device
-        precondition(ctx.devicesMutex.release() == 0)
+        ctx.devicesMutex.sync {
+          ctx.devices[handle] = device
+        }
       }
     }
     deviceStack.append(device)
   }
-
+  
   @usableFromInline
   mutating func popDevice() {
-    let lastDevice = deviceStack.popLast()
-    precondition(deviceStack.popLast() != nil)
+    let lastDevice: PluggableDevice?? = deviceStack.popLast()
+    precondition(lastDevice != nil)
     if lastDevice??.handle != _ExecutionContext.global.defaultDeviceHandle {
       _ExecutionContext.global.allDeviceStacksSize.wrappingDecrement(ordering: .relaxed)
     }
+  }
+}
+
+fileprivate extension Mutex {
+  func sync<Result>(execute body: () throws -> Result) rethrows -> Result {
+    let code = self.acquire()
+    precondition(code == 0, "Attempt to acquire mutex returned '\(code)'.")
+    defer {
+      let code = self.release()
+      precondition(code == 0, "Attempt to release mutex returned '\(code)'.")
+    }
+    return try body()
   }
 }

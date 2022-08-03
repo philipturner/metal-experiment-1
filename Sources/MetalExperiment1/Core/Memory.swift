@@ -453,7 +453,7 @@ class Allocation {
     context.numDeinitializedAllocations += 1
     
     // Activate this code if you suspect there are memory leaks.
-    #if false
+    #if true
     let tensorCount = context.nextAllocationID - context.numDeinitializedAllocations
     print("Allocation #\(id) deinitialialized. Live allocation count: \(tensorCount)")
     #endif
@@ -506,7 +506,7 @@ struct AllocationHandle: Hashable {
     baseAddress[0] = referenceCount
     baseAddress[1] = Int(bitPattern: OpaquePointer?(nil))
     baseAddress[2] = Int(bitPattern: pluggableDeviceAddress)
-    baseAddress[3] = Int(dataType.rawValue) << 32
+    baseAddress[3] = Int(dataType.rawValue) << 32 + Int(dataType.tensorFlowDataType)
     baseAddress[4] = byteCount
     baseAddress[5] = shape.count
     
