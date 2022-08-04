@@ -396,6 +396,8 @@ class Allocation {
     sourceAllocation.initialized = true
   }
   
+  // This is very small and called in two separate places, so force-inline it.
+  @inline(__always)
   func initializeConstantData(_ body: (UnsafeMutableRawBufferPointer) -> Void) {
     guard constantData == nil else {
       preconditionFailure("Constant data already existed.")

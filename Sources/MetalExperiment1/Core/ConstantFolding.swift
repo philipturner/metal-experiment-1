@@ -13,31 +13,47 @@ import Darwin
 fileprivate typealias DispatchParams = Instruction.Elementwise.DispatchParams
 
 extension MTLPluggableDevice {
+  @inline(__always)
   func constantFold(_ unary: EagerOperation.Unary) {
-    switch unary.dataGroup {
-    case .f32_i32:
-      constantFoldSmall(
-        input1: unary.input,
-        input2: nil,
-        input3: nil,
-        output: unary.output,
-        operation: unary.operation,
-        metadata: unary.metadata ?? 0)
-    case .u32_i64_u64:
-      fatalError("Large-representation constant folding not yet supported.")
+    if unary.dataGroup == .f32_i32 {
+      let op = UnaryOperationType(rawValue: unary.operation)!
+      print("Constant folded \(op)")
+    } else {
+      let op = UnaryOperationType2(rawValue: unary.operation)!
+      print("Constant folded \(op)")
     }
+    
+    constantFold(
+      operation: unary.operation,
+      input1: unary.input,
+      input2: nil,
+      input3: nil,
+      output: unary.output,
+      dataGroup: unary.dataGroup,
+      metadata: unary.metadata ?? 0)
   }
   
   // TODO: Add 1000 to operation for binary constant folding.
   
-  func constantFoldSmall(
+  @inline(never)
+  func constantFold(
+    operation: UInt16,
     input1: AllocationHandle,
     input2: AllocationHandle?,
     input3: AllocationHandle?,
     output: AllocationHandle,
-    operation: UInt16,
+    dataGroup: DataGroup,
     metadata: UInt64
   ) {
+    let outputAllocation = output.reference!.takeUnretainedValue()
+    outputAllocation.initializeConstantData { _ in }
+    let outputData = outputAllocation.constantData!
+    
+    if operation == .max {
+      // Do not execute no-ops.
+      return
+    }
+    
     let params = DispatchParams(
       numOperations: 1,
       inputHandle1: input1,
@@ -45,22 +61,33 @@ extension MTLPluggableDevice {
       inputHandle3: input3,
       inputHandle4: nil,
       outputHandle: output,
-      usingLargeRepresentation: false)
+      usingLargeRepresentation: dataGroup == .u32_i64_u64)
     
     let inputData1 = input1.reference!.takeUnretainedValue().constantData!
     let inputData2 = input2?.reference!.takeUnretainedValue().constantData!
     let inputData3 = input3?.reference!.takeUnretainedValue().constantData!
-    let outputData = output.reference!.takeUnretainedValue().constantData!
     
-    var elementwise = Swift_elementwise_f32_i32(
-      params: params,
-      operation: operation,
-      metadata: metadata,
-      input1: inputData1,
-      input2: inputData2,
-      input3: inputData3,
-      output: outputData)
-    elementwise.execute()
+    if dataGroup == .f32_i32 {
+      var elementwise = Swift_elementwise_f32_i32(
+        params: params,
+        operation: operation,
+        metadata: metadata,
+        input1: inputData1,
+        input2: inputData2,
+        input3: inputData3,
+        output: outputData)
+      elementwise.execute()
+    } else {
+      var elementwise = Swift_elementwise_u32_i64_u64(
+        params: params,
+        operation: operation,
+        metadata: metadata,
+        input1: inputData1,
+        input2: inputData2,
+        input3: inputData3,
+        output: outputData)
+      elementwise.execute()
+    }
   }
 }
 

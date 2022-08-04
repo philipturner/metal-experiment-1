@@ -364,17 +364,55 @@ final class MetalExperiment1Tests: XCTestCase {
   func testScalarBroadcast() throws {
     testHeader()
     
-    let tensor = Tensor<Int32>(repeating: 1, shape: [1])
-    XCTAssertEqual(tensor.incremented().scalars, [2])
+    // TODO: This test is currently broken. Fix it.
     
-    let tensor2 = Tensor<Int8>(Tensor(repeating: Float(2), shape: [1]))
-    XCTAssertEqual(Tensor<Float>(square(tensor2)).scalars, [4])
+    do {
+      let tensor1 = Tensor<Int32>(repeating: 1, shape: [1])
+      XCTAssertEqual(tensor1.incremented().scalars, [2])
+
+      let tensor2 = Tensor<Int8>(Tensor(repeating: Float(2), shape: [1]))
+      XCTAssertEqual(Tensor<Float>(square(tensor2)).scalars, [4])
+
+      let tensor3 = Tensor<Int64>(Tensor(repeating: Int64(3), shape: [1]))
+      XCTAssertEqual(Tensor<UInt8>(square(tensor3)).scalars, [9])
+
+      let tensor4 = Tensor<Int8>(Tensor(repeating: Int8(-4), shape: [1]))
+      XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [16])
+    }
     
-    let tensor3 = Tensor<Int64>(Tensor(repeating: Int64(3), shape: [1]))
-    XCTAssertEqual(Tensor<UInt8>(square(tensor3)).scalars, [9])
+    do {
+      let tensor1 = Tensor<Int32>(repeating: 1, shape: [1]) + Tensor([0, 0])
+      XCTAssertEqual(tensor1.incremented().scalars, [2, 2])
+      
+      let tensor2 = Tensor<Int8>(Tensor(repeating: Float(2), shape: [1]) + Tensor([0, 0]))
+      XCTAssertEqual(Tensor<Float>(square(tensor2)).scalars, [4, 4])
+      
+      let tensor3 = Tensor<Int64>(Tensor(repeating: Int64(3), shape: [1]) + Tensor([0, 0]))
+      XCTAssertEqual(Tensor<UInt8>(square(tensor3)).scalars, [9, 9])
+      
+      let tensor4 = Tensor<Int8>(Tensor(repeating: Int8(-4), shape: [1]) + Tensor([0, 0]))
+      XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [16, 16])
+    }
     
-    let tensor4 = Tensor<Int8>(Tensor(repeating: Int8(-4), shape: [1]))
-    XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [16])
+    // Regression test: 64-bit integers not squaring correctly.
+    do {
+      let num1 = Int64(Int32.max - 3)
+      let num2 = UInt8(truncatingIfNeeded: num1 * num1)
+      let num3 = Int64(Int32.min + 4)
+      let num4 = UInt64(truncatingIfNeeded: num3 * num3)
+      
+      let tensor1 = Tensor<Int64>(Tensor(repeating: num1, shape: [1]))
+      XCTAssertEqual(Tensor<UInt8>(square(tensor1)).scalars, [num2])
+
+      let tensor2 = Tensor<Int8>(Tensor(repeating: num3, shape: [1]))
+      XCTAssertEqual(Tensor<UInt64>(square(tensor2)).scalars, [num4])
+      
+      let tensor3 = Tensor<Int64>(Tensor(repeating: num1, shape: [1]) + Tensor([0, 0]))
+      XCTAssertEqual(Tensor<UInt8>(square(tensor3)).scalars, [num2, num2])
+      
+      let tensor4 = Tensor<Int8>(Tensor(repeating: num3, shape: [1]) + Tensor([0, 0]))
+      XCTAssertEqual(Tensor<UInt64>(square(tensor4)).scalars, [num4, num4])
+    }
   }
   
   func testMovingAverage() throws {

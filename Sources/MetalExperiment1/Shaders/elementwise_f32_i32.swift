@@ -207,13 +207,14 @@ struct Swift_elementwise_f32_i32 {
           withInt32 { ($0 != 0) ? 1 : 0 }
         case .cast_i32_to_i32:
           withInt32 {
+            var x = $0
             let masks = unsafeBitCast(metadata, to: SIMD2<Int32>.self)
-            var x = $0 & masks[0] // truncate
+            x &= masks[0] // truncate
             
             if masks[1] != 0 { // sign extend
               let inverted_mask = ~masks[0]
               if (x & masks[1]) != 0 {
-                x = x | inverted_mask
+                x |= inverted_mask
               }
             }
             return x
@@ -399,8 +400,9 @@ struct Swift_elementwise_f32_i32 {
         default: fatalError()
         }
         register1 = UInt32(bitPattern: x)
-      } else if operation == .no_op {
-        fatalError("Should never execute constant folding if it's a no-op.")
+      } else {
+        // Never execute constant folding if it's a no-op.
+        fatalError("This should never happen.")
       }
     } else {
       // TODO: Subtract 1000 from the operation.
