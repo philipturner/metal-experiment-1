@@ -483,15 +483,6 @@ namespace metal {
 // Update: The `increment` operation was changed to a `scalar_add` operation that fetches its right-
 // hand side from metadata. This will be used in real-world code, speeding up some addition
 // operations. The sequential throughput benchmark now reads 3.2 µs instead of 2.6 µs.
-//
-//===------------------------------------------------------------------------------------------===//
-//
-// Future plans for this shader:
-// Basically making an assembly language. It can read from memory addresses and swap registers.
-// - Pre-read everything before the shader starts
-// - Can fuse two binary ops or one tertiary op
-// - Can only have one output
-// - Loop over the code for reading
 
 kernel void elementwise_f32_i32(
   constant DispatchParams &params [[buffer(0)]],
